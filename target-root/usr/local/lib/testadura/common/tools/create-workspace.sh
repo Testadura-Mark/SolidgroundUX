@@ -210,7 +210,7 @@ set -euo pipefail
         
         DIRS=(
         "target-root"
-        "target-root/etc"
+        "target-root/etc/systemd/system"
         "target-root/usr/local/bin"
         "target-root/usr/local/lib"
         "target-root/usr/local/sbin"
