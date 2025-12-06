@@ -91,15 +91,15 @@ the entire structure is copied to the target system, placing framework files und
 
 The repository layout:
 
-./soluxground/ (or your projectname)
-./soluxground/LICENSE
-./soluxground/README.md
-./soluxground/target-root/
-./soluxground/target-root/etc/
-./soluxground/target-root/usr/local/lib/testadura/
-./soluxground/target-root/common/
-./soluxground/target-root/common/templates/
-./soluxground/target-root/common/tools/
+- /soluxground/ (or your projectname)
+- /soluxground/LICENSE
+- /soluxground/README.md
+- /soluxground/target-root/
+- /soluxground/target-root/etc/
+- /soluxground/target-root/usr/local/lib/testadura/
+- /soluxground/target-root/common/
+- /soluxground/target-root/common/templates/
+- /soluxground/target-root/common/tools/
 
 ## 🧰 Included Tools
 
