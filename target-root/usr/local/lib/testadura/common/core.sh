@@ -1,13 +1,13 @@
 #!/usr/bin/env bash
-# ==========================================================
+# ===============================================================================
 # Testadura Consultancy — core.sh
-# ----------------------------------------------------------
+# -------------------------------------------------------------------------------
 # Purpose : Common Bash helper one-liners for reusable scripts
 # Author  : Mark Fieten
 # 
 # © 2025 Mark Fieten — Testadura Consultancy
 # Licensed under the Testadura Non-Commercial License (TD-NC) v1.0.
-# ----------------------------------------------------------
+# -------------------------------------------------------------------------------
 # Description :
 #   Source this file to get small, focused utilities:
 #   - Privilege & command checks
@@ -17,7 +17,7 @@
 #   - Process helpers
 #   - Version/OS helpers
 #   - Misc utilities
-# ==========================================================
+# ===============================================================================
 
 # --- Script metadata ----------------------------------------------------------
     SCRIPT_FILE="${BASH_SOURCE[0]}"

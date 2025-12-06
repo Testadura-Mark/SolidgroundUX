@@ -1,19 +1,19 @@
 #!/usr/bin/env bash
-# ==========================================================
+# ===============================================================================
 # Testadura Consultancy — default-colors.sh
-# ----------------------------------------------------------
+# -------------------------------------------------------------------------------
 # Purpose : Text color codes for bash scripts
 # Author  : Mark <mark@solidground.local>
 # 
 # © 2025 Mark Fieten — Testadura Consultancy
 # Licensed under the Testadura Non-Commercial License (TD-NC) v1.0.
-# ----------------------------------------------------------
+# -------------------------------------------------------------------------------
 # Usage:
 #   printf "%sItalic Yellow%s\n" "$ITALIC_YELLOW" "$RESET"
 #   printf "%sFaint Red%s\n" "$FAINT_RED" "$RESET"
 #   printf "%sUnderlined Cyan%s\n" "$UNDERLINE_CYAN" "$RESET"
 #   printf "%sOrange text%s\n" "$ORANGE" "$RESET"
-# ==========================================================
+# ===============================================================================
 
 # --- Color codes -------------------------------------------------------
   # Reset
