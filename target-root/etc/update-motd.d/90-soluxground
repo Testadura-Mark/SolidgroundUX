@@ -1,6 +1,6 @@
 #!/bin/bash
-source ../../usr/local/lib/testadura/common/default-colors.sh
-source ../../usr/local/lib/testadura/common/version.sh
+source /usr/local/lib/testadura/common/default-colors.sh
+source /usr/local/lib/testadura/common/version.sh
 
 # Default gateway (overall)
 GW=$(ip route show default 2>/dev/null | awk '/^default/ {print $3; exit}')
