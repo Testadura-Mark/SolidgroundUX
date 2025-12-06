@@ -13,15 +13,15 @@
 #           "System initialized" "$RESET"
 # ===============================================================================
 
-# --- Message type labels and icons -------------------------------------------
+# --- Message type labels and icons ---------------------------------------------
 
-  # --- say() global defaults ----------------------------------------------------
+  # --- say() global defaults ---------------------------------------------------
     SAY_DATE_DEFAULT=0     # 0 = no date, 1 = add date
     SAY_SHOW_DEFAULT="label"   # label|icon|symbol|all|label,icon|...
     SAY_COLORIZE_DEFAULT="label"  # none|label|msg|both|all
     SAY_DATE_FORMAT="%Y-%m-%d %H:%M:%S" 
   
-  # -- Say prefixes --------------------------------------------------------------
+  # -- Say prefixes -------------------------------------------------------------
     # Labels
       LBL_CNCL="[CNCL]"
       LBL_EMPTY="     "
@@ -55,7 +55,7 @@
       SYM_WARN="(!)"
       SYM_DEBUG="(~)"
 
-  # -- Colors --------------------------------------------------------------------
+  # -- Colors -------------------------------------------------------------------
     # By message type
       CLR_INFO=$BLUE
       CLR_STRT=$GREEN
