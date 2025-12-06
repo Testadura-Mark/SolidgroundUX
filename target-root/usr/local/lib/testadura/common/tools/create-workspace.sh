@@ -62,7 +62,7 @@ set -euo pipefail
         say FAIL "SoluxGround framework not found in either %s or %s" "$DEV_COMMON_LIB" "$SYS_COMMON_LIB"
     fi
 
-    DEBUGMODE=1
+    DEBUGMODE=0
     
 # --- Argument specification ---------------------------------------------------
     # --------------------------------------------------------------------------
