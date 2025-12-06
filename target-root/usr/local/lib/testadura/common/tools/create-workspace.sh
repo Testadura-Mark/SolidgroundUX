@@ -5,7 +5,9 @@
 # Purpose : Generic script template
 # Author  : Mark Fieten
 # Version : 1.0 (2025-11-20)
-# License : Internal use only
+# 
+# © 2025 Mark Fieten — Testadura Consultancy
+# Licensed under the Testadura Non-Commercial License (TD-NC) v1.0.
 # -------------------------------------------------------------------------------
 # Description :
 #   Creates a repository and a VS Code workspace file
@@ -18,6 +20,9 @@ set -euo pipefail
     SCRIPT_FILE="${BASH_SOURCE[0]}"
     SCRIPT_NAME=""
     SCRIPT_DESC="Short description of what this script does."
+    SCRIPT_VERSION="1.0"
+    SCRIPT_VERSION_STATUS="alpha"
+    SCRIPT_BUILD="20250110"
 
     # Determine the directory where this script lives
     SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
@@ -81,6 +86,7 @@ set -euo pipefail
         "folder|f|value|PROJECT_FOLDER|Set project folder|"
         "dryrun|d|flag|FLAG_DRYRUN| Emulate only don't do any work|"
         "mode|m|enum|ENUM_MODE|Execution mode: Interactive or Auto|Interactive,Auto"
+        "version|v|action|show_version|Show version information"
     )
 
     SCRIPT_EXAMPLES=(
