@@ -91,41 +91,15 @@ the entire structure is copied to the target system, placing framework files und
 
 The repository layout:
 
-soluxground (or your projectname)
-   ├── LICENSE
-   ├── README.md
-   ├── soluxground.code-workspace
-   └── target-root
-       ├── etc
-       │   ├── netplan
-       │   ├── systemd
-       │   │   └── system
-       │   ├── testadura
-       │   └── update-motd.d
-       │       └── 90-testadura
-       └── usr
-           └── local
-               ├── bin
-               ├── lib
-               │   └── testadura
-               │       ├── common
-               │       │   ├── bootstrap.sh
-               │       │   ├── core.sh
-               │       │   ├── default-colors.sh
-               │       │   ├── default-styles.sh
-               │       │   ├── styles
-               │       │   │   ├── style-carnaval.sh
-               │       │   │   ├── style-greenyellow.sh
-               │       │   │   ├── style-monoamber.sh
-               │       │   │   ├── style-monoblack.sh
-               │       │   │   └── style-monogreen.sh
-               │       │   ├── tools
-               │       │   │   ├── create-workspace.sh
-               │       │   │   └── deploy-workspace.sh
-               │       │   └── ui.sh
-               │       └── templates
-               │           └── template-fullframework.sh
-               └── sbin
+soluxground/ (or your projectname)
+├── LICENSE
+├── README.md
+├── target-root/
+│ ├── etc/
+│ └── usr/local/lib/testadura/
+│ ├── common/
+│ ├── templates/
+│ └── tools/
 
 ## 🧰 Included Tools
 
