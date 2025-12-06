@@ -42,6 +42,14 @@
   # need_root -- require the script to run as root (EUID=0) or exit.
   need_root(){ [[ ${EUID:-$(id -u)} -eq 0 ]] || { _sh_err "Run as root (sudo)."; exit 1; }; }
 
+  # cannot_root -- require normal session
+  cannot_root() {
+      if [[ ${EUID:-$(id -u)} -eq 0 ]]; then
+          _sh_err "Do not run this script as root."
+          exit 1
+      fi
+  }
+
   # need_bash -- require Bash (optionally minimum major version) or exit.
   need_bash(){ (( BASH_VERSINFO[0] >= ${1:-4} )) || { _sh_err "Bash ${1:-4}+ required."; exit 1; }; }
 

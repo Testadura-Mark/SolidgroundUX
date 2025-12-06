@@ -62,7 +62,7 @@ set -euo pipefail
         say FAIL "SoluxGround framework not found in either %s or %s" "$DEV_COMMON_LIB" "$SYS_COMMON_LIB"
     fi
 
-    DEBUGMODE=0
+    DEBUGMODE=1
     
 # --- Argument specification ---------------------------------------------------
     # --------------------------------------------------------------------------
@@ -119,11 +119,11 @@ set -euo pipefail
         local mode template_dir slug default_name default_folder default_template base
 
         mode="${ENUM_MODE:-Interactive}"
-        template_dir="/usr/local/dev/soluxground/target-root/usr/local/lib/testadura/templates"
+        template_dir="${TD_ROOT}/usr/local/lib/testadura/templates"
         default_name="Script1.sh"
         default_projectname="Project"
         sample_scriptname="Script.sh"
-
+  
         skip_template=0
 
         # Ensure a sane default template if not provided
@@ -161,7 +161,7 @@ set -euo pipefail
                 if [[ -n "${PROJECT_FOLDER:-}" ]]; then
                     default_folder="$PROJECT_FOLDER"
                 else
-                    default_folder="/usr/local/dev/${slug}"
+                    default_folder="$HOME/dev/${slug}"
                 fi
                 
                 ask --label "Project folder " --var PROJECT_FOLDER --default "$default_folder"
@@ -173,11 +173,13 @@ set -euo pipefail
                     return 2
                 fi
 
+                 justsay "$PROJECT_FOLDER"
                 # Normalize folder to absolute path
                 if [[ "$PROJECT_FOLDER" != /* ]]; then
-                    PROJECT_FOLDER="$(pwd)/$PROJECT_FOLDER"
+                   PROJECT_FOLDER="$(pwd)/$PROJECT_FOLDER"
                 fi
-                
+                justsay "$PROJECT_FOLDER"
+
                 __display_summary
                 if ask_ok_redo_quit "Proceed with these settings?"; then
                     # OK (0)
@@ -351,7 +353,10 @@ EOF
 
     main() {
 
-        showarguments
+        cannot_root
+        if (( DEBUGMODE )); then
+            showarguments
+        fi
 
         # Resolve settings (0=OK, 1=abort, 2=skip template)
         if __resolve_project_settings; then

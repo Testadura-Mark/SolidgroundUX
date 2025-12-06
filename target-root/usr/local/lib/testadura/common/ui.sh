@@ -421,7 +421,7 @@
     }
 
     saydebug() {
-        (( DEBUGMODE )) && say DEBUG --date "$@"
+        (( DEBUGMODE )) && say --date DEBUG "$@" 
     }
   
   # --- ask ---------------------------------------------------------------------
