@@ -90,7 +90,7 @@ set -euo pipefail
     # ------------------------------------------------------------------------
     ARGS_SPEC=(
         "dryrun|d|flag|FLAG_DRYRUN|Dry run (no actual work)|"
-        "version|v|action|show_version|Show version information"
+        "version|v|flag|show_version|Show version information"
     )
 
     SCRIPT_EXAMPLES=(

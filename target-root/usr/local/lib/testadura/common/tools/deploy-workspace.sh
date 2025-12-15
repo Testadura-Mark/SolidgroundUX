@@ -26,49 +26,62 @@ set -euo pipefail
 
 # --- Script metadata ----------------------------------------------------------
     SCRIPT_FILE="${BASH_SOURCE[0]}"
-    SCRIPT_NAME=""
+    SCRIPT_DIR="$(cd "$(dirname "$SCRIPT_FILE")" && pwd)"
+    SCRIPT_NAME="$(basename "$SCRIPT_FILE")"
     SCRIPT_DESC="Short description of what this script does."
     SCRIPT_VERSION="1.0"
     SCRIPT_VERSION_STATUS="alpha"
     SCRIPT_BUILD="20250110"
 
-    # Determine the directory where this script lives
-    SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
-    # Derive default SCRIPT_NAME from SCRIPT_FILE if not explicitly set
-    if [[ -z "${SCRIPT_NAME:-}" ]]; then
-        base="$(basename "$SCRIPT_FILE")"
-        SCRIPT_NAME="${base%.sh}"
-    fi
+# --- Framework roots (explicit) ----------------------------------------------
+    # Override from environment if desired:
+    #   TD_ROOT=/some/path COMMON_LIB=/some/path/common ./yourscript.sh
+    TD_ROOT="${TD_ROOT:-/usr/local/lib/testadura}"
+    COMMON_LIB="${COMMON_LIB:-$TD_ROOT/common}"
+    COMMON_LIB_DEV="$( getent passwd "${SUDO_USER:-$(id -un)}" | cut -d: -f6)/dev/soluxground/target-root/usr/local/lib/testadura/common"
 
-    # Determine the testadura root:
-        # If "target-root" is part of the script path, use that as TD_ROOT
-        # Otherwise fall back to the real root "/"
-        TD_ROOT="$SCRIPT_DIR"
-        RUN_MODE="production"
-        while [[ "$TD_ROOT" != "/" ]]; do
-        if [[ "$(basename "$TD_ROOT")" == "target-root" ]]; then
-            RUN_MODE="development"
-            break
-        fi
-            TD_ROOT="$(dirname "$TD_ROOT")"
+# --- Using / imports ----------------------------------------------------------
+    # Edit this list per script, like a “using” section in C#.
+    # Keep it explicit; avoid auto-loading *.sh.
+    TD_USING=(
+    "core.sh"   # td_die/td_warn/td_info, need_root, etc. (you decide contents)
+    "args.sh"    # td_parse_args, td_show_help
+    "cfg.sh"    # td_cfg_load, config discovery + source
+    "ui.sh"     # user inetractive helpers
+    "default-colors.sh" # color definitions for terminal output
+    "default-styles.sh" # text styles for terminal output
+    )
+
+    td_source_libs() {
+        local lib path path_dev
+
+        for lib in "${TD_USING[@]}"; do
+            path="$COMMON_LIB/$lib"
+
+            if [[ -f "$path" ]]; then
+                # shellcheck source=/dev/null
+                source "$path"
+                continue
+            fi
+
+            # Fallback to dev location if configured
+            if [[ -n "${COMMON_LIB_DEV:-}" ]]; then
+                path_dev="$COMMON_LIB_DEV/$lib"
+                if [[ -f "$path_dev" ]]; then
+                    echo "[INFO] Using dev library: $path_dev" >&2
+                    # shellcheck source=/dev/null
+                    source "$path_dev"
+                    continue
+                fi
+            fi
+
+            echo "[FAIL] Missing library: $path" >&2
+            [[ -n "${path_dev:-}" ]] && echo "[FAIL] Also not found in: $path_dev" >&2
+            exit 1
         done
+    }
 
-        # If we reached "/" without finding target-root, assume production
-        if [[ "$TD_ROOT" == "/" ]]; then
-            TD_ROOT=""
-        fi
-
-    # Find framework libraries
-    DEV_COMMON_LIB="${TD_ROOT}/usr/local/lib/testadura/common"
-    SYS_COMMON_LIB="/usr/local/lib/testadura/common"
-
-    if [[ -d "$DEV_COMMON_LIB" ]]; then
-        COMMON_LIB="$DEV_COMMON_LIB"
-    elif [[ -d "$SYS_COMMON_LIB" ]]; then
-        COMMON_LIB="$SYS_COMMON_LIB"
-    else
-        say FAIL "SoluxGround framework not found in either %s or %s" "$DEV_COMMON_LIB" "$SYS_COMMON_LIB"
-    fi
+    td_source_libs
 
 # --- Argument specification ---------------------------------------------------
     # --------------------------------------------------------------------------
@@ -92,7 +105,9 @@ set -euo pipefail
         "source|s|value|SRC_ROOT|Set Source directory|"
         "target|t|value|DEST_ROOT|Set Target directory|"
         "dryrun|d|flag|FLAG_DRYRUN|Just list the files don't do any work|"
-        "version|v|action|show_version|Show version information"
+        "config|c|value|CFG_FILE|Config file path (overrides auto-discovery)|"
+        "verbose|v|flag|FLAG_VERBOSE|Verbose output|"
+        "mode|m|enum|ENUM_MODE|Run mode|dev,prd,auto"
     )
 
     SCRIPT_EXAMPLES=(
@@ -103,6 +118,8 @@ set -euo pipefail
     "  $SCRIPT_NAME --undeploy"
     "  $SCRIPT_NAME -u"
     )
+
+   
 
 # --- Optional: custom config loading ----------------------------------------
     # ------------------------------------------------------------------------
@@ -120,7 +137,6 @@ set -euo pipefail
 
 
 # --- local script functions -------------------------------------------------
-
     __deploy()
     {
         say STRT "Starting deployment from $SRC_ROOT to $DEST_ROOT" --show=symbol
@@ -201,7 +217,7 @@ set -euo pipefail
         if [[ $FLAG_DRYRUN == 0 ]]; then
             install -d "$bin_dir"
         else
-            sayinfo "Would ensure directory exists: $bin_dir"
+            sayinfo "Would have ensured directory exists: $bin_dir"
         fi
 
         # Recursively find executable files, but EXCLUDE templates/
@@ -234,7 +250,7 @@ set -euo pipefail
                 sayinfo "Linking $link_path -> $rel_target"
                 ln -sfn "$rel_target" "$link_path"
             else
-                sayinfo "Would link $link_path -> $rel_target"
+                sayinfo "Would have linked $link_path -> $rel_target"
             fi
 
         done
@@ -285,41 +301,45 @@ set -euo pipefail
     }
 
 # --- main() must be the last function in the script -------------------------
-    showarguments() 
+    __td_showarguments() 
     {
-        printf "Script          : %s\n" "$SCRIPT_NAME"
-        printf "Script dir      : %s\n" "$SCRIPT_DIR"
-
+        printf "Script              : %s\n" "$SCRIPT_NAME"
+        printf "Script dir          : %s\n" "$SCRIPT_DIR"
+        printf "[INFO] TD_ROOT      : $TD_ROOT\n"
+        printf "[INFO] COMMON_LIB   : $COMMON_LIB\n"
+        printf "[INFO] CFG_FILE    : ${CFG_FILE:-<auto>}\n"
+        printf "[INFO] MODE        : ${ENUM_MODE:-<unset>}\n"
+        printf "[INFO] Positional  : ${TD_POSITIONAL[*]:-<none>}\n"
         printf -- "Arguments / Flags:\n"
 
         local entry varname
-        for entry in "${ARGS_SPEC[@]}"; do
-            # Split the spec into fields
-            IFS='|' read -r name short type varname help choices <<< "$entry"
-
-            # Skip empty or malformed entries
-            [[ -z "$varname" ]] && continue
-
-            # Use indirect expansion to get the variable value
-            local value="${!varname:-<unset>}"
-
-            printf "  %-15s = %s\n" "$varname" "$value"
+        for entry in "${ARGS_SPEC[@]:-}"; do
+            IFS='|' read -r name short type var help choices <<< "$entry"
+            varname="${var}"
+            printf "  --%s (-%s) : %s = %s\n" "$name" "$short" "$varname" "${!varname:-<unset>}"
         done
 
-        # Optional: print other environment metadata
-        printf "Run mode        : %s\n" "$RUN_MODE"
-        printf "COMMON_LIB      : %s\n" "$COMMON_LIB"
-        printf "TD_ROOT         : %s\n" "$TD_ROOT"
+        printf -- "Positional args:\n"
+        for arg in "${TD_POSITIONAL[@]:-}"; do
+            printf "  %s\n" "$arg"
+        done
     }
 
+
     main() {
-        need_root
-        SRC_ROOT="${SRC_ROOT:-$TD_ROOT}"
+        
+        td_parse_args "$@"
+
+        SRC_ROOT="${SRC_ROOT:-""}"
         DEST_ROOT="${DEST_ROOT:-"/"}"
-        FLAG_DRYRUN="${FLAG_DRYRUN:-0}"
+        FLAG_DRYRUN="${FLAG_DRYRUN:-0}"   
 
-        showarguments
+        if [[ "${FLAG_VERBOSE:-0}" -eq 1 ]]; then
+            __td_showarguments
+        fi
 
+        need_root "$@"
+        
         if [[ "${FLAG_UNDEPLOY:-0}" -eq 0 ]]; then
             __deploy
             __link_executables
@@ -329,7 +349,4 @@ set -euo pipefail
         fi
     }
 
-# --- Hand off to the bootstrapper (framework) ----------------------------
-    AUTOLOAD_FRAMEWORK=true
-    # shellcheck source=/dev/null
-    . "${COMMON_LIB}/bootstrap.sh"
+    main "$@"

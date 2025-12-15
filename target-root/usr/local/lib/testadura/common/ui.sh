@@ -2,7 +2,7 @@
 # ===============================================================================
 # Testadura Consultancy — ui.sh
 # -------------------------------------------------------------------------------
-# Purpose :
+# Purpose : Easy user interaction functions
 # Author  : Mark Fieten
 # 
 # © 2025 Mark Fieten — Testadura Consultancy

@@ -18,99 +18,123 @@ set -euo pipefail
 
 # --- Script metadata ----------------------------------------------------------
     SCRIPT_FILE="${BASH_SOURCE[0]}"
-    SCRIPT_NAME=""
-    SCRIPT_DESC="Short description of what this script does."
+    SCRIPT_DIR="$(cd "$(dirname "$SCRIPT_FILE")" && pwd)"
+    SCRIPT_NAME="$(basename "$SCRIPT_FILE")"
+    SCRIPT_DESC="Create a VSCode repository."
     SCRIPT_VERSION="1.0"
     SCRIPT_VERSION_STATUS="alpha"
     SCRIPT_BUILD="20250110"
 
-    # Determine the directory where this script lives
-    SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
-    # Derive default SCRIPT_NAME from SCRIPT_FILE if not explicitly set
-    if [[ -z "${SCRIPT_NAME:-}" ]]; then
-        base="$(basename "$SCRIPT_FILE")"
-        SCRIPT_NAME="${base%.sh}"
-    fi
+# --- Framework roots (explicit) ----------------------------------------------
+    # Override from environment if desired:
+    #   TD_ROOT=/some/path COMMON_LIB=/some/path/common ./yourscript.sh
+    TD_ROOT="${TD_ROOT:-/usr/local/lib/testadura}"
+    COMMON_LIB="${COMMON_LIB:-$TD_ROOT/common}"
+    COMMON_LIB_DEV="$( getent passwd "${SUDO_USER:-$(id -un)}" | cut -d: -f6)/dev/soluxground/target-root/usr/local/lib/testadura/common"
 
-    # Determine the testadura root:
-        # If "target-root" is part of the script path, use that as TD_ROOT
-        # Otherwise fall back to the real root "/"
-        TD_ROOT="$SCRIPT_DIR"
-        RUN_MODE="production"
-        while [[ "$TD_ROOT" != "/" ]]; do
-        if [[ "$(basename "$TD_ROOT")" == "target-root" ]]; then
-            RUN_MODE="development"
-            break
-        fi
-            TD_ROOT="$(dirname "$TD_ROOT")"
+# --- Using / imports ----------------------------------------------------------
+    # Edit this list per script, like a “using” section in C#.
+    # Keep it explicit; avoid auto-loading *.sh.
+    TD_USING=(
+    "core.sh"   # td_die/td_warn/td_info, need_root, etc. (you decide contents)
+    "args.sh"    # td_parse_args, td_show_help
+    "cfg.sh"    # td_cfg_load, config discovery + source
+    "ui.sh"     # user inetractive helpers
+    "default-colors.sh" # color definitions for terminal output
+    "default-styles.sh" # text styles for terminal output
+    )
+
+    td_source_libs() {
+        local lib path path_dev
+
+        for lib in "${TD_USING[@]}"; do
+            path="$COMMON_LIB/$lib"
+
+            if [[ -f "$path" ]]; then
+                # shellcheck source=/dev/null
+                source "$path"
+                continue
+            fi
+
+            # Fallback to dev location if configured
+            if [[ -n "${COMMON_LIB_DEV:-}" ]]; then
+                path_dev="$COMMON_LIB_DEV/$lib"
+                if [[ -f "$path_dev" ]]; then
+                    echo "[INFO] Using dev library: $path_dev" >&2
+                    # shellcheck source=/dev/null
+                    source "$path_dev"
+                    continue
+                fi
+            fi
+
+            echo "[FAIL] Missing library: $path" >&2
+            [[ -n "${path_dev:-}" ]] && echo "[FAIL] Also not found in: $path_dev" >&2
+            exit 1
         done
+    }
 
-        # If we reached "/" without finding target-root, assume production
-        if [[ "$TD_ROOT" == "/" ]]; then
-            TD_ROOT=""
-        fi
+    td_source_libs
 
-    # Find framework libraries
-    DEV_COMMON_LIB="${TD_ROOT}/usr/local/lib/testadura/common"
-    SYS_COMMON_LIB="/usr/local/lib/testadura/common"
-
-    if [[ -d "$DEV_COMMON_LIB" ]]; then
-        COMMON_LIB="$DEV_COMMON_LIB"
-    elif [[ -d "$SYS_COMMON_LIB" ]]; then
-        COMMON_LIB="$SYS_COMMON_LIB"
-    else
-        say FAIL "SoluxGround framework not found in either %s or %s" "$DEV_COMMON_LIB" "$SYS_COMMON_LIB"
-    fi
-
-    DEBUGMODE=0
-    
-# --- Argument specification ---------------------------------------------------
-    # --------------------------------------------------------------------------
-    # Each entry:
+# --- Example: Arguments -------------------------------------------------------
+    # Define ARGS_SPEC to enable td_parse_args.
+    #
+    # Format:
     #   "name|short|type|var|help|choices"
     #
-    #   name    = long option name WITHOUT leading --
-    #   short   = short option name WITHOUT leading -
-    #   type    = flag | value | enum
-    #   var     = shell variable that will be set
-    #   help    = help string for auto-generated --help output
-    #   choices = for enum: comma-separated values (e.g. fast,slow,auto)
-    #             for flag/value: leave empty
-    #
     # Notes:
-    #   - -h / --help is built in, you don't need to define it here.
-    #   - After parsing you can use: FLAG_VERBOSE, VAL_CONFIG, ENUM_MODE, ...
-    # ------------------------------------------------------------------------
+    # - Keep trailing "|" if choices is empty.
+    # - 'flag'  -> default 0, becomes 1 if present
+    # - 'value' -> consumes next token
+    # - 'enum'  -> consumes next token, must match choices list
     ARGS_SPEC=(
         "project|p|value|PROJECT_NAME|Project name|"
         "folder|f|value|PROJECT_FOLDER|Set project folder|"
         "dryrun|d|flag|FLAG_DRYRUN| Emulate only don't do any work|"
         "mode|m|enum|ENUM_MODE|Execution mode: Interactive or Auto|Interactive,Auto"
-        "version|v|action|show_version|Show version information"
+        "verbose|v|flag|FLAG_VERBOSE|Verbose output|"
     )
 
     SCRIPT_EXAMPLES=(
-    "Show help"
-    "  $SCRIPT_NAME --help"
-    ""
-    "Perform a dry run:"
-    "  $SCRIPT_NAME --dryrun"
-    "  $SCRIPT_NAME -d"
+        "Show help"
+        "  $SCRIPT_NAME --help"
+        ""
+        "Perform a dry run:"
+        "  $SCRIPT_NAME --dryrun"
+        "  $SCRIPT_NAME -d"
     )
 
-# --- Optional: custom config loading ----------------------------------------
-    # ------------------------------------------------------------------------
-    # If you define this function, bootstrap will call it before parsing args.
-    # If you DON'T define it, bootstrap will automatically try:
-    #   $SCRIPT_DIR/${SCRIPT_NAME}.conf
+    # Parse args (creates: HELP_REQUESTED, TD_POSITIONAL and initializes option vars)
+    td_parse_args "$@" || exit 1
+
+    if [[ "${HELP_REQUESTED:-0}" -eq 1 ]]; then
+        td_show_help
+        exit 0
+    fi
+
+# --- Example: Config loading --------------------------------------------------
+    # cfg.sh supports:
+    #   CFG_FILE -> explicit path (set via --config above)
+    #   CFG_AUTO -> 1/0 (default 1) auto discovery if CFG_FILE not set
     #
-    # Example:
+    # Auto-discovery order (per cfg.sh):
+    #   1) <script_dir>/<script>.conf           (optional)
+    #   2) /etc/testadura/<script>.conf         (optional)
+    #   3) /etc/testadura/testadura.conf        (optional)
     #
-    # load_config() {
-    #   local cfg="$SCRIPT_DIR/${SCRIPT_NAME}.conf"
-    #   [[ -f "$cfg" ]] && . "$cfg"
-    # }
-    # -----------------------------------------------------------------------
+    # If you want to disable auto-discovery:
+    #   CFG_AUTO=0
+    #
+    # You can also define a custom load_config() function in this script;
+    # td_cfg_load will call it instead of its own discovery logic.
+    td_cfg_load || exit 1
+
+# --- Example: Post-load defaults ---------------------------------------------
+# Config can define defaults; CLI can override them. Decide your precedence.
+    # Here: if ENUM_MODE not set via CLI, default to "auto".
+    if [[ -z "${ENUM_MODE:-}" ]]; then
+        ENUM_MODE="auto"
+    fi
+    
 
 
 # --- local script functions -------------------------------------------------
@@ -325,38 +349,38 @@ EOF
 
 
 # --- main() must be the last function in the script -------------------------
-    showarguments() {
-        printf "Script          : %s\n" "$SCRIPT_NAME"
-        printf "Script dir      : %s\n" "$SCRIPT_DIR"
-
+     __td_showarguments() {
+        printf "Script              : %s\n" "$SCRIPT_NAME"
+        printf "Script dir          : %s\n" "$SCRIPT_DIR"
+        printf "[INFO] TD_ROOT      : $TD_ROOT"
+        printf "[INFO] COMMON_LIB   : $COMMON_LIB"
+        printf "[INFO] CFG_FILE    : ${CFG_FILE:-<auto>}"
+        print "[INFO] MODE        : ${ENUM_MODE:-<unset>}"
+        printf "[INFO] Positional  : ${TD_POSITIONAL[*]:-<none>}"
         printf -- "Arguments / Flags:\n"
 
         local entry varname
-        for entry in "${ARGS_SPEC[@]}"; do
-            # Split the spec into fields
-            IFS='|' read -r name short type varname help choices <<< "$entry"
-
-            # Skip empty or malformed entries
-            [[ -z "$varname" ]] && continue
-
-            # Use indirect expansion to get the variable value
-            local value="${!varname:-<unset>}"
-
-            printf "  %-15s = %s\n" "$varname" "$value"
+        for entry in "${ARGS_SPEC[@]:-}"; do
+            IFS='|' read -r name short type var help choices <<< "$entry"
+            varname="${var}"
+            printf "  --%s (-%s) : %s = %s\n" "$name" "$short" "$varname" "${!varname:-<unset>}"
         done
 
-        # Optional: print other environment metadata
-        printf "Run mode        : %s\n" "$RUN_MODE"
-        printf "COMMON_LIB      : %s\n" "$COMMON_LIB"
-        printf "TD_ROOT         : %s\n" "$TD_ROOT"
+        printf -- "Positional args:\n"
+        for arg in "${TD_POSITIONAL[@]:-}"; do
+            printf "  %s\n" "$arg"
+        done
     }
-
+    
     main() {
 
-        cannot_root
-        if (( DEBUGMODE )); then
-            showarguments
+        td_parse_args "$@"
+
+        if [[ "${FLAG_VERBOSE:-0}" -eq 1 ]]; then
+            __td_showarguments
         fi
+        
+        cannot_root
 
         # Resolve settings (0=OK, 1=abort, 2=skip template)
         if __resolve_project_settings; then
@@ -381,7 +405,5 @@ EOF
 
     }
 
-# --- Hand off to the bootstrapper (framework) ----------------------------
-    AUTOLOAD_FRAMEWORK=true
-    # shellcheck source=/dev/null
-    . "${COMMON_LIB}/bootstrap.sh"
+    main "${TD_POSITIONAL[@]}"
+

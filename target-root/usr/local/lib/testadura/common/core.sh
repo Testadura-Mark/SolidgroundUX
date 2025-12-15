@@ -39,8 +39,12 @@
   # need_cmd -- require a command to exist or exit with error.
   need_cmd(){ have "$1" || { _sh_err "Missing required command: $1"; exit 1; }; }
 
-  # need_root -- require the script to run as root (EUID=0) or exit.
-  need_root(){ [[ ${EUID:-$(id -u)} -eq 0 ]] || { _sh_err "Run as root (sudo)."; exit 1; }; }
+  # need_root -- require the script to run as root, re-exec with sudo if not.
+  need_root() {
+      if [[ ${EUID:-$(id -u)} -ne 0 ]]; then
+          exec sudo -- "$0" "$@"
+      fi
+  }
 
   # cannot_root -- require normal session
   cannot_root() {
