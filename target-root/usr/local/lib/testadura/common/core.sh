@@ -19,14 +19,6 @@
 #   - Misc utilities
 # ===============================================================================
 
-# --- Script metadata ----------------------------------------------------------
-    SCRIPT_FILE="${BASH_SOURCE[0]}"
-    SCRIPT_NAME=""
-    SCRIPT_DESC="Short description of what this script does."
-    SCRIPT_VERSION="1.0"
-    SCRIPT_VERSION_STATUS="alpha"
-    SCRIPT_BUILD="20250110"
-
 # --- Internals ---------------------------------------------------------------
   # _sh_err -- print an error message to stderr (internal, minimal).
   _sh_err(){ printf '%s\n' "${*:-(no message)}" >&2; }
@@ -151,8 +143,7 @@
     justsay "SoluxGround Framework : $SOLUXGROUND_VERSION ($SOLUXGROUND_VERSION_DATE)"
     justsay "Script                 : ${SCRIPT_VERSION:-<none>} ${SCRIPT_VERSION_STATUS:-}"
     [[ -n "$SCRIPT_VERSION_DATE" ]] && justsay "Script Date            : $SCRIPT_VERSION_DATE"
-}
-
+  }
 
 # --- Misc Utilities ----------------------------------------------------------
   # join_by -- join arguments with a separator.

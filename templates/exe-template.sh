@@ -39,7 +39,6 @@ set -euo pipefail
     "args.sh"    # td_parse_args, td_show_help
     "cfg.sh"    # td_cfg_load, config discovery + source
     "ui.sh"     # user inetractive helpers
-    # "fs.sh"   # optional: filesystem helpers
     )
 
     td_source_libs() {
@@ -71,7 +70,6 @@ set -euo pipefail
     ARGS_SPEC=(
     "config|c|value|CFG_FILE|Config file path (overrides auto-discovery)|"
     "verbose|v|flag|FLAG_VERBOSE|Verbose output|"
-    "mode|m|enum|ENUM_MODE|Run mode|dev,prd,auto"
     )
 
     # Parse args (creates: HELP_REQUESTED, TD_POSITIONAL and initializes option vars)
@@ -82,30 +80,21 @@ set -euo pipefail
         exit 0
     fi
 
-# --- Example: Config loading --------------------------------------------------
-    # cfg.sh supports:
-    #   CFG_FILE -> explicit path (set via --config above)
-    #   CFG_AUTO -> 1/0 (default 1) auto discovery if CFG_FILE not set
+# --- Optional: custom config loading ----------------------------------------
+    # ------------------------------------------------------------------------
+    # If you define this function, bootstrap will call it before parsing args.
+    # If you DON'T define it, bootstrap will automatically try:
+    #   $SCRIPT_DIR/${SCRIPT_NAME}.conf
     #
-    # Auto-discovery order (per cfg.sh):
-    #   1) <script_dir>/<script>.conf           (optional)
-    #   2) /etc/testadura/<script>.conf         (optional)
-    #   3) /etc/testadura/testadura.conf        (optional)
+    # Example:
     #
-    # If you want to disable auto-discovery:
-    #   CFG_AUTO=0
-    #
-    # You can also define a custom load_config() function in this script;
-    # td_cfg_load will call it instead of its own discovery logic.
-    td_cfg_load || exit 1
+    # load_config() {
+    #   local cfg="$SCRIPT_DIR/${SCRIPT_NAME}.conf"
+    #   [[ -f "$cfg" ]] && . "$cfg"
+    # }
+    # -----------------------------------------------------------------------
 
-# --- Example: Post-load defaults ---------------------------------------------
-# Config can define defaults; CLI can override them. Decide your precedence.
-    # Here: if ENUM_MODE not set via CLI, default to "auto".
-    if [[ -z "${ENUM_MODE:-}" ]]; then
-        ENUM_MODE="auto"
-    fi
-
+# --- local script functions -------------------------------------------------
 
 # --- main --------------------------------------------------------------------
     __td_showarguments() {
@@ -113,9 +102,6 @@ set -euo pipefail
         printf "Script dir          : %s\n" "$SCRIPT_DIR"
         printf "[INFO] TD_ROOT      : $TD_ROOT"
         printf "[INFO] COMMON_LIB   : $COMMON_LIB"
-        printf "[INFO] CFG_FILE    : ${CFG_FILE:-<auto>}"
-        print "[INFO] MODE        : ${ENUM_MODE:-<unset>}"
-        printf "[INFO] Positional  : ${TD_POSITIONAL[*]:-<none>}"
         printf -- "Arguments / Flags:\n"
 
         local entry varname

@@ -10,9 +10,13 @@
 # Licensed under the Testadura Non-Commercial License (TD-NC) v1.0.
 # -------------------------------------------------------------------------------
 # Description :
-#   Creates a repository and a VS Code workspace file
-# Options :
-#   
+#   Script to create a workspace from a source root to a target root.
+#   - Sets up directory structure
+#   - Creates a VS Code workspace file
+#   - Copies template files
+# Usage examples:
+#   ./create-workspace.sh --project MyProject --folder /path/to/project
+#   ./create-workspace.sh -p MyProject -f /path/to/project --dryrun
 # ==============================================================================
 set -euo pipefail
 
@@ -75,7 +79,7 @@ set -euo pipefail
 
     td_source_libs
 
-# --- Example: Arguments -------------------------------------------------------
+# --- Arguments -------------------------------------------------------
     # Define ARGS_SPEC to enable td_parse_args.
     #
     # Format:
@@ -102,34 +106,20 @@ set -euo pipefail
         "  $SCRIPT_NAME --dryrun"
         "  $SCRIPT_NAME -d"
     )
-
-    # Parse args (creates: HELP_REQUESTED, TD_POSITIONAL and initializes option vars)
-    td_parse_args "$@" || exit 1
-
-    if [[ "${HELP_REQUESTED:-0}" -eq 1 ]]; then
-        td_show_help
-        exit 0
-    fi
-
-# --- Example: Config loading --------------------------------------------------
-    # cfg.sh supports:
-    #   CFG_FILE -> explicit path (set via --config above)
-    #   CFG_AUTO -> 1/0 (default 1) auto discovery if CFG_FILE not set
+# --- Optional: custom config loading ----------------------------------------
+    # ------------------------------------------------------------------------
+    # If you define this function, bootstrap will call it before parsing args.
+    # If you DON'T define it, bootstrap will automatically try:
+    #   $SCRIPT_DIR/${SCRIPT_NAME}.conf
     #
-    # Auto-discovery order (per cfg.sh):
-    #   1) <script_dir>/<script>.conf           (optional)
-    #   2) /etc/testadura/<script>.conf         (optional)
-    #   3) /etc/testadura/testadura.conf        (optional)
+    # Example:
     #
-    # If you want to disable auto-discovery:
-    #   CFG_AUTO=0
-    #
-    # You can also define a custom load_config() function in this script;
-    # td_cfg_load will call it instead of its own discovery logic.
-    td_cfg_load || exit 1
+    # load_config() {
+    #   local cfg="$SCRIPT_DIR/${SCRIPT_NAME}.conf"
+    #   [[ -f "$cfg" ]] && . "$cfg"
+    # }
+    # -----------------------------------------------------------------------
 
-# --- Example: Post-load defaults ---------------------------------------------
-# Config can define defaults; CLI can override them. Decide your precedence.
     # Here: if ENUM_MODE not set via CLI, default to "auto".
     if [[ -z "${ENUM_MODE:-}" ]]; then
         ENUM_MODE="auto"
@@ -262,10 +252,6 @@ set -euo pipefail
         {
             "name": "${PROJECT_NAME}",
             "path": "."
-        },
-        {
-            "name": "target-root",
-            "path": "target-root"
         }
     ],
     "filesToOpen": [
@@ -293,9 +279,6 @@ EOF
         printf "Script dir          : %s\n" "$SCRIPT_DIR"
         printf "[INFO] TD_ROOT      : $TD_ROOT"
         printf "[INFO] COMMON_LIB   : $COMMON_LIB"
-        printf "[INFO] CFG_FILE    : ${CFG_FILE:-<auto>}"
-        print "[INFO] MODE        : ${ENUM_MODE:-<unset>}"
-        printf "[INFO] Positional  : ${TD_POSITIONAL[*]:-<none>}"
         printf -- "Arguments / Flags:\n"
 
         local entry varname
@@ -312,14 +295,14 @@ EOF
     }
     
     main() {
+        cannot_root 
 
         td_parse_args "$@"
-
+        FLAG_DRYRUN="${FLAG_DRYRUN:-0}"   
+        
         if [[ "${FLAG_VERBOSE:-0}" -eq 1 ]]; then
             __td_showarguments
-        fi
-        
-        cannot_root
+        fi      
 
         # Resolve settings (0=OK, 1=abort, 2=skip template)
         if __resolve_project_settings; then
@@ -339,5 +322,5 @@ EOF
 
     }
 
-    main "${TD_POSITIONAL[@]}"
+    main "$@"
 

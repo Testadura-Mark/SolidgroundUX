@@ -9,18 +9,16 @@
 # Licensed under the Testadura Non-Commercial License (TD-NC) v1.0.
 # -------------------------------------------------------------------------------
 # Description :
-#   Includes boilerplate  for a generic Testadura script.
-#   Sources bootstrap.sh at the end of this file.
-#   Copy this template to create a new script.
-#   Replace <NAME> with the actual script name.
-#   Sets global variables:
-#     SCRIPT_FILE   - absolute path to this script file
-#     SCRIPT_NAME   - script name without path and .sh extension
-#     SCRIPT_DESC   - short description of the script
-#     SCRIPT_DIR    - directory where this script lives
-#     TD_ROOT       - Testadura root ("" for production, or path to target-root)
-#     COMMON_LIB    - path to common library    
-#     RUN_MODE      - "development" or "production"
+#   Deploy a development workspace to a target root filesystem.
+#   - Copies files from source to target, preserving structure.
+#   - Sets permissions based on predefined rules.
+#   - Optionally creates/removes symlinks for executables in /usr/local/bin.
+# Usage examples:
+#   ./deploy-workspace.sh --source /home/user/dev/myworkspace --target / --dryrun
+#   ./deploy-workspace.sh -s /home/user/dev/myworkspace -t / --verbose
+#   ./deploy-workspace.sh --undeploy -s /home/user/dev/myworkspace -t 
+#  or simply:
+#   ./deploy-workspace.sh and follow prompts.
 # ==============================================================================
 set -euo pipefail
 
@@ -112,15 +110,13 @@ set -euo pipefail
     )
 
     SCRIPT_EXAMPLES=(
-    "Deploy using defaults:"
-    "  $SCRIPT_NAME"
-    ""
-    "Undeploy everything:"
-    "  $SCRIPT_NAME --undeploy"
-    "  $SCRIPT_NAME -u"
-    )
-
-   
+        "Deploy using defaults:"
+        "  $SCRIPT_NAME"
+        ""
+        "Undeploy everything:"
+        "  $SCRIPT_NAME --undeploy"
+        "  $SCRIPT_NAME -u"
+    ) 
 
 # --- Optional: custom config loading ----------------------------------------
     # ------------------------------------------------------------------------
@@ -135,7 +131,6 @@ set -euo pipefail
     #   [[ -f "$cfg" ]] && . "$cfg"
     # }
     # -----------------------------------------------------------------------
-
 
 # --- local script functions -------------------------------------------------
     # Default permission rules
@@ -200,8 +195,6 @@ set -euo pipefail
             perms="$(__perm_resolve "$abs_rel" "file")"
             dst="${DEST_ROOT:-}/$rel"
 
-            sayinfo "$name --> $dst $perms"
-
             # Skip top-level files, hidden dirs, private dirs
             if [[ "$rel" != */* || "$name" == _* || "$name" == *.old || \
                 "$rel" == .*/* || "$rel" == _*/* || \
@@ -209,13 +202,12 @@ set -euo pipefail
                 continue
             fi
 
-            sayinfo "Deploying $SRC_ROOT/$rel to $dst with permissions $perms"
-
             if [[ ! -e "$dst" || "$file" -nt "$dst" ]]; then
                 dst_dir="$(dirname "$dst")"
                 dir_mode="$(__perm_resolve "/${rel%/*}" "dir")"
 
                 if [[ $FLAG_DRYRUN == 0 ]]; then
+                    sayinfo "$name --> $dst $perms"
                     install -d -m "$dir_mode" "$dst_dir"
                     install -m "$perms" "$SRC_ROOT/$rel" "$dst"
                 else
@@ -364,9 +356,7 @@ set -euo pipefail
         printf "Script dir          : %s\n" "$SCRIPT_DIR"
         printf "[INFO] TD_ROOT      : $TD_ROOT\n"
         printf "[INFO] COMMON_LIB   : $COMMON_LIB\n"
-        printf "[INFO] CFG_FILE    : ${CFG_FILE:-<auto>}\n"
-        printf "[INFO] MODE        : ${ENUM_MODE:-<unset>}\n"
-        printf "[INFO] Positional  : ${TD_POSITIONAL[*]:-<none>}\n"
+
         printf -- "Arguments / Flags:\n"
 
         local entry varname
