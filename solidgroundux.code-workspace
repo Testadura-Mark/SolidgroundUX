@@ -3,5 +3,11 @@
 		{
 			"path": "."
 		}
-	]
+	],
+	"settings": {
+		"terminal.integrated.env.linux": {
+			    "TD_FRAMEWORK_ROOT": "${workspaceFolder}/target-root",
+    			"TD_APPLICATION_ROOT": "${workspaceFolder}/target-root"
+		}
+	}
 }

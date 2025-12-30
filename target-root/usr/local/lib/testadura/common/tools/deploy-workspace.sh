@@ -23,9 +23,10 @@
 set -euo pipefail
 
 # --- Script metadata ----------------------------------------------------------
-    SCRIPT_FILE="${BASH_SOURCE[0]}"
-    SCRIPT_DIR="$(cd "$(dirname "$SCRIPT_FILE")" && pwd)"
-    SCRIPT_NAME="$(basename "$SCRIPT_FILE")"
+    SCRIPT_FILE="$(readlink -f "${BASH_SOURCE[0]}")"
+    SCRIPT_DIR="$(cd -- "$(dirname -- "$SCRIPT_FILE")" && pwd)"
+    SCRIPT_BASE="$(basename -- "$SCRIPT_FILE")"
+    SCRIPT_NAME="${SCRIPT_BASE%.sh}"
     SCRIPT_DESC="Deploy a development workspace to a target root filesystem."
     SCRIPT_VERSION="1.0"
     SCRIPT_BUILD="20250110"
@@ -34,51 +35,55 @@ set -euo pipefail
 
 # --- Framework roots (explicit) ----------------------------------------------
     # Override from environment if desired:
-    #   TD_ROOT=/some/path COMMON_LIB=/some/path/common ./yourscript.sh
-    TD_ROOT="${TD_ROOT:-/usr/local/lib/testadura}"
-    COMMON_LIB="${COMMON_LIB:-$TD_ROOT/common}"
-    COMMON_LIB_DEV="$( getent passwd "${SUDO_USER:-$(id -un)}" | cut -d: -f6)/dev/soluxground/target-root/usr/local/lib/testadura/common"
+    #   TD_FRAMEWORK_ROOT=/some/path COMMON_LIB=/some/path/common ./yourscript.sh
+    TD_FRAMEWORK_ROOT="${TD_FRAMEWORK_ROOT:-/}"
+    TD_APPLICATION_ROOT="${TD_APPLICATION_ROOT:-/}"
+    TD_COMMON_LIB="${TD_COMMON_LIB:-$TD_FRAMEWORK_ROOT/usr/local/lib/testadura/common}"
+    STATE_FILE="${STATE_FILE:-"$TD_APPLICATION_ROOT/var/testadura/$SCRIPT_NAME.state"}"
+    CFG_FILE="${CFG_FILE:-"$TD_APPLICATION_ROOT/etc/testadura/$SCRIPT_NAME.cfg"}"
     USER_HOME="$(getent passwd "${SUDO_USER:-$USER}" | cut -d: -f6)"
+
+# --- Minimal fallback UI (overridden by ui.sh when sourced) -------------------
+    saystart()   { printf '[STRT] %s\n' "$*" >&2; }
+    saywarning() { printf '[WARN] %s\n' "$*" >&2; }
+    sayfail()    { printf '[FAIL] %s\n' "$*" >&2; }
+    saycancel()  { printf '[CNCL] %s\n' "$*" >&2; }
+    sayend()     { printf '[END ] %s\n' "$*" >&2; }
+    sayok()      { printf '[OK  ] %s\n' "$*" >&2; }
+    sayinfo()    { printf '[INFO] %s\n' "$*" >&2; }
+    sayerror()   { printf '[ERR ] %s\n' "$*" >&2; }
 
 # --- Using / imports ----------------------------------------------------------
     # Edit this list per script, like a “using” section in C#.
     # Keep it explicit; avoid auto-loading *.sh.
     TD_USING=(
     "core.sh"   # td_die/td_warn/td_info, need_root, etc. (you decide contents)
-    "args.sh"    # td_parse_args, td_show_help
-    "cfg.sh"    # td_cfg_load, config discovery + source
-    "ui.sh"     # user inetractive helpers
+    "args.sh"   # td_parse_args, td_show_help
     "default-colors.sh" # color definitions for terminal output
     "default-styles.sh" # text styles for terminal output
+    "ui.sh"     # user inetractive helpers
+    "cfg.sh"    # td_cfg_load, config discovery + source, td_state_set
+    
+    
     )
 
     td_source_libs() {
-        local lib path path_dev
+        local lib path
+        saystart "Sourcing libraries from: $TD_COMMON_LIB" >&2
 
         for lib in "${TD_USING[@]}"; do
-            path="$COMMON_LIB/$lib"
-
+            path="$TD_COMMON_LIB/$lib"
+        
             if [[ -f "$path" ]]; then
+                sayinfo "Using library: $path" >&2
                 # shellcheck source=/dev/null
                 source "$path"
                 continue
             fi
-
-            # Fallback to dev location if configured
-            if [[ -n "${COMMON_LIB_DEV:-}" ]]; then
-                path_dev="$COMMON_LIB_DEV/$lib"
-                if [[ -f "$path_dev" ]]; then
-                    echo "[INFO] Using dev library: $path_dev" >&2
-                    # shellcheck source=/dev/null
-                    source "$path_dev"
-                    continue
-                fi
-            fi
-
-            echo "[FAIL] Missing library: $path" >&2
-            [[ -n "${path_dev:-}" ]] && echo "[FAIL] Also not found in: $path_dev" >&2
-            exit 1
+            saywaring "Library not found: $path" >&2
+            continue
         done
+        sayend "All libraries sourced." >&2
     }
 
     td_source_libs
@@ -105,9 +110,7 @@ set -euo pipefail
         "source|s|value|SRC_ROOT|Set Source directory|"
         "target|t|value|DEST_ROOT|Set Target directory|"
         "dryrun|d|flag|FLAG_DRYRUN|Just list the files don't do any work|"
-        "config|c|value|CFG_FILE|Config file path (overrides auto-discovery)|"
         "verbose|v|flag|FLAG_VERBOSE|Verbose output|"
-        "mode|m|enum|ENUM_MODE|Run mode|dev,prd,auto"
     )
 
     SCRIPT_EXAMPLES=(
@@ -119,19 +122,8 @@ set -euo pipefail
         "  $SCRIPT_NAME -u"
     ) 
 
-# --- Optional: custom config loading ----------------------------------------
-    # ------------------------------------------------------------------------
-    # If you define this function, bootstrap will call it before parsing args.
-    # If you DON'T define it, bootstrap will automatically try:
-    #   $SCRIPT_DIR/${SCRIPT_NAME}.conf
-    #
-    # Example:
-    #
-    # load_config() {
-    #   local cfg="$SCRIPT_DIR/${SCRIPT_NAME}.conf"
-    #   [[ -f "$cfg" ]] && . "$cfg"
-    # }
-    # -----------------------------------------------------------------------
+
+
 
 # --- local script functions -------------------------------------------------
     # Default permission rules
@@ -143,7 +135,6 @@ set -euo pipefail
     "/etc/testadura|640|750|Configuration"
     "/var/lib/testadura|600|700|Application state"
     )
-
     __perm_resolve() {
         local abs_rel="$1"   # e.g. "/usr/local/sbin/td-foo"
         local kind="$2"      # "file" or "dir"
@@ -173,8 +164,7 @@ set -euo pipefail
         fi
     }
 
-    __deploy()
-    {
+    __deploy(){
         SRC_ROOT="${SRC_ROOT%/}"
         DEST_ROOT="${DEST_ROOT%/}"
 
@@ -222,8 +212,7 @@ set -euo pipefail
 
         sayend "End deployment complete."
     }
-    __undeploy()
-    {
+    __undeploy(){
 
         say STRT "Starting UNINSTALL from $SRC_ROOT to $DEST_ROOT" --show=symbol
 
@@ -254,8 +243,7 @@ set -euo pipefail
         done
     }
 
-    __link_executables()
-    {
+    __link_executables(){
         local root_dir="$DEST_ROOT/usr/local/lib/testadura"
         local bin_dir="$DEST_ROOT/usr/local/bin"
 
@@ -308,8 +296,7 @@ set -euo pipefail
         sayend "Symlink creation complete."
     }
 
-   __unlink_executables()
-    {
+   __unlink_executables(){
         local bin_dir="$DEST_ROOT/usr/local/bin"
         local root_dir="$DEST_ROOT/usr/local/lib/testadura"
 
@@ -353,10 +340,19 @@ set -euo pipefail
 # --- main() must be the last function in the script -------------------------
     __td_showarguments() 
     {
+        
+        printf "File                : %s\n" "$SCRIPT_FILE"
         printf "Script              : %s\n" "$SCRIPT_NAME"
+        printf "Script description  : %s\n" "$SCRIPT_DESC"
         printf "Script dir          : %s\n" "$SCRIPT_DIR"
-        printf "[INFO] TD_ROOT      : $TD_ROOT\n"
-        printf "[INFO] COMMON_LIB   : $COMMON_LIB\n"
+        printf "Script version      : %s (build %s)\n" "$SCRIPT_VERSION" "$SCRIPT_BUILD"
+
+        printf "TD_APPLICATION_ROOT : %s\n" "${TD_APPLICATION_ROOT:-<none>}"
+        printf "TD_FRAMEWORK_ROOT   : %s\n" "${TD_FRAMEWORK_ROOT:-<none>}"
+        printf "TD_COMMON_LIB       : %s\n" "${TD_COMMON_LIB:-<none>}"
+
+        printf "STATE_FILE          : %s\n" "${STATE_FILE:-<none>}"
+        printf "CFG_FILE            : %s\n" "${CFG_FILE:-<none>}"
 
         printf -- "Arguments / Flags:\n"
 
@@ -374,54 +370,101 @@ set -euo pipefail
     }
 
     __getparameters() {
-        
-        # Ask if empty
-        if [[ -z "${SRC_ROOT:-}" ]]; then
-            ask --label "Workspace source root" --var SRC_ROOT --default "$USER_HOME/dev" --colorize both
-        fi
+
+        local default_src default_dst
+        default_src="${last_deploy_source:-$USER_HOME/dev}"
+        default_dst="${last_deploy_target:-/}"
 
         while true; do
-            # VALID -> exit loop
-            if [[ -d "$SRC_ROOT/etc" || -d "$SRC_ROOT/usr" ]]; then
-                sayinfo "Source root '$SRC_ROOT' looks valid."
-                break
-            fi
-
-            saywarning "Source root '$SRC_ROOT' doesn't look valid; should contain 'etc/' and/or 'usr/' subdirectory."
-
-           if ask_ok_redo_quit "Continue anyway?"; then
-                rc=0
-           else
-                rc=$?
-           fi
-
-           if [[ -z "${SRC_ROOT:-}" ]]; then
-                ask --label "Workspace source root" --var SRC_ROOT --default "$USER_HOME/dev" --colorize both
-           fi
-           
-           case "$rc" in
-                0)  sayinfo "Continuing"
-                    break ;;                 # OK
-                1) SRC_ROOT="" ;;            # REDO -> clear and re-ask
-                2) 
-                    saycancel "Aborting as per user request." 
-                    exit 1;;
-                3)  sayfail "Aborting (unexpected response)." 
-                    exit 1;;
-            esac
-
+            # --- Source root -----------------------------------------------------
             if [[ -z "${SRC_ROOT:-}" ]]; then
-                ask --label "Workspace source root" --var SRC_ROOT --default "$USER_HOME/dev" --colorize both
+                ask --label "Workspace source root" --var SRC_ROOT --default "$default_src" --colorize both
             fi
+
+            # --- Source root validation ------------------------------------------
+            while true; do
+                if [[ -d "$SRC_ROOT/etc" || -d "$SRC_ROOT/usr" ]]; then
+                    sayinfo "Source root '$SRC_ROOT' looks valid."
+                    break
+                fi
+
+                saywarning "Source root '$SRC_ROOT' doesn't look valid; should contain 'etc/' and/or 'usr/'."
+
+                if ask_ok_redo_quit "Continue anyway?"; then
+                    break
+                fi
+
+                case $? in
+                    1) SRC_ROOT="" ;;  # REDO
+                    2) saycancel "Aborting as per user request."; exit 1 ;;
+                    *) sayfail "Aborting (unexpected response)."; exit 1 ;;
+                esac
+
+                ask --label "Workspace source root" --var SRC_ROOT --default "$default_src" --colorize both
+            done
+
+            # --- Target root -----------------------------------------------------
+            if [[ -z "${DEST_ROOT:-}" ]]; then
+                ask --label "Target root folder" --var DEST_ROOT --default "$default_dst" --colorize both
+            fi
+            DEST_ROOT="${DEST_ROOT:-/}"
+
+            # --- Create exe symlinks ---------------------------------------------
+            FLAG_LINK_EXES="${FLAG_LINK_EXES:-0}"
+
+            if [[ "${last_deploy_link_exes:-0}" -eq 0 ]]; then
+                if ask_noyes "Create executable symlinks in ${DEST_ROOT%/}/usr/local/bin?"; then
+                    FLAG_LINK_EXES=1
+                else
+                    FLAG_LINK_EXES=0
+                fi
+            else
+                if ask_yesno "Create executable symlinks in ${DEST_ROOT%/}/usr/local/bin?"; then
+                    FLAG_LINK_EXES=1
+                else
+                    FLAG_LINK_EXES=0
+                fi
+            fi
+
+            printf "%sDeployment parameter summary\n" "${BOLD_SILVER}"
+            printf "  Source root         : %s\n" "$SRC_ROOT"
+            printf "  Target root         : %s\n" "${DEST_ROOT:-/}"
+            printf "  Create exe symlinks : %s\n" "$([[ "$FLAG_LINK_EXES" -eq 1 ]] && echo Yes || echo No)"
+
+            if ask_ok_redo_quit "Continue with deployment?"; then
+                sayinfo "Proceeding with deployment."
+                td_state_set "last_deploy_run" "$(date --iso-8601=seconds)"
+                td_state_set "last_deploy_source" "$SRC_ROOT"
+                td_state_set "last_deploy_target" "${DEST_ROOT:-/}"
+                td_state_set "last_deploy_link_exes" "$FLAG_LINK_EXES"
+                return 0
+            fi
+
+            case $? in
+                1)
+                    # REDO: keep previous answers as defaults, or clear some fields if you prefer
+                    # DEST_ROOT=""   # optionally force re-ask
+                    # FLAG_LINK_EXES=0
+                    continue
+                    ;;
+                2)
+                    saycancel "Aborting as per user request."
+                    exit 1
+                    ;;
+                *)
+                    sayfail "Aborting (unexpected response)."
+                    exit 1
+                    ;;
+            esac
         done
-
-        DEST_ROOT="${DEST_ROOT:-/}"
-    }   
-
+    }
 
     main() {
+
         need_root "$@"
-        
+
+        td_state_load
+
         td_parse_args "$@"
         FLAG_DRYRUN="${FLAG_DRYRUN:-0}"   
 
@@ -430,13 +473,18 @@ set -euo pipefail
         fi
 
         __getparameters
+
                 
         if [[ "${FLAG_UNDEPLOY:-0}" -eq 0 ]]; then
             __deploy
-            #__link_executables
+            if [[ "$FLAG_LINK_EXES" -eq 1 ]]; then
+                __link_executables
+            fi
         else
             __undeploy
-            #__unlink_executables
+            if [[ "$FLAG_LINK_EXES" -eq 1 ]]; then
+                __unlink_executables
+            fi
         fi
     }
 

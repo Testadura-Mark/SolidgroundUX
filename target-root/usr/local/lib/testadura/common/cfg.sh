@@ -1,119 +1,171 @@
-# shellcheck shell=bash
-# ============================================================================
+# ================================================================================
 # Testadura — cfg.sh
-# ---------------------------------------------------------------------------
-# Purpose : Configuration file discovery and loading
+# --------------------------------------------------------------------------------
+# Purpose : Minimal cfg/state management
 # Author  : Mark Fieten
 # © 2025 Mark Fieten — Testadura Consultancy
 # Licensed under the Testadura Non-Commercial License (TD-NC) v1.0.
 # -------------------------------------------------------------------------------
-# Conventions:
-#   - Config files are shell-sourceable (.conf)
-#   - Variables defined in config are expected to be UPPERCASE
+# Description :
+#   Simple key=value config and state file management.
+#   - Config and state files are simple KEY=VALUE text files.
+#   - Config is for user-editable settings; state is for script-managed data.
 #
-# Search order (when CFG_AUTO=1, default):
-#   1) Explicit CFG_FILE
-#   2) <script_dir>/<script_name>.conf        (dev/local)
-#   3) /etc/testadura/<script_name>.conf      (system)
-#   4) /etc/testadura/testadura.conf          (global fallback)
+#  Usage examples:
+#   
+#   td_cfg_load          # Load config file into shell variables
+#   td_cfg_set KEY VAL   # Set/update config key
+#   td_cfg_unset KEY     # Remove config key
+#   td_cfg_reset         # Clear entire config file
 #
-# A script may optionally define:
-#   load_config()   -> fully custom logic (overrides everything)
-#
-# Public API:
-#   td_cfg_load
-#   td_cfg_source
-#   td_cfg_default_path
-#   td_cfg_system_path
-# ============================================================================
+#   td_state_load        # Load state file into shell variables
+#   td_state_set KEY VAL # Set/update state key
+#   td_state_unset KEY   # Remove state key
+#   td_state_reset       # Clear entire state file
+# ==============================================================================
 
-[[ -n "${TD_CFG_LOADED:-}" ]] && return 0
-TD_CFG_LOADED=1
+# --- internal: file and value manipulation ==---------------------------------
+    # - Ignores empty lines and comments
+    # - Accepts only names: [A-Za-z_][A-Za-z0-9_]*
+    # - Loads by eval of sanitized assignment (value preserved as-is)
 
-# ----------------------------------------------------------------------------
-# Determine default local config path: <script_dir>/<script>.conf
-# ----------------------------------------------------------------------------
-td_cfg_default_path() {
-    local script_dir script_name base
+    __td_kv_load_file() {
+        local file="$1"
+        [[ -f "$file" ]] || return 0
 
-    script_dir="${SCRIPT_DIR:-$(cd "$(dirname "${SCRIPT_FILE:-$0}")" && pwd)}"
-    script_name="${SCRIPT_NAME:-$(basename "${SCRIPT_FILE:-$0}")}"
-    base="${script_name%.sh}"
+        local line key val
+        while IFS= read -r line || [[ -n "$line" ]]; do
+            # strip leading/trailing whitespace
+            line="${line#"${line%%[![:space:]]*}"}"
+            line="${line%"${line##*[![:space:]]}"}"
 
-    printf '%s/%s.conf\n' "$script_dir" "$base"
-}
+            # skip blanks / comments
+            [[ -z "$line" ]] && continue
+            [[ "$line" == \#* ]] && continue
 
-# ----------------------------------------------------------------------------
-# Determine system config path: /etc/testadura/<script>.conf
-# ----------------------------------------------------------------------------
-td_cfg_system_path() {
-    local script_name base
+            # accept KEY=VALUE only
+            [[ "$line" == *"="* ]] || continue
 
-    script_name="${SCRIPT_NAME:-$(basename "${SCRIPT_FILE:-$0}")}"
-    base="${script_name%.sh}"
+            key="${line%%=*}"
+            val="${line#*=}"
 
-    printf '/etc/testadura/%s.conf\n' "$base"
-}
+            # trim whitespace around key only
+            key="${key#"${key%%[![:space:]]*}"}"
+            key="${key%"${key##*[![:space:]]}"}"
 
-# ----------------------------------------------------------------------------
-# Source a config file
-#   $1 = path
-#   $2 = optional (1 = ignore if missing, 0 = error if missing)
-# ----------------------------------------------------------------------------
-td_cfg_source() {
-    local path="$1"
-    local optional="${2:-0}"
+            # validate key name
+            if [[ ! "$key" =~ ^[A-Za-z_][A-Za-z0-9_]*$ ]]; then
+                continue
+            fi
 
-    [[ -n "$path" ]] || {
-        echo "[FAIL] Config path is empty" >&2
-        return 1
+            # If value starts with a space, keep it; we store exactly after '='.
+            # Set variable safely (printf %q ensures it becomes a valid literal)
+            eval "$key=$(printf "%q" "$val")"
+        done < "$file"
     }
 
-    if [[ ! -f "$path" ]]; then
-        if [[ "$optional" -eq 1 ]]; then
+    # --- internal: write/update/remove a key in KEY=VALUE file --------------------
+    __td_kv_set() {
+        local file="$1" key="$2" val="$3"
+        [[ "$key" =~ ^[A-Za-z_][A-Za-z0-9_]*$ ]] || return 1
+
+        mkdir -p "$(dirname "$file")"
+
+        local tmp
+        tmp="$(mktemp)"
+
+        if [[ -f "$file" ]]; then
+            # keep all lines except existing key=
+            grep -v -E "^[[:space:]]*${key}[[:space:]]*=" "$file" > "$tmp" || true
+        fi
+
+        printf "%s=%s\n" "$key" "$val" >> "$tmp"
+        mv -f "$tmp" "$file"
+    }
+
+    __td_kv_unset() {
+        local file="$1" key="$2"
+        [[ "$key" =~ ^[A-Za-z_][A-Za-z0-9_]*$ ]] || return 1
+        [[ -f "$file" ]] || return 0
+
+        local tmp
+        tmp="$(mktemp)"
+        grep -v -E "^[[:space:]]*${key}[[:space:]]*=" "$file" > "$tmp" || true
+
+        # If file becomes empty (or only whitespace/comments were removed earlier), keep it simple:
+        if [[ ! -s "$tmp" ]]; then
+            rm -f "$tmp"
+            rm -f "$file"
             return 0
         fi
-        echo "[FAIL] Config file not found: $path" >&2
-        return 1
-    fi
 
-    # shellcheck source=/dev/null
-    source "$path"
-}
+        mv -f "$tmp" "$file"
+    }
 
-# ----------------------------------------------------------------------------
-# Load configuration according to conventions
-# ----------------------------------------------------------------------------
-td_cfg_load() {
-    # 1) Script-defined override
-    if declare -f load_config >/dev/null 2>&1; then
-        load_config
-        return $?
-    fi
+    __td_kv_reset_file() {
+        local file="$1"
+        rm -f "$file"
+    }
 
-    local auto="${CFG_AUTO:-1}"
+# --- public: config ----------------------------------------------------------
 
-    # 2) Explicit config file (required)
-    if [[ -n "${CFG_FILE:-}" ]]; then
-        td_cfg_source "$CFG_FILE" 0
-        return $?
-    fi
+    td_cfg_load() {
+        local file
+        file="${CFG_FILE}"
+        __td_kv_load_file "$file"
+    }
 
-    # 3) Automatic discovery
-    if [[ "$auto" -eq 1 ]]; then
-        local path
+    td_cfg_set() {
+        local key="$1" val="$2"
+        local file
+        file="${CFG_FILE}"
+        __td_kv_set "$file" "$key" "$val"
+        # also update current shell variable to match
+        eval "$key=$(printf "%q" "$val")"
+    }
 
-        # Local (dev)
-        path="$(td_cfg_default_path)"
-        td_cfg_source "$path" 1 && return 0
+    td_cfg_unset() {
+        local key="$1"
+        local file
+        file="${CFG_FILE}"
+        __td_kv_unset "$file" "$key"
+        unset "$key" || true
+    }
 
-        # System
-        path="$(td_cfg_system_path)"
-        td_cfg_source "$path" 1 && return 0
+    td_cfg_reset() {
+        local file
+        file="${CFG_FILE}"
+        __td_kv_reset_file "$file"
+    }
 
-        # Global fallback
-        td_cfg_source "/etc/testadura/testadura.conf" 1 && return 0
-    fi
+# --- public: state -----------------------------------------------------------
 
-    return 0
-}
+    td_state_load() {
+        local file
+        #saydebug "Loading state from file ${STATE_FILE}"
+        file="${STATE_FILE}"
+        __td_kv_load_file "$file"
+    }
+
+    td_state_set() {
+        #saydebug "Setting state key '$1' to '$2' in file ${STATE_FILE}"
+        local key="$1" val="$2"
+        local file
+        file="${STATE_FILE}"
+        __td_kv_set "$file" "$key" "$val"
+        eval "$key=$(printf "%q" "$val")"
+    }
+
+    td_state_unset() {
+        local key="$1"
+        local file
+        file="${STATE_FILE}"
+        __td_kv_unset "$file" "$key"
+        unset "$key" || true
+    }
+
+    td_state_reset() {
+        local file
+        file="$(td_state_file)"
+        __td_kv_reset_file "$file"
+    }

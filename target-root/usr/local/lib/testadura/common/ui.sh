@@ -12,14 +12,6 @@
 #   User interaction functions. 
 # ===============================================================================
 
-# --- Script metadata ----------------------------------------------------------
-    SCRIPT_FILE="${BASH_SOURCE[0]}"
-    SCRIPT_NAME=""
-    SCRIPT_DESC="Short description of what this script does."
-    SCRIPT_VERSION="1.0"
-    SCRIPT_VERSION_STATUS="alpha"
-    SCRIPT_BUILD="20250110"
-
 # --- Overrides ----------------------------------------------------------
   # _sh_err override: use say --type FAIL if available
   _sh_err() 
@@ -177,9 +169,7 @@
     local msg
     local s_label=0 s_icon=0 s_symbol=0
 
-    # ---------------------------------------------------------------------------
-    # Parse options
-    # ---------------------------------------------------------------------------
+    # --- Parse options
     while [[ $# -gt 0 ]]; do
       case "$1" in
         --type)
@@ -212,21 +202,21 @@
           break
           ;;
         *)
-          # Positional TYPE: say STRT "message"
-          if (( ! explicit_type )); then
-            local maybe="${1^^}"
-            case "$maybe" in
-              INFO|STRT|WARN|FAIL|CNCL|OK|END|EMPTY)
-                type="$maybe"
-                explicit_type=1
-                shift
-                continue
-                ;;
-            esac
-          fi
-          # First non-option, non-type token -> start of message
-          break
-          ;;
+      # Positional TYPE: say STRT "message"
+      if (( ! explicit_type )); then
+        local maybe="${1^^}"
+        case "$maybe" in
+          INFO|STRT|WARN|FAIL|CNCL|OK|END|DEBUG|EMPTY)
+            type="$maybe"
+            explicit_type=1
+            shift
+            continue
+            ;;
+        esac
+      fi
+      # First non-option, non-type token -> start of message
+      break
+      ;;
       esac
     done
 
@@ -251,9 +241,9 @@
       wrk="SYM_${type}"
       declare -n smb="$wrk"
       wrk="CLR_${type}"
+    
       declare -n clr="$wrk"
-
-
+     
       # Decode --show (supports "label,icon", "label+symbol", "all")
       local sel p
       IFS=',+' read -r -a sel <<<"$show"
@@ -308,7 +298,7 @@
       local fnl=""
       local date_str=""
       local prefix_parts=()
-      local rst="$RESET"
+      local rst="${RESET:-}"
 
 
       # timestamp
@@ -383,11 +373,6 @@
     
   }
   # --- say shorthand ------------------------------------------------------------
-    # DEBUGMODE:
-    #   0 = suppress debug output
-    #   1 = show debug output
-    : "${DEBUGMODE:=0}"
-
     sayinfo() {
         say INFO "$@"
     }
@@ -421,7 +406,7 @@
     }
 
     saydebug() {
-        (( DEBUGMODE )) && say --date DEBUG "$@" 
+       say --date DEBUG "$@" 
     }
   
   # --- ask ---------------------------------------------------------------------
