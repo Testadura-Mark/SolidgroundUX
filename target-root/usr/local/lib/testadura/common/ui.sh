@@ -550,7 +550,6 @@
     # reset color after the line, so the rest of the script isn't tinted
     printf "%b\n" "$RESET"
 
-
     # ---- validation ---------------------------------------------------------
     ok=1
     if [[ -n "$validate_fn" ]]; then

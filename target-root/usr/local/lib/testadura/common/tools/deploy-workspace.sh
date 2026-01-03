@@ -29,18 +29,25 @@ set -euo pipefail
     TD_SCRIPT_NAME="${TD_SCRIPT_BASE%.sh}"
     TD_SCRIPT_DESC="Deploy a development workspace to a target root filesystem."
     TD_SCRIPT_VERSION="1.0"
+    TD_SCRIPT_VERSION_STATUS="alpha"
     TD_SCRIPT_BUILD="20250110"
     TD_SCRIPT_DEVELOPERS="Mark Fieten"
     TD_SCRIPT_COMPANY="Testadura Consultancy"
+    TD_SCRIPT_COPYRIGHT="© 2025 Mark Fieten — Testadura Consultancy"
+    TD_SCRIPT_LICENSE="Testadura Non-Commercial License (TD-NC) v1.0"
 
 # --- Framework roots (explicit) ----------------------------------------------
     # Override from environment if desired:
-    #   TD_FRAMEWORK_ROOT=/some/path COMMON_LIB=/some/path/common ./yourscript.sh
+    # Directory where Testadura framework is installed
     TD_FRAMEWORK_ROOT="${TD_FRAMEWORK_ROOT:-/}"
+    # Application root (where this script is deployed)
     TD_APPLICATION_ROOT="${TD_APPLICATION_ROOT:-/}"
+    # Common libraries path
     TD_COMMON_LIB="${TD_COMMON_LIB:-$TD_FRAMEWORK_ROOT/usr/local/lib/testadura/common}"
+    # State and config files
     TD_STATE_FILE="${TD_STATE_FILE:-"$TD_APPLICATION_ROOT/var/testadura/$TD_SCRIPT_NAME.state"}"
     TD_CFG_FILE="${TD_CFG_FILE:-"$TD_APPLICATION_ROOT/etc/testadura/$TD_SCRIPT_NAME.cfg"}"
+    # User home directory
     TD_USER_HOME="$(getent passwd "${SUDO_USER:-$USER}" | cut -d: -f6)"
 
 # --- Minimal fallback UI (overridden by ui.sh when sourced) -------------------
@@ -73,25 +80,30 @@ set -euo pipefail
 
         for lib in "${TD_USING[@]}"; do
             path="$TD_COMMON_LIB/$lib"
-        
+
             if [[ -f "$path" ]]; then
                 sayinfo "Using library: $path" >&2
                 # shellcheck source=/dev/null
                 source "$path"
                 continue
             fi
-            saywaring "Library not found: $path" >&2
-            continue
+
+            # core.sh is required
+            if [[ "$lib" == "core.sh" ]]; then
+                sayfail "Required library not found: $path" >&2
+                td_die "Cannot continue without core library."
+            fi
+
+            saywarning "Library not found (optional): $path" >&2
         done
+
         sayend "All libraries sourced." >&2
     }
-
-    td_source_libs
 
 # --- Argument specification ---------------------------------------------------
     # --------------------------------------------------------------------------
     # Each entry:
-    #   "name|type|var|help|choices"
+    #   "name|short|type|var|help|choices"
     #
     #   name    = long option name WITHOUT leading --
     #   short   - short option name WITHOUT leading -
@@ -121,9 +133,6 @@ set -euo pipefail
         "  $TD_SCRIPT_NAME --undeploy"
         "  $TD_SCRIPT_NAME -u"
     ) 
-
-
-
 
 # --- local script functions -------------------------------------------------
     # Default permission rules
@@ -163,6 +172,96 @@ set -euo pipefail
         else
             echo "$best_file"
         fi
+    }
+
+    __getparameters() {
+
+        local default_src default_dst
+        default_src="${last_deploy_source:-$USER_HOME/dev}"
+        default_dst="${last_deploy_target:-/}"
+
+        while true; do
+            # --- Source root -----------------------------------------------------
+            if [[ -z "${SRC_ROOT:-}" ]]; then
+                ask --label "Workspace source root" --var SRC_ROOT --default "$default_src" --colorize both
+            fi
+
+            # --- Source root validation ------------------------------------------
+            while true; do
+                if [[ -d "$SRC_ROOT/etc" || -d "$SRC_ROOT/usr" ]]; then
+                    sayinfo "Source root '$SRC_ROOT' looks valid."
+                    break
+                fi
+
+                saywarning "Source root '$SRC_ROOT' doesn't look valid; should contain 'etc/' and/or 'usr/'."
+
+                if ask_ok_redo_quit "Continue anyway?"; then
+                    break
+                fi
+
+                case $? in
+                    1) SRC_ROOT="" ;;  # REDO
+                    2) saycancel "Aborting as per user request."; exit 1 ;;
+                    *) sayfail "Aborting (unexpected response)."; exit 1 ;;
+                esac
+
+                ask --label "Workspace source root" --var SRC_ROOT --default "$default_src" --colorize both
+            done
+
+            # --- Target root -----------------------------------------------------
+            if [[ -z "${DEST_ROOT:-}" ]]; then
+                ask --label "Target root folder" --var DEST_ROOT --default "$default_dst" --colorize both
+            fi
+            DEST_ROOT="${DEST_ROOT:-/}"
+
+            # --- Create exe symlinks ---------------------------------------------
+            FLAG_LINK_EXES="${FLAG_LINK_EXES:-0}"
+
+            if [[ "${last_deploy_link_exes:-0}" -eq 0 ]]; then
+                if ask_noyes "Create executable symlinks in ${DEST_ROOT%/}/usr/local/bin?"; then
+                    FLAG_LINK_EXES=1
+                else
+                    FLAG_LINK_EXES=0
+                fi
+            else
+                if ask_yesno "Create executable symlinks in ${DEST_ROOT%/}/usr/local/bin?"; then
+                    FLAG_LINK_EXES=1
+                else
+                    FLAG_LINK_EXES=0
+                fi
+            fi
+
+            printf "%sDeployment parameter summary\n" "${BOLD_SILVER}"
+            printf "  Source root         : %s\n" "$SRC_ROOT"
+            printf "  Target root         : %s\n" "${DEST_ROOT:-/}"
+            printf "  Create exe symlinks : %s\n" "$([[ "$FLAG_LINK_EXES" -eq 1 ]] && echo Yes || echo No)"
+
+            if ask_ok_redo_quit "Continue with deployment?"; then
+                sayinfo "Proceeding with deployment."
+                td_state_set "last_deploy_run" "$(date --iso-8601=seconds)"
+                td_state_set "last_deploy_source" "$SRC_ROOT"
+                td_state_set "last_deploy_target" "${DEST_ROOT:-/}"
+                td_state_set "last_deploy_link_exes" "$FLAG_LINK_EXES"
+                return 0
+            fi
+
+            case $? in
+                1)
+                    # REDO: keep previous answers as defaults, or clear some fields if you prefer
+                    # DEST_ROOT=""   # optionally force re-ask
+                    # FLAG_LINK_EXES=0
+                    continue
+                    ;;
+                2)
+                    saycancel "Aborting as per user request."
+                    exit 1
+                    ;;
+                *)
+                    sayfail "Aborting (unexpected response)."
+                    exit 1
+                    ;;
+            esac
+        done
     }
 
     __deploy(){
@@ -215,7 +314,7 @@ set -euo pipefail
     }
     __undeploy(){
 
-        say STRT "Starting UNINSTALL from $SRC_ROOT to $DEST_ROOT" --show=symbol
+        saystart "Starting UNINSTALL from $SRC_ROOT to $DEST_ROOT" --show=symbol
 
         find "$SRC_ROOT" -type f |
         while IFS= read -r file; do
@@ -231,14 +330,14 @@ set -euo pipefail
         fi
 
         if [[ -e "$dst" ]]; then
-            say WARN "Removing $dst"
+            saywarning "Removing $dst"
             if [[ $FLAG_DRYRUN == 0 ]]; then
                 rm -f "$dst"
             else
                 sayinfo "Would have removed $dst"
             fi
         else
-            say "Skipping $rel; does not exist."
+            saywarning "Skipping $rel; does not exist."
         fi
 
         done
@@ -369,98 +468,11 @@ set -euo pipefail
         done
     }
 
-    __getparameters() {
-
-        local default_src default_dst
-        default_src="${last_deploy_source:-$USER_HOME/dev}"
-        default_dst="${last_deploy_target:-/}"
-
-        while true; do
-            # --- Source root -----------------------------------------------------
-            if [[ -z "${SRC_ROOT:-}" ]]; then
-                ask --label "Workspace source root" --var SRC_ROOT --default "$default_src" --colorize both
-            fi
-
-            # --- Source root validation ------------------------------------------
-            while true; do
-                if [[ -d "$SRC_ROOT/etc" || -d "$SRC_ROOT/usr" ]]; then
-                    sayinfo "Source root '$SRC_ROOT' looks valid."
-                    break
-                fi
-
-                saywarning "Source root '$SRC_ROOT' doesn't look valid; should contain 'etc/' and/or 'usr/'."
-
-                if ask_ok_redo_quit "Continue anyway?"; then
-                    break
-                fi
-
-                case $? in
-                    1) SRC_ROOT="" ;;  # REDO
-                    2) saycancel "Aborting as per user request."; exit 1 ;;
-                    *) sayfail "Aborting (unexpected response)."; exit 1 ;;
-                esac
-
-                ask --label "Workspace source root" --var SRC_ROOT --default "$default_src" --colorize both
-            done
-
-            # --- Target root -----------------------------------------------------
-            if [[ -z "${DEST_ROOT:-}" ]]; then
-                ask --label "Target root folder" --var DEST_ROOT --default "$default_dst" --colorize both
-            fi
-            DEST_ROOT="${DEST_ROOT:-/}"
-
-            # --- Create exe symlinks ---------------------------------------------
-            FLAG_LINK_EXES="${FLAG_LINK_EXES:-0}"
-
-            if [[ "${last_deploy_link_exes:-0}" -eq 0 ]]; then
-                if ask_noyes "Create executable symlinks in ${DEST_ROOT%/}/usr/local/bin?"; then
-                    FLAG_LINK_EXES=1
-                else
-                    FLAG_LINK_EXES=0
-                fi
-            else
-                if ask_yesno "Create executable symlinks in ${DEST_ROOT%/}/usr/local/bin?"; then
-                    FLAG_LINK_EXES=1
-                else
-                    FLAG_LINK_EXES=0
-                fi
-            fi
-
-            printf "%sDeployment parameter summary\n" "${BOLD_SILVER}"
-            printf "  Source root         : %s\n" "$SRC_ROOT"
-            printf "  Target root         : %s\n" "${DEST_ROOT:-/}"
-            printf "  Create exe symlinks : %s\n" "$([[ "$FLAG_LINK_EXES" -eq 1 ]] && echo Yes || echo No)"
-
-            if ask_ok_redo_quit "Continue with deployment?"; then
-                sayinfo "Proceeding with deployment."
-                td_state_set "last_deploy_run" "$(date --iso-8601=seconds)"
-                td_state_set "last_deploy_source" "$SRC_ROOT"
-                td_state_set "last_deploy_target" "${DEST_ROOT:-/}"
-                td_state_set "last_deploy_link_exes" "$FLAG_LINK_EXES"
-                return 0
-            fi
-
-            case $? in
-                1)
-                    # REDO: keep previous answers as defaults, or clear some fields if you prefer
-                    # DEST_ROOT=""   # optionally force re-ask
-                    # FLAG_LINK_EXES=0
-                    continue
-                    ;;
-                2)
-                    saycancel "Aborting as per user request."
-                    exit 1
-                    ;;
-                *)
-                    sayfail "Aborting (unexpected response)."
-                    exit 1
-                    ;;
-            esac
-        done
-    }
-
     main() {
+        # --- Source libraries ------------------------------------------------------
+        td_source_libs
 
+        # --- Ensure running as root -----------------------------------------------
         need_root "$@"
 
         # --- Load previous state and config
