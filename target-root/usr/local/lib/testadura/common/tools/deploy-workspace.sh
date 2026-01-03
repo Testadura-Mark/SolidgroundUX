@@ -29,7 +29,7 @@ set -euo pipefail
     TD_SCRIPT_NAME="${TD_SCRIPT_BASE%.sh}"
     TD_SCRIPT_DESC="Deploy a development workspace to a target root filesystem."
     TD_SCRIPT_VERSION="1.0"
-    TD_SCRIPT_VERSION_STATUS="alpha"
+    TD_SCRIPT_VERSION_STATUS="beta"
     TD_SCRIPT_BUILD="20250110"
     TD_SCRIPT_DEVELOPERS="Mark Fieten"
     TD_SCRIPT_COMPANY="Testadura Consultancy"
@@ -82,7 +82,7 @@ set -euo pipefail
             path="$TD_COMMON_LIB/$lib"
 
             if [[ -f "$path" ]]; then
-                sayinfo "Using library: $path" >&2
+                #sayinfo "Using library: $path" >&2
                 # shellcheck source=/dev/null
                 source "$path"
                 continue
