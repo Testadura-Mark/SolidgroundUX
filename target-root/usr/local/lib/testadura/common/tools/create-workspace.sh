@@ -129,12 +129,16 @@ set -euo pipefail
         "  $TD_SCRIPT_NAME -d"
     )
 
-# --- local script functions -------------------------------------------------
+# --- local script functions ---------------------------------------------------
+    __display_summary()
+    {
+        sayinfo "Project name   : $PROJECT_NAME"
+        sayinfo "Project folder : $PROJECT_FOLDER"
+    }
     __resolve_project_settings()
     {
-        local mode template_dir slug default_name default_folder default_template base
+        local template_dir slug default_name default_folder default_template base
 
-        mode="${ENUM_MODE:-Interactive}"
         template_dir="${TD_FRAMEWORK_ROOT}/templates"
         default_name="Script1.sh"
         default_projectname="Project"
