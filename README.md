@@ -137,6 +137,7 @@ layout of the environment it will be installed into. Deployment is straightforwa
 the entire structure is copied to the target system, placing framework files under
 `/usr/local/lib/testadura` and creating executable symlinks in `/usr/local/bin`.
 
+```text
 The repository layout:
 
 SolidgroundUX/
@@ -151,7 +152,7 @@ SolidgroundUX/
                     ├── common/
                     │   ├── templates/
                     │   └── tools/
-
+```
 
 ## 🧰 Included Tools
 
