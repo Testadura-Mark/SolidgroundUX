@@ -134,7 +134,6 @@ set -euo pipefail
     {
         local template_dir slug default_name default_folder default_template base
 
-        template_dir="${TD_FRAMEWORK_ROOT}/templates"
         default_name="Script1.sh"
         default_projectname="Project"
         sample_scriptname="Script.sh"
@@ -161,7 +160,7 @@ set -euo pipefail
                    PROJECT_FOLDER="$(pwd)/$PROJECT_FOLDER"
                 fi
 
-                 sayinfo "Project name   : $PROJECT_NAME"
+                sayinfo "Project name   : $PROJECT_NAME"
                 sayinfo "Project folder : $PROJECT_FOLDER"
 
                 if ask_ok_redo_quit "Proceed with these settings?"; then
@@ -205,7 +204,7 @@ set -euo pipefail
         done
 
         # Copy template files
-        template_dir="${TD_FRAMEWORK_ROOT}/templates"
+        template_dir="${TD_COMMON_LIB}/templates"
         if [[ -d "$template_dir" ]]; then
             if [[ "$FLAG_DRYRUN" -eq 0 ]]; then
                 cp -r "${template_dir}/." "$PROJECT_FOLDER/templates/"
