@@ -19,6 +19,8 @@ zip -r "./releases/${release}.zip" "./releases/$release"
 
 echo "[INFO] Created ./releases/${release}.zip"
 
+unzip -l "./releases/${release}.zip"
+
 # -- Cleanup staged dir ----------------------------------------------------------
 rm -rf "./releases/$release"
 echo "[INFO] Cleanup staged dir ./releases/$release"
