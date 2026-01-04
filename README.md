@@ -2,53 +2,101 @@ SolidgroundUX is a small, powerful Bash framework designed for system engineers,
 developers, automation builders, and anyone who wants clean, structured, reliable
 shell scripts — without the usual mess or over-engineered tooling.
 
-It provides:
+## What SolidgroundUX Provides
 
-- A predictable bootstrap lifecycle  
-- Robust argument parsing  
-- Clear, styled UI output  
-- Practical helpers for deployment and file management  
-- A consistent template system for building new scripts  
+- A predictable bootstrap and execution lifecycle  
+- Robust, declarative argument parsing  
+- Clear, styled, user-friendly terminal output  
+- Practical helpers for deployment, validation, and system interaction  
+- A consistent template system for building new scripts and toolsets  
 
-SolidgroundUX is built on decades of practical scripting experience, with the simple
-mission of making Bash *civilized*.
-
----
+No hidden magic.  
+No auto-executing libraries.  
+No framework surprises.
 
 ## 🏷 Badges
 
 ![License: TD-NC](https://img.shields.io/badge/License-TD--NC-blue.svg)
 ![Shell](https://img.shields.io/badge/Shell-Bash-green)
-![Status](https://img.shields.io/badge/Stability-Production%20Ready-brightgreen)
-![Version](https://img.shields.io/badge/Version-1.0--R1-purple)
-![Last Commit](https://img.shields.io/github/last-commit/YOUR_GITHUB_USERNAME/YOUR_REPOSITORY_NAME)
+![Last Commit](https://img.shields.io/github/last-commit/Testadura-Mark/SolidgroundUX)
 ![Made in NL](https://img.shields.io/badge/Made%20in-The%20Netherlands-ff4f00?labelColor=003399)
 ---
 
 ## 🧭 Philosophy
 
-SolidgroundUX was created to bring clarity, discipline, and reliability to Bash scripting.
-Instead of relying on heavy toolchains or complex automation frameworks, it focuses on:
+SolidgroundUX was created to bring **clarity, discipline, and reliability** to Bash scripting.
 
-- **Simplicity** — Everything is explicit, readable, and easy to follow  
-- **Consistency** — All scripts follow the same lifecycle and structure  
-- **Predictability** — No hidden magic; behavior is always traceable  
+Instead of relying on large automation frameworks or fragile conventions, it focuses on:
+
+- **Simplicity** — Everything is explicit and readable  
+- **Consistency** — All scripts follow the same structure and lifecycle  
+- **Predictability** — Behavior is traceable and debuggable  
 - **Maintainability** — Designed for long-term use, not quick hacks  
-- **Practicality** — Built from real-world operational experience, not trends  
+- **Practicality** — Built from operational experience, not trends  
 
-The goal is simple:  
-**Make Bash civilized again** — without losing the power and flexibility that make Unix scripting useful.
+Bash is powerful — but only if it is treated with respect.  
+SolidgroundUX exists to enforce that respect.
 
+## 🔁 Execution Model
+- Wrappers do nothing except invoke a script located elsewhere
+- Wrappers and symlinks are both supported; neither affects execution semantics
+- Libraries never execute code; they only define behavior and detect prior loading
+- Executable scripts do nothing unless `main()` is explicitly called
+
+A typical executable script looks like this (see executable template):
+'''bash
+main() {
+    # --- Source libraries ------------------------------------------------------
+    td_source_libs
+    
+    # --- Ensure sudo or non-sudo as desired ---------------------------
+        #need_root "$@"
+        #cannot_root "$@"
+
+    # --- Load previous state and config
+        # enable if desired:
+        #td_state_load
+        #td_cfg_load
+
+    # --- Parse arguments
+        td_parse_args "$@"
+        FLAG_DRYRUN="${FLAG_DRYRUN:-0}"   
+
+        if [[ "${FLAG_VERBOSE:-0}" -eq 1 ]]; then
+            __td_showarguments
+        fi
+
+    # --- Main script logic here ---------------------------------------------
+}
+
+# Run main with positional args only (not the options)
+main "$@"
+
+## 🏗 Templates
+Templates define *how you start*, not how you think.
+
+### Executable Template
+Full-featured scripts with lifecycle and UI.
+
+### Library Template
+Reusable helpers, no execution.
+
+### Wrapper-template.sh
+Wrapper script to be published to bin or bins
+
+## 🚀 Getting Started
+Once SolidgroundUX has been installed
+- Create a repository using td-create-workspace
+- Copy the executable template
+- proceed...
 
 ## ✨ Features
 
 ### 🔧 Framework Architecture
 - Self-locating bootstrap system  
-- Optional config-file loading  
-- `constructor + run` lifecycle pattern  
+- Optional config-file loading 
 - Built-in load guards (no double sourcing)  
 - Automatic environment detection (development vs. installed)  
-- Structured directory layout via `setdirectories`
 
 ### 🖥️ UI Output & Messaging
 - `say` and `ask` command with icons, labels, symbols, and colors  
@@ -81,8 +129,6 @@ The goal is simple:
 - Familiar, readable structure  
 - Easy onboarding for collaborators
 
----
-
 ## 📁 Repository Structure
 SolidgroundUX is organized around a `target-root` directory, which mirrors the filesystem
 layout of the environment it will be installed into. Deployment is straightforward:
@@ -91,15 +137,19 @@ the entire structure is copied to the target system, placing framework files und
 
 The repository layout:
 
-- /SolidgroundUX/ (or your projectname)
-- /SolidgroundUX/LICENSE
-- /SolidgroundUX/README.md
-- /SolidgroundUX/target-root/
-- /SolidgroundUX/target-root/etc/
-- /SolidgroundUX/target-root/usr/local/lib/testadura/
-- /SolidgroundUX/target-root/common/
-- /SolidgroundUX/target-root/common/templates/
-- /SolidgroundUX/target-root/common/tools/
+SolidgroundUX/
+├── LICENSE
+├── README.md
+└── target-root/
+    ├── etc/
+    └── usr/
+        └── local/
+            └── lib/
+                └── testadura/
+                    ├── common/
+                    │   ├── templates/
+                    │   └── tools/
+
 
 ## 🧰 Included Tools
 
@@ -110,7 +160,8 @@ Creates a new script workspace based on SolidgroundUX conventions.
 
 It:
 - Generates a folder structure
-- Copies a template (full or minimal)
+- Copies the template scripts to the repository
+- Creates a default script based on the exe-template
 - Optionally adds argument parsing and config support
 - Ensures consistent bootstrap + constructor setup  
 
@@ -125,6 +176,20 @@ It:
 - Supports dry-run mode
 - Detects updates cleanly
 - Safely installs Testadura/SolidgroundUX framework files
+- Optionally creates symlinks to executable scripts in `bin` or `bins`, as an alternative to wrapper scripts
 
 This is the mechanism used to install SolidgroundUX or update existing deployments.
 
+## 🏷 License
+
+Licensed under the **Testadura Non-Commercial License (TD-NC)**.  
+See `LICENSE` for details.
+
+---
+
+### Design Note
+
+If you are looking for implicit behavior, clever hacks, or magical globals —  
+**this framework is not for you**.
+
+SolidgroundUX is for people who want to know exactly what their scripts are doing.

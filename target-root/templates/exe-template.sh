@@ -90,7 +90,6 @@ set -euo pipefail
         sayend "All libraries sourced." >&2
     }
 
-
 # --- Example: Arguments -------------------------------------------------------
     # Each entry:
     #   "name|short|type|var|help|choices"
@@ -174,6 +173,8 @@ set -euo pipefail
             if [[ "${FLAG_VERBOSE:-0}" -eq 1 ]]; then
                 __td_showarguments
             fi
+
+        # --- Main script logic here ---------------------------------------------
     }
 
     # Run main with positional args only (not the options)
