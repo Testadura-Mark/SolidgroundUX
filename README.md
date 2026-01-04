@@ -44,7 +44,8 @@ SolidgroundUX exists to enforce that respect.
 - Executable scripts do nothing unless `main()` is explicitly called
 
 A typical executable script looks like this (see executable template):
-'''bash
+```bash
+
 main() {
     # --- Source libraries ------------------------------------------------------
     td_source_libs
@@ -69,8 +70,9 @@ main() {
     # --- Main script logic here ---------------------------------------------
 }
 
-# Run main with positional args only (not the options)
-main "$@"
+    # --- Run main with positional args only (not the options)
+    main "$@"
+```
 
 ## 🏗 Templates
 Templates define *how you start*, not how you think.
