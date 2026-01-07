@@ -23,14 +23,14 @@
   
   # -- Say prefixes -------------------------------------------------------------
     # Labels
-      LBL_CNCL="[CNCL]"
+      LBL_CNCL="CANCEL"
       LBL_EMPTY="     "
-      LBL_END="[ END]"
-      LBL_FAIL="[FAIL]"
-      LBL_INFO="[INFO]"
-      LBL_OK="[ OK ]"
-      LBL_STRT="[STRT]"
-      LBL_WARN="[WARN]"
+      LBL_END="END"
+      LBL_FAIL="ERROR"
+      LBL_INFO="INFO"
+      LBL_OK="OK"
+      LBL_STRT="START"
+      LBL_WARN="WARNING"
       LBL_DEBUG="DEBUG"
 
     # Icons
@@ -57,15 +57,15 @@
 
   # -- Colors -------------------------------------------------------------------
     # By message type
-      CLR_INFO=$BLUE
-      CLR_STRT=$GREEN
+      CLR_INFO=$WHITE
+      CLR_STRT=$BOLD_GREEN
       CLR_OK=$BOLD_GREEN
-      CLR_WARN=$ORANGE
+      CLR_WARN=$BOLD_YELLOW
       CLR_FAIL=$BOLD_RED
-      CLR_CNCL=$FAINT_RED
+      CLR_CNCL=$BOLD_ORANGE
       CLR_END=$BOLD_GREEN
       CLR_EMPTY=$FAINT_SILVER
-      CLR_DEBUG=$MAGENTA
+      CLR_DEBUG=$BOLD_MAGENTA
 
     # Text elements
       CLR_LABEL=$CYAN
@@ -75,4 +75,12 @@
       CLR_INVALID=$ORANGE
       CLR_VALID=$GREEN
       CLR_DEFAULT=$FAINT_SILVER
+    
+    # CLI colors
+      CLI_BORDER=$BOLD_CYAN
+      CLI_PROMPT=$BOLD_CYAN
+      CLI_TEXT=$SILVER
+      CLI_INPUT=$YELLOW
+      CLI_HIGHLIGHT=$BOLD_YELLOW
+      CLI_ERROR=$BOLD_RED
 

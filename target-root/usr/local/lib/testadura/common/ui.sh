@@ -167,7 +167,7 @@
 
     local explicit_type=0
     local msg
-    local s_label=0 s_icon=0 s_symbol=0
+    local s_label=0 s_icon=0 s_symbol=0 prefixlength=0
 
     # --- Parse options
     while [[ $# -gt 0 ]]; do
@@ -179,6 +179,7 @@
           ;;
         --date)
           add_date=1
+          prefixlength=$((prefixlength + 19))
           shift
           ;;
         --show)
@@ -226,7 +227,7 @@
     type="${type^^}"
     case "$type" in
       INFO|STRT|WARN|FAIL|CNCL|OK|END|DEBUG|EMPTY) ;;
-      "") type="ËMPTY" ;;
+      "") type="EMPTY" ;;
       *) type="EMPTY" ;;
     esac
     
@@ -251,13 +252,18 @@
 
       for p in "${sel[@]}"; do
         case "${p,,}" in
-          label)  s_label=1 ;;
-          icon)   s_icon=1  ;;
-          symbol) s_symbol=1 ;;
+          label)  s_label=1
+                  prefixlength=$((prefixlength + 8));;
+          icon)   s_icon=1  
+                  prefixlength=$((prefixlength + 1));;
+          symbol) s_symbol=1 
+                  prefixlength=$((prefixlength + 3))
+            ;;
           all)
             s_label=1
             s_icon=1
             s_symbol=1
+            prefixlength=$((prefixlength + 16))
             ;;
         esac
       done
@@ -265,6 +271,7 @@
       # default: at least label
       if (( s_label + s_icon + s_symbol == 0 )); then
         s_label=1
+        prefixlength=$((prefixlength + 8))
       fi
 
       # Decode colorize: none|label|msg|date|both|all
@@ -311,6 +318,15 @@
         fi
       fi
 
+    l_len=$(visible_len "$lbl")
+    pad=""
+
+    if (( l_len < 8 )); then
+        printf -v pad '%*s' $((8 - l_len)) ''
+    fi
+
+    lbl="${lbl}${pad}"
+     
       # label / icon / symbol
       if (( s_label )); then
         if (( c_label )); then
@@ -339,7 +355,21 @@
       # join prefix with spaces
       if ((${#prefix_parts[@]} > 0)); then
         fnl+="${prefix_parts[*]} "
+        prefixlength=$((prefixlength + 1))  # space after prefix
       fi
+
+      # compute visible prefix length (ANSI-stripped)
+      local v_len
+      v_len=$(visible_len "$fnl")
+
+      # pad to desired message column (prefixlength)
+      local pad=""
+      if (( v_len < prefixlength )); then
+          printf -v pad '%*s' $((prefixlength - v_len)) ''
+      else
+          pad=" "
+      fi
+      fnl+="$pad"
 
       # message text
       if (( c_msg )); then
@@ -406,9 +436,10 @@
     }
 
     saydebug() {
-       say --date DEBUG "$@" 
+        if [[ ${FLAG_VERBOSE:-0} -eq 1 ]]; then
+            say DEBUG "$@"
+        fi
     }
-  
   # --- ask ---------------------------------------------------------------------
     #   Prompt user for input with optional:
     #     --label TEXT       Display label
@@ -548,7 +579,7 @@
     fi
 
     # reset color after the line, so the rest of the script isn't tinted
-    printf "%b\n" "$RESET"
+    printf "%b" "$RESET"
 
     # ---- validation ---------------------------------------------------------
     ok=1
@@ -588,61 +619,116 @@
     fi
   }
   # --- Ask shorthand
-      ask_yesno(){
+    ask_yesno(){
+      local prompt="$1"
+      local yn_response
+
+      ask --label "$prompt [Y/n]" --default "Y" --var yn_response
+
+      case "${yn_response^^}" in
+          Y|YES) return 0 ;;
+          N|NO)  return 1 ;;
+          *)     return 1 ;; # fallback to No
+      esac
+    }
+    ask_noyes() {
         local prompt="$1"
-        local yn_response
+        local ny_response
 
-        ask --label "$prompt [Y/n]" --default "Y" --var yn_response
+        ask --label "$prompt [y/N]" --default "N" --var ny_response
 
-        case "${yn_response^^}" in
+        case "${ny_response^^}" in
             Y|YES) return 0 ;;
             N|NO)  return 1 ;;
-            *)     return 1 ;; # fallback to No
+            *)     return 1 ;;
         esac
-      }
-      ask_noyes() {
-          local prompt="$1"
-          local ny_response
-
-          ask --label "$prompt [y/N]" --default "N" --var ny_response
-
-          case "${ny_response^^}" in
-              Y|YES) return 0 ;;
-              N|NO)  return 1 ;;
-              *)     return 1 ;;
-          esac
-      }
-      ask_okcancel() {
-        local prompt="$1"
-        local oc_response
-
-        ask --label "$prompt [OK/Cancel]" --default "OK" --var oc_response
-
-        case "${oc_response^^}" in
-            OK)     return 0 ;;
-            CANCEL) return 1 ;;
-            *)      return 1 ;;
-        esac
-      }
-      ask_ok_redo_quit() {
-          local prompt="$1"
-          local orq_response=""
-
-          ask --label "$prompt [OK/Redo/Quit]" --default "OK" --var orq_response
-
-          # Trim whitespace (left + right)
-          orq_response="${orq_response#"${orq_response%%[![:space:]]*}"}"
-          orq_response="${orq_response%"${orq_response##*[![:space:]]}"}"
-
-          local upper="${orq_response^^}"
-
-          case "$upper" in
-              ""|OK|O)        return 0  ;;  # Enter defaults to OK
-              REDO|R)         return 1 ;;
-              QUIT|Q|EXIT)    return 2 ;;
-              *)              return 3 ;;
-          esac
     }
+    ask_okcancel() {
+      local prompt="$1"
+      local oc_response
+
+      ask --label "$prompt [OK/Cancel]" --default "OK" --var oc_response
+
+      case "${oc_response^^}" in
+          OK)     return 0 ;;
+          CANCEL) return 1 ;;
+          *)      return 1 ;;
+      esac
+    }
+    ask_ok_redo_quit() {
+        local prompt="$1"
+        local orq_response=""
+
+        ask --label "$prompt [OK/Redo/Quit]" --default "OK" --var orq_response
+
+        # Trim whitespace (left + right)
+        orq_response="${orq_response#"${orq_response%%[![:space:]]*}"}"
+        orq_response="${orq_response%"${orq_response##*[![:space:]]}"}"
+
+        local upper="${orq_response^^}"
+
+        case "$upper" in
+            ""|OK|O)        return 0  ;;  # Enter defaults to OK
+            REDO|R)         return 1 ;;
+            QUIT|Q|EXIT)    return 2 ;;
+            *)              return 3 ;;
+        esac
+    }
+    ask_continue() {
+      local prompt="${1:-Press Enter to continue...}"
+      read -rp "$prompt" _
+    }
+    ask_autocontinue() {
+      # Usage: AutoContinue [seconds]
+      # Returns:
+      #   0 = continue
+      #   1 = cancelled
+      local seconds="${1:-5}"
+
+      # Non-interactive: never block
+      if [[ ! -t 0 || ! -t 1 ]]; then
+          return 0
+      fi
+
+      local paused=0
+      local key=""
+
+      while true; do
+          if (( paused )); then
+              printf "${CLR_TEXT}\nPaused. Press any key to continue, or 'c' to cancel... ${RESET}"
+              IFS= read -r -n 1 -s key
+          else
+              printf "\r${CLR_TEXT}Continuing in %ds… (any key=now, p=pause, c=cancel) ${RESET}" "$seconds"
+              IFS= read -r -n 1 -s -t 1 key || key=""
+          fi
+
+          if [[ -n "$key" ]]; then
+              case "$key" in
+                  p|P)
+                      paused=1
+                      printf "\n"
+                      continue
+                      ;;
+                  c|C|q|Q|$'\e')
+                      printf "\n${CLR_CNCL}Cancelled.${RESET}\n"
+                      return 1
+                      ;;
+                  *)
+                      printf "\n"
+                      return 0
+                      ;;
+              esac
+          fi
+
+          if (( ! paused )); then
+              ((seconds--))
+              if (( seconds <= 0 )); then
+                  printf "\n"
+                  return 0
+              fi
+          fi
+      done
+  }
   # --- File system validations
       validate_file_exists() {
           local path="$1"
@@ -707,6 +793,7 @@
 
         return 0
     }
+    validate_cidr(){ [[ $1 =~ ^([0-9]|[12][0-9]|3[0-2])$ ]]; }
     validate_slug() {
         [[ "$1" =~ ^[a-zA-Z0-9._-]+$ ]] && return 0
         return 1
@@ -715,7 +802,8 @@
         [[ "$1" =~ ^[A-Za-z0-9._-]+$ ]] && return 0
       return 1
     }
-
+# -- Dialogs ----------------------------------------------------------------
+  
 
 
 

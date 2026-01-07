@@ -33,8 +33,8 @@
 
   # Bold / Bright
     BOLD_BLACK=$'\e[1;30m'
-    BOLD_RED=$'\e[1;31m'
-    BOLD_GREEN=$'\e[1;32m'
+    BOLD_RED=$'\e[38;5;196m' 
+    BOLD_GREEN=$'\e[38;5;82m'
     BOLD_YELLOW=$'\e[1;33m'
     BOLD_BLUE=$'\e[1;34m'
     BOLD_MAGENTA=$'\e[1;35m'

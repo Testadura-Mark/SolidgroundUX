@@ -15,7 +15,7 @@ SCRIPT_FILE="$(readlink -f "${BASH_SOURCE[0]}")"
 SCRIPT_DIR="$(cd -- "$(dirname -- "$SCRIPT_FILE")" && pwd)"
 
 PREFIX="/"
-DRYRUN=0
+DRYRUN=1
 FORCE=0
 
 usage() {

@@ -83,6 +83,10 @@
   # mktemp_file -- create a temporary file, return its path.
   mktemp_file(){ TMPDIR=${TMPDIR:-/tmp} mktemp "${TMPDIR%/}/XXXXXX"; }
 
+# --- Systeminfo --------------------------------------------------------------
+  get_primary_nic() {
+      ip route show default 2>/dev/null | awk 'NR==1 {print $5}'
+  }
 # --- Network Helpers ---------------------------------------------------------
   # ping_ok -- return 0 if host responds to a single ping.
   ping_ok(){ ping -c1 -W1 "$1" &>/dev/null; }
@@ -166,7 +170,18 @@
     done
     return 1
   }
+  strip_ansi() {
+    # Strips ANSI CSI escape sequences
+    sed -E $'s/\x1B\\[[0-9;?]*[ -/]*[@-~]//g' <<<"$1"
+  }
 
+  visible_len() {
+      # Visible length of a string (after stripping ANSI SGR codes)
+      # Usage: VisibleLen "text"
+      local plain
+      plain="$(strip_ansi "$1")"
+      printf '%s' "${#plain}"
+  }
 # --- Die and exit  handlers --------------------------------------------------
     die(){ local code="${2:-1}"; _sh_err "${1:-fatal error}"; exit "$code"; }
 
