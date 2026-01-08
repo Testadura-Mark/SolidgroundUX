@@ -14,8 +14,8 @@
 #   - Sets permissions based on predefined rules.
 #   - Optionally creates/removes symlinks for executables in /usr/local/bin.
 # Usage examples:
-#   ./deploy-workspace.sh --source /home/user/dev/myworkspace --target / --dryrun
-#   ./deploy-workspace.sh -s /home/user/dev/myworkspace -t / --verbose
+#   ./deploy-workspace.sh --source /home/user/dev/myworkspace --target --dryrun
+#   ./deploy-workspace.sh -s /home/user/dev/myworkspace -t --verbose
 #   ./deploy-workspace.sh --undeploy -s /home/user/dev/myworkspace -t 
 #  or simply:
 #   ./deploy-workspace.sh and follow prompts.
@@ -36,7 +36,7 @@ set -euo pipefail
     TD_SCRIPT_COPYRIGHT="© 2025 Mark Fieten — Testadura Consultancy"
     TD_SCRIPT_LICENSE="Testadura Non-Commercial License (TD-NC) v1.0"
 
-# --- Framework roots (explicit) ----------------------------------------------
+# --- Framework roots (explicit) -----------------------------------------------
     # Override from environment if desired:
     # Directory where Testadura framework is installed
     TD_FRAMEWORK_ROOT="${TD_FRAMEWORK_ROOT:-/}"
@@ -100,7 +100,7 @@ set -euo pipefail
         sayend "All libraries sourced." >&2
     }
 
-# --- Argument specification ---------------------------------------------------
+# --- Argument specification and processing ------------------------------------
     # --------------------------------------------------------------------------
     # Each entry:
     #   "name|short|type|var|help|choices"
@@ -122,6 +122,7 @@ set -euo pipefail
         "source|s|value|SRC_ROOT|Set Source directory|"
         "target|t|value|DEST_ROOT|Set Target directory|"
         "dryrun|d|flag|FLAG_DRYRUN|Just list the files don't do any work|"
+        "statereset|r|flag|FLAG_STATERESET|Reset the state file|"
         "verbose|v|flag|FLAG_VERBOSE|Verbose output|"
     )
 
@@ -134,7 +135,54 @@ set -euo pipefail
         "  $TD_SCRIPT_NAME -u"
     ) 
 
-# --- local script functions -------------------------------------------------
+    __td_showarguments(){ 
+        
+        printf "File                : %s\n" "$TD_SCRIPT_FILE"
+        printf "Script              : %s\n" "$TD_SCRIPT_NAME"
+        printf "Script description  : %s\n" "$TD_SCRIPT_DESC"
+        printf "Script dir          : %s\n" "$TD_SCRIPT_DIR"
+        printf "Script version      : %s (build %s)\n" "$TD_SCRIPT_VERSION" "$TD_SCRIPT_BUILD"
+        printf "TD_APPLICATION_ROOT : %s\n" "${TD_APPLICATION_ROOT:-<none>}"
+        printf "TD_FRAMEWORK_ROOT   : %s\n" "${TD_FRAMEWORK_ROOT:-<none>}"
+        printf "TD_COMMON_LIB       : %s\n" "${TD_COMMON_LIB:-<none>}"
+
+        printf "TD_STATE_FILE       : %s\n" "${TD_STATE_FILE:-<none>}"
+        printf "TD_CFG_FILE         : %s\n" "${TD_CFG_FILE:-<none>}"
+
+        printf -- "Arguments / Flags:\n"
+
+        local entry varname
+        for entry in "${TD_ARGS_SPEC[@]:-}"; do
+            IFS='|' read -r name short type var help choices <<< "$entry"
+            varname="${var}"
+            printf "  --%s (-%s) : %s = %s\n" "$name" "$short" "$varname" "${!varname:-<unset>}"
+        done
+
+        printf -- "Positional args:\n"
+        for arg in "${TD_POSITIONAL[@]:-}"; do
+            printf "  %s\n" "$arg"
+        done
+    }
+
+    __set_runmodes(){
+        RUN_MODE=$([ "${FLAG_DRYRUN:-0}" -eq 1 ] && echo "${BOLD_ORANGE}DRYRUN${RESET}" || echo "${BOLD_GREEN}COMMIT${RESET}")
+
+        if [[ "${FLAG_DRYRUN:-0}" -eq 1 ]]; then
+            sayinfo "Running in Dry-Run mode (no changes will be made)."
+        else
+            saywarning "Running in Normal mode (changes will be applied)."
+        fi
+
+        if [[ "${FLAG_VERBOSE:-0}" -eq 1 ]]; then
+            __td_showarguments
+        fi
+
+        if [[ "${FLAG_STATERESET:-0}" -eq 1 ]]; then
+            td_state_reset
+            sayinfo "State file reset as requested."
+        fi
+    }   
+# --- local script functions ---------------------------------------------------
     # Default permission rules
     PERMISSION_RULES=(
     "/usr/local/bin|755|755|User entry points"
@@ -298,14 +346,14 @@ set -euo pipefail
                 dir_mode="$(__perm_resolve "/${rel%/*}" "dir")"
 
                 if [[ $FLAG_DRYRUN == 0 ]]; then
-                    sayinfo "$name --> $dst $perms"
+                    sayinfo "Installing $SRC_ROOT/$rel --> $dst, with $perms permissions"
                     install -d -m "$dir_mode" "$dst_dir"
                     install -m "$perms" "$SRC_ROOT/$rel" "$dst"
                 else
                     sayinfo "Would have installed $SRC_ROOT/$rel --> $dst, with $perms permissions"
                 fi
             else
-                saywarning "Skipping $rel; destination is up-to-date."
+                saydebug "Skipping $rel; destination is up-to-date."
             fi
 
         done
@@ -437,60 +485,31 @@ set -euo pipefail
         sayend "Symlink cleanup complete."
     }
 
-# --- main() must be the last function in the script -------------------------
-    __td_showarguments() 
-    {
-        
-        printf "File                : %s\n" "$TD_SCRIPT_FILE"
-        printf "Script              : %s\n" "$TD_SCRIPT_NAME"
-        printf "Script description  : %s\n" "$TD_SCRIPT_DESC"
-        printf "Script dir          : %s\n" "$TD_SCRIPT_DIR"
-        printf "Script version      : %s (build %s)\n" "$TD_SCRIPT_VERSION" "$TD_SCRIPT_BUILD"
-        printf "TD_APPLICATION_ROOT : %s\n" "${TD_APPLICATION_ROOT:-<none>}"
-        printf "TD_FRAMEWORK_ROOT   : %s\n" "${TD_FRAMEWORK_ROOT:-<none>}"
-        printf "TD_COMMON_LIB       : %s\n" "${TD_COMMON_LIB:-<none>}"
+# === main() must be the last function in the script ===========================
+    main() {        
+    # --- Bootstrap ------------------------------------------------------------
+        # -- Source libraries --------------------------------------------------
+            td_source_libs
 
-        printf "TD_STATE_FILE       : %s\n" "${TD_STATE_FILE:-<none>}"
-        printf "TD_CFG_FILE         : %s\n" "${TD_CFG_FILE:-<none>}"
+        # -- Ensure running as root --------------------------------------------
+            need_root "$@"
 
-        printf -- "Arguments / Flags:\n"
-
-        local entry varname
-        for entry in "${TD_ARGS_SPEC[@]:-}"; do
-            IFS='|' read -r name short type var help choices <<< "$entry"
-            varname="${var}"
-            printf "  --%s (-%s) : %s = %s\n" "$name" "$short" "$varname" "${!varname:-<unset>}"
-        done
-
-        printf -- "Positional args:\n"
-        for arg in "${TD_POSITIONAL[@]:-}"; do
-            printf "  %s\n" "$arg"
-        done
-    }
-
-    main() {
-        # --- Source libraries ------------------------------------------------------
-        td_source_libs
-
-        # --- Ensure running as root -----------------------------------------------
-        need_root "$@"
-
-        # --- Load previous state and config
+        # -- Load previous state and config
             # enable if desired:
             td_state_load
             #td_cfg_load
 
-        # --- Parse arguments
+        # -- Parse arguments
             td_parse_args "$@"
             FLAG_DRYRUN="${FLAG_DRYRUN:-0}"   
+            FLAG_VERBOSE="${FLAG_VERBOSE:-0}"
+            FLAG_STATERESET="${FLAG_STATERESET:-0}"
+            __set_runmodes
 
-            if [[ "${FLAG_VERBOSE:-0}" -eq 1 ]]; then
-                __td_showarguments
-            fi
+    # --- Main script logic here ---------------------------------------------
+        __getparameters
 
-            __getparameters
-
-        # --- Deploy or undeploy                    
+        # -- Deploy or undeploy                    
             if [[ "${FLAG_UNDEPLOY:-0}" -eq 0 ]]; then
                 __deploy
                 if [[ "$FLAG_LINK_EXES" -eq 1 ]]; then

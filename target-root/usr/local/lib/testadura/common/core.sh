@@ -87,6 +87,7 @@
   get_primary_nic() {
       ip route show default 2>/dev/null | awk 'NR==1 {print $5}'
   }
+  have(){ command -v "$1" >/dev/null 2>&1; }
 # --- Network Helpers ---------------------------------------------------------
   # ping_ok -- return 0 if host responds to a single ping.
   ping_ok(){ ping -c1 -W1 "$1" &>/dev/null; }
@@ -181,6 +182,12 @@
       local plain
       plain="$(strip_ansi "$1")"
       printf '%s' "${#plain}"
+  }
+  is_true() {
+    case "${1,,}" in
+        y|yes|1|true) return 0 ;;
+        *)            return 1 ;;
+    esac
   }
 # --- Die and exit  handlers --------------------------------------------------
     die(){ local code="${2:-1}"; _sh_err "${1:-fatal error}"; exit "$code"; }

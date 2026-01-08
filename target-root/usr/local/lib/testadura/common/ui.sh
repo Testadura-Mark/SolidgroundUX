@@ -440,6 +440,19 @@
             say DEBUG "$@"
         fi
     }
+
+    say_test()
+    {
+      sayinfo "Info message"
+      saystart "Start message"
+      saywarning "Warning message"
+      sayfail "Failure message"
+      saycancel "Cancellation message"
+      sayok "All is well"
+      sayend "Ended gracefully"
+      saydebug "Debug message"
+      justsay "Just saying"
+    }
   # --- ask ---------------------------------------------------------------------
     #   Prompt user for input with optional:
     #     --label TEXT       Display label
@@ -655,6 +668,18 @@
           *)      return 1 ;;
       esac
     }
+
+    # Example usage:
+      #             
+      #   decision=0
+      #   ask_ok_redo_quit "Continue with domain join?" || decision=$?
+      #   case "$decision" in
+      #       0)  sayinfo "Proceding"
+      #           break ;;
+      #       1)  sayinfo "Redo" ;;
+      #       2)  saycancel "Cancelled as per user request"; exit 1 ;;
+      #       *)  sayfail "Unexpected response: $decision"; exit 2 ;;
+      #   esac       
     ask_ok_redo_quit() {
         local prompt="$1"
         local orq_response=""
@@ -666,7 +691,7 @@
         orq_response="${orq_response%"${orq_response##*[![:space:]]}"}"
 
         local upper="${orq_response^^}"
-
+        #saydebug "Response: '%s' -> '%s'\n" "$orq_response" "$upper"
         case "$upper" in
             ""|OK|O)        return 0  ;;  # Enter defaults to OK
             REDO|R)         return 1 ;;

@@ -139,33 +139,28 @@
     }
 
 # --- public: state -----------------------------------------------------------
-
     td_state_load() {
-        local file
-        #saydebug "Loading state from file ${TD_STATE_FILE}"
-        file="${TD_STATE_FILE}"
-        __td_kv_load_file "$file"
+        saydebug "Loading state from file ${TD_STATE_FILE}"
+        __td_kv_load_file "$TD_STATE_FILE"
     }
 
     td_state_set() {
-        #saydebug "Setting state key '$1' to '$2' in file ${STATE_FILE}"
         local key="$1" val="$2"
-        local file
-        file="${TD_STATE_FILE}"
-        __td_kv_set "$file" "$key" "$val"
+        saydebug "Setting state key '$key' to '$val' in file ${TD_STATE_FILE}"
+    
+        __td_kv_set "$TD_STATE_FILE" "$key" "$val"
         eval "$key=$(printf "%q" "$val")"
     }
 
     td_state_unset() {
         local key="$1"
-        local file
-        file="${TD_STATE_FILE}"
-        __td_kv_unset "$file" "$key"
+        saydebug "Unsetting state key '$key' in file ${TD_STATE_FILE}"
+        __td_kv_unset "$TD_STATE_FILE" "$key"
         unset "$key" || true
     }
 
     td_state_reset() {
-        local file
-        file="$(td_state_file)"
-        __td_kv_reset_file "$file"
+        [[ -n "$TD_STATE_FILE" ]] || return 0
+        saydebug "Deleting statefile %s" "$TD_STATE_FILE"
+        __td_kv_reset_file "$TD_STATE_FILE"
     }

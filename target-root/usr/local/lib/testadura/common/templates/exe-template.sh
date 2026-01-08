@@ -90,7 +90,9 @@ set -euo pipefail
         sayend "All libraries sourced." >&2
     }
 
-# --- Example: Arguments -------------------------------------------------------
+
+# --- Argument specification and processing ----------------------------------------
+    # --- Example: Arguments -------------------------------------------------------
     # Each entry:
     #   "name|short|type|var|help|choices"
     #
@@ -108,6 +110,7 @@ set -euo pipefail
     # ------------------------------------------------------------------------
     TD_ARGS_SPEC=(
         "dryrun|d|flag|FLAG_DRYRUN|Just list the files don't do any work|"
+        "statereset|r|flag|FLAG_STATERESET|Reset the state file|"
         "verbose|v|flag|FLAG_VERBOSE|Verbose output, show arguments|"
     )
 
@@ -121,10 +124,6 @@ set -euo pipefail
         "  $TD_SCRIPT_NAME -v"
     ) 
 
-
-# --- local script functions -------------------------------------------------
-
-# --- main() must be the last function in the script -------------------------
     __td_showarguments() {
         printf "File                : %s\n" "$TD_SCRIPT_FILE"
         printf "Script              : %s\n" "$TD_SCRIPT_NAME"
@@ -153,28 +152,52 @@ set -euo pipefail
         done
     }
 
+    __set_runmodes()
+    {
+        RUN_MODE=$([ "${FLAG_DRYRUN:-0}" -eq 1 ] && echo "${BOLD_ORANGE}DRYRUN${RESET}" || echo "${BOLD_GREEN}COMMIT${RESET}")
+
+        if [[ "${FLAG_DRYRUN:-0}" -eq 1 ]]; then
+            sayinfo "Running in Dry-Run mode (no changes will be made)."
+        else
+            saywarning "Running in Normal mode (changes will be applied)."
+        fi
+
+        if [[ "${FLAG_VERBOSE:-0}" -eq 1 ]]; then
+            __td_showarguments
+        fi
+
+        if [[ "${FLAG_STATERESET:-0}" -eq 1 ]]; then
+            td_state_reset
+            sayinfo "State file reset as requested."
+        fi
+    }
+
+# --- local script functions -------------------------------------------------
+
+# --- main() must be the last function in the script -------------------------
     main() {
-        # --- Source libraries ------------------------------------------------------
-        td_source_libs
-        
-        # --- Ensure sudo or non-sudo as desired ---------------------------
-            #need_root "$@"
-            #cannot_root "$@"
+        # --- Bootstrap ------------------------------------------------------
+            # --- Source libraries ------------------------------------------------------
+            td_source_libs
+            
+            # --- Ensure sudo or non-sudo as desired ---------------------------
+                #need_root "$@"
+                #cannot_root "$@"
 
-        # --- Load previous state and config
-            # enable if desired:
-            #td_state_load
-            #td_cfg_load
+            # --- Load previous state and config
+                # enable if desired:
+                #td_state_load
+                #td_cfg_load
 
-        # --- Parse arguments
-            td_parse_args "$@"
-            FLAG_DRYRUN="${FLAG_DRYRUN:-0}"   
-
-            if [[ "${FLAG_VERBOSE:-0}" -eq 1 ]]; then
-                __td_showarguments
-            fi
+            # --- Parse arguments
+                td_parse_args "$@"
+                FLAG_DRYRUN="${FLAG_DRYRUN:-0}"   
+                FLAG_VERBOSE="${FLAG_VERBOSE:-0}"
+                FLAG_STATERESET="${FLAG_STATERESET:-0}"
+                __set_runmodes
 
         # --- Main script logic here ---------------------------------------------
+
     }
 
     # Run main with positional args only (not the options)

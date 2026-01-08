@@ -35,7 +35,7 @@ set -euo pipefail
     TD_SCRIPT_LICENSE="Testadura Non-Commercial License (TD-NC) v1.0"
 
 
-# --- Framework roots (explicit) ----------------------------------------------
+# --- Framework roots (explicit) -----------------------------------------------
     # Override from environment if desired:
     # Directory where Testadura framework is installed
     TD_FRAMEWORK_ROOT="${TD_FRAMEWORK_ROOT:-/}"
@@ -97,26 +97,28 @@ set -euo pipefail
     }
 
 
-# --- Example: Arguments -------------------------------------------------------
-    # Each entry:
-    #   "name|short|type|var|help|choices"
-    #
-    #   name    = long option name WITHOUT leading --
-    #   short   - short option name WITHOUT leading -
-    #   type    = flag | value | enum
-    #   var     = shell variable that will be set
-    #   help    = help string for auto-generated --help output
-    #   choices = for enum: comma-separated values (e.g. fast,slow,auto)
-    #             for flag/value: leave empty
-    #
-    # Notes:
-    #   - -h / --help is built in, you don't need to define it here.
-    #   - After parsing you can use: FLAG_VERBOSE, VAL_CONFIG, ENUM_MODE, ...
-    # ------------------------------------------------------------------------
+# --- Argument specification and processing ------------------------------------
+    # --- Example: Arguments -------------------------------------------------------
+        # Each entry:
+        #   "name|short|type|var|help|choices"
+        #
+        #   name    = long option name WITHOUT leading --
+        #   short   - short option name WITHOUT leading -
+        #   type    = flag | value | enum
+        #   var     = shell variable that will be set
+        #   help    = help string for auto-generated --help output
+        #   choices = for enum: comma-separated values (e.g. fast,slow,auto)
+        #             for flag/value: leave empty
+        #
+        # Notes:
+        #   - -h / --help is built in, you don't need to define it here.
+        #   - After parsing you can use: FLAG_VERBOSE, VAL_CONFIG, ENUM_MODE, ...
+        # ------------------------------------------------------------------------
     TD_ARGS_SPEC=(
         "project|p|value|PROJECT_NAME|Project name|"
         "folder|f|value|PROJECT_FOLDER|Set project folder|"
         "dryrun|d|flag|FLAG_DRYRUN| Emulate only don't do any work|"
+        "statereset|r|flag|FLAG_STATERESET|Reset the state file|"
         "verbose|v|flag|FLAG_VERBOSE|Verbose output|"
     )
 
@@ -128,6 +130,54 @@ set -euo pipefail
         "  $TD_SCRIPT_NAME --dryrun"
         "  $TD_SCRIPT_NAME -d"
     )
+
+    __td_showarguments() {
+            printf "File                : %s\n" "$TD_SCRIPT_FILE"
+            printf "Script              : %s\n" "$TD_SCRIPT_NAME"
+            printf "Script description  : %s\n" "$TD_SCRIPT_DESC"
+            printf "Script dir          : %s\n" "$TD_SCRIPT_DIR"
+            printf "Script version      : %s (build %s)\n" "$TD_SCRIPT_VERSION" "$TD_SCRIPT_BUILD"
+            printf "TD_APPLICATION_ROOT : %s\n" "${TD_APPLICATION_ROOT:-<none>}"
+            printf "TD_FRAMEWORK_ROOT   : %s\n" "${TD_FRAMEWORK_ROOT:-<none>}"
+            printf "TD_COMMON_LIB       : %s\n" "${TD_COMMON_LIB:-<none>}"
+
+            printf "TD_STATE_FILE       : %s\n" "${TD_STATE_FILE:-<none>}"
+            printf "TD_CFG_FILE         : %s\n" "${TD_CFG_FILE:-<none>}"
+
+            printf -- "Arguments / Flags:\n"
+
+            local entry varname
+            for entry in "${TD_ARGS_SPEC[@]:-}"; do
+                IFS='|' read -r name short type var help choices <<< "$entry"
+                varname="${var}"
+                printf "  --%s (-%s) : %s = %s\n" "$name" "$short" "$varname" "${!varname:-<unset>}"
+            done
+
+            printf -- "Positional args:\n"
+            for arg in "${TD_POSITIONAL[@]:-}"; do
+                printf "  %s\n" "$arg"
+            done
+    }
+
+    __set_runmodes()
+    {
+        RUN_MODE=$([ "${FLAG_DRYRUN:-0}" -eq 1 ] && echo "${BOLD_ORANGE}DRYRUN${RESET}" || echo "${BOLD_GREEN}COMMIT${RESET}")
+
+        if [[ "${FLAG_DRYRUN:-0}" -eq 1 ]]; then
+            sayinfo "Running in Dry-Run mode (no changes will be made)."
+        else
+            saywarning "Running in Normal mode (changes will be applied)."
+        fi
+
+        if [[ "${FLAG_VERBOSE:-0}" -eq 1 ]]; then
+            __td_showarguments
+        fi
+
+        if [[ "${FLAG_STATERESET:-0}" -eq 1 ]]; then
+            td_state_reset
+            sayinfo "State file reset as requested."
+        fi
+    }
 
 # --- local script functions ---------------------------------------------------
     __resolve_project_settings()
@@ -244,57 +294,30 @@ EOF
     }
 
 
-# --- main() must be the last function in the script -------------------------
-    __td_showarguments() {
-        printf "File                : %s\n" "$TD_SCRIPT_FILE"
-        printf "Script              : %s\n" "$TD_SCRIPT_NAME"
-        printf "Script description  : %s\n" "$TD_SCRIPT_DESC"
-        printf "Script dir          : %s\n" "$TD_SCRIPT_DIR"
-        printf "Script version      : %s (build %s)\n" "$TD_SCRIPT_VERSION" "$TD_SCRIPT_BUILD"
-        printf "TD_APPLICATION_ROOT : %s\n" "${TD_APPLICATION_ROOT:-<none>}"
-        printf "TD_FRAMEWORK_ROOT   : %s\n" "${TD_FRAMEWORK_ROOT:-<none>}"
-        printf "TD_COMMON_LIB       : %s\n" "${TD_COMMON_LIB:-<none>}"
-
-        printf "TD_STATE_FILE       : %s\n" "${TD_STATE_FILE:-<none>}"
-        printf "TD_CFG_FILE         : %s\n" "${TD_CFG_FILE:-<none>}"
-
-        printf -- "Arguments / Flags:\n"
-
-        local entry varname
-        for entry in "${TD_ARGS_SPEC[@]:-}"; do
-            IFS='|' read -r name short type var help choices <<< "$entry"
-            varname="${var}"
-            printf "  --%s (-%s) : %s = %s\n" "$name" "$short" "$varname" "${!varname:-<unset>}"
-        done
-
-        printf -- "Positional args:\n"
-        for arg in "${TD_POSITIONAL[@]:-}"; do
-            printf "  %s\n" "$arg"
-        done
-    }
-    
-    main() {
-         # --- Source libraries ------------------------------------------------------
-        td_source_libs
-        
-        # --- Ensure sudo or non-sudo as desired ---------------------------
+# === main() must be the last function in the script ===========================
+   main() {
+    # --- Bootstrap ------------------------------------------------------------
+        # -- Source libraries 
+            td_source_libs
+            
+        # -- Ensure sudo or non-sudo as desired 
             #need_root "$@"
             cannot_root "$@"
 
-        # --- Load previous state and config
+        # -- Load previous state and config
             # enable if desired:
             #td_state_load
             #td_cfg_load
 
-        # --- Parse arguments
+        # -- Parse arguments
             td_parse_args "$@"
             FLAG_DRYRUN="${FLAG_DRYRUN:-0}"   
+            FLAG_VERBOSE="${FLAG_VERBOSE:-0}"
+            FLAG_STATERESET="${FLAG_STATERESET:-0}"
+            __set_runmodes
 
-            if [[ "${FLAG_VERBOSE:-0}" -eq 1 ]]; then
-                __td_showarguments
-            fi
-
-        # Resolve settings (0=OK, 1=abort, 2=skip template)
+    # --- Main script logic here ---------------------------------------------
+        # -- Resolve settings (0=OK, 1=abort, 2=skip template)
         if __resolve_project_settings; then
             proceed=0
         else
