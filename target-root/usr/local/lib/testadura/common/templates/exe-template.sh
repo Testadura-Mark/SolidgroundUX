@@ -1,21 +1,21 @@
 #!/usr/bin/env bash
-# ==============================================================================
+# ==================================================================================
 # Testadura Consultancy — Script Template
-# ------------------------------------------------------------------------------
+# ----------------------------------------------------------------------------------
 # Purpose : Canonical executable template for Testadura scripts
 # Author  : Mark Fieten
 # © 2025 Mark Fieten — Testadura Consultancy
 # Licensed under the Testadura Non-Commercial License (TD-NC) v1.0.
-# -------------------------------------------------------------------------------
+# ----------------------------------------------------------------------------------
 # Design:
 #   - Executable scripts are explicit: set paths, import libs, then run.
 #   - Libraries never auto-run (templating, not inheritance).
 #   - Args parsing and config loading are opt-in by defining ARGS_SPEC and/or CFG_*.
-# ==============================================================================
+# ==================================================================================
 
 set -euo pipefail
 
-# --- Script metadata ----------------------------------------------------------
+# --- Script metadata -------------------------------------------------------------
     TD_SCRIPT_FILE="$(readlink -f "${BASH_SOURCE[0]}")"
     TD_SCRIPT_DIR="$(cd -- "$(dirname -- "$TD_SCRIPT_FILE")" && pwd)"
     TD_SCRIPT_BASE="$(basename -- "$TD_SCRIPT_FILE")"
@@ -29,7 +29,7 @@ set -euo pipefail
     TD_SCRIPT_COPYRIGHT="© 2025 Mark Fieten — Testadura Consultancy"
     TD_SCRIPT_LICENSE="Testadura Non-Commercial License (TD-NC) v1.0"
 
-# --- Framework roots (explicit) ----------------------------------------------
+# --- Framework roots (explicit) --------------------------------------------------
     # Override from environment if desired:
     # Directory where Testadura framework is installed
     TD_FRAMEWORK_ROOT="${TD_FRAMEWORK_ROOT:-/}"
@@ -43,7 +43,7 @@ set -euo pipefail
     # User home directory
     TD_USER_HOME="$(getent passwd "${SUDO_USER:-$USER}" | cut -d: -f6)"
 
-# --- Minimal fallback UI (overridden by ui.sh when sourced) -------------------
+# --- Minimal fallback UI (overridden by ui.sh when sourced) ----------------------
     saystart()   { printf '[STRT] %s\n' "$*" >&2; }
     saywarning() { printf '[WARN] %s\n' "$*" >&2; }
     sayfail()    { printf '[FAIL] %s\n' "$*" >&2; }
@@ -53,7 +53,7 @@ set -euo pipefail
     sayinfo()    { printf '[INFO] %s\n' "$*" >&2; }
     sayerror()   { printf '[ERR ] %s\n' "$*" >&2; }
 
-# --- Using / imports ----------------------------------------------------------
+# --- Using / imports -------------------------------------------------------------
     # Libraries to source from TD_COMMON_LIB
     TD_USING=(
     "core.sh"   # td_die/td_warn/td_info, need_root, etc. (you decide contents)
@@ -91,7 +91,7 @@ set -euo pipefail
     }
 
 
-# --- Argument specification and processing ----------------------------------------
+# --- Argument specification and processing ---------------------------------------
     # --- Example: Arguments -------------------------------------------------------
     # Each entry:
     #   "name|short|type|var|help|choices"
@@ -172,31 +172,31 @@ set -euo pipefail
         fi
     }
 
-# --- local script functions -------------------------------------------------
+# --- local script functions ------------------------------------------------------
 
-# --- main() must be the last function in the script -------------------------
+# === main() must be the last function in the script ==============================
     main() {
-        # --- Bootstrap ------------------------------------------------------
-            # --- Source libraries ------------------------------------------------------
-            td_source_libs
-            
-            # --- Ensure sudo or non-sudo as desired ---------------------------
-                #need_root "$@"
-                #cannot_root "$@"
+    # --- Bootstrap ---------------------------------------------------------------
+        # -- Source libraries 
+        td_source_libs
+        
+        # -- Ensure sudo or non-sudo as desired 
+            #need_root "$@"
+            #cannot_root "$@"
 
-            # --- Load previous state and config
-                # enable if desired:
-                #td_state_load
-                #td_cfg_load
+        # -- Load previous state and config
+            # enable if desired:
+            #td_state_load
+            #td_cfg_load
 
-            # --- Parse arguments
-                td_parse_args "$@"
-                FLAG_DRYRUN="${FLAG_DRYRUN:-0}"   
-                FLAG_VERBOSE="${FLAG_VERBOSE:-0}"
-                FLAG_STATERESET="${FLAG_STATERESET:-0}"
-                __set_runmodes
+        # ---Parse arguments
+            td_parse_args "$@"
+            FLAG_DRYRUN="${FLAG_DRYRUN:-0}"   
+            FLAG_VERBOSE="${FLAG_VERBOSE:-0}"
+            FLAG_STATERESET="${FLAG_STATERESET:-0}"
+            __set_runmodes
 
-        # --- Main script logic here ---------------------------------------------
+    # --- Main script logic here --------------------------------------------------
 
     }
 

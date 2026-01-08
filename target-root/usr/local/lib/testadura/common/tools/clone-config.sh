@@ -15,7 +15,7 @@
 
 set -euo pipefail
 
-# --- Script metadata ----------------------------------------------------------
+# --- Script metadata -------------------------------------------------------------
     TD_SCRIPT_FILE="$(readlink -f "${BASH_SOURCE[0]}")"
     TD_SCRIPT_DIR="$(cd -- "$(dirname -- "$TD_SCRIPT_FILE")" && pwd)"
     TD_SCRIPT_BASE="$(basename -- "$TD_SCRIPT_FILE")"
@@ -29,7 +29,7 @@ set -euo pipefail
     TD_SCRIPT_COPYRIGHT="© 2025 Mark Fieten — Testadura Consultancy"
     TD_SCRIPT_LICENSE="Testadura Non-Commercial License (TD-NC) v1.0"
 
-# --- Framework roots (explicit) ----------------------------------------------
+# --- Framework roots (explicit) --------------------------------------------------
     # Override from environment if desired:
     # Directory where Testadura framework is installed
     TD_FRAMEWORK_ROOT="${TD_FRAMEWORK_ROOT:-/}"
@@ -43,7 +43,7 @@ set -euo pipefail
     # User home directory
     TD_USER_HOME="$(getent passwd "${SUDO_USER:-$USER}" | cut -d: -f6)"
 
-# --- Minimal fallback UI (overridden by ui.sh when sourced) -------------------
+# --- Minimal fallback UI (overridden by ui.sh when sourced) ----------------------
     saystart()   { printf '[STRT] %s\n' "$*" >&2; }
     saywarning() { printf '[WARN] %s\n' "$*" >&2; }
     sayfail()    { printf '[FAIL] %s\n' "$*" >&2; }
@@ -52,7 +52,7 @@ set -euo pipefail
     sayok()      { printf '[OK  ] %s\n' "$*" >&2; }
     sayinfo()    { printf '[INFO] %s\n' "$*" >&2; }
 
-# --- Using / imports ----------------------------------------------------------
+# --- Using / imports -------------------------------------------------------------
     # Libraries to source from TD_COMMON_LIB
     TD_USING=(
     "core.sh"   # td_die/td_warn/td_info, need_root, etc. (you decide contents)
@@ -89,7 +89,7 @@ set -euo pipefail
         sayend "All libraries sourced." >&2
     }
 
-# --- Argument specification and processing ----------------------------------------
+# --- Argument specification and processing ---------------------------------------
     # --- Example: Arguments -------------------------------------------------------
         # Each entry:
         #   "name|short|type|var|help|choices"
@@ -170,7 +170,7 @@ set -euo pipefail
         fi
     }
 
-# --- local script functions -------------------------------------------------
+# --- local script functions ------------------------------------------------------
     __menuline() { printf "%b\n" "$*"; }
     __show_mainmenu() {
         _barcolor="${CLI_BORDER}"
@@ -211,7 +211,8 @@ set -euo pipefail
         td_state_set "NETPLAN_FILE" "$NETPLAN_FILE"
     }
 
-    # --- Simple tasks
+    # --- Menu actions -----------------------------------------------------------
+        # 1) Setup Machine ID
         __setup_machine_id() {
 
         saystart "Setting up Machine ID..."
@@ -244,6 +245,20 @@ set -euo pipefail
         sayend "Machine ID setup complete. (ID: $id)"
         }
 
+        
+        # 2) Configure Hostname and Network
+        __configure_network(){
+            saystart "Configuring Network Settings"
+
+            __get_network_settings
+            __set_hostname
+            __create_netplan
+            __apply_netplan
+
+            sayend "Hostname and Network configuration complete."
+        }
+
+       # 3) Enable SSH and set authorized keys
         __enable_shh(){
             saystart "Enabling SSH and setting authorized keys..."
 
@@ -283,6 +298,17 @@ set -euo pipefail
 
             sayend "SSH enabled and authorized keys set."
         }
+       
+       # 4) Join Domain (optional)
+        __join_domain(){
+            saystart "Joining domain"
+
+            __get_domain_settings
+
+
+            sayend "Joined to ${DOMAIN}"
+        }
+
     # --- Network config
         __get_network_settings(){
             saystart "Collecting settings for Hostname and Network configuration..."
@@ -459,97 +485,80 @@ set -euo pipefail
                 sayinfo "Would have applied newly created netplan"
             fi
         }
-        __configure_network(){
-            saystart "Configuring Network Settings"
-
-            __get_network_settings
-            __set_hostname
-            __create_netplan
-            __apply_netplan
-
-            sayend "Hostname and Network configuration complete."
-        }
+        
 
     # --- Domain join
-    __get_domain_settings(){
-        saydebug "Collecting settings for Domain Join..."
-        printf '\n' 
+        __get_domain_settings(){
+            saydebug "Collecting settings for Domain Join..."
+            printf '\n' 
 
-        # Defaults (only if not already loaded)
-        : "${DOMAIN:=example.com}"
-        : "${ADM_USR:=administrator}"
+            # Defaults (only if not already loaded)
+            : "${DOMAIN:=example.com}"
+            : "${ADM_USR:=administrator}"
 
-        # ---- prompts ----
-        while true; do
-            printf "${CLI_BORDER}==================================================\n"
-            printf "${CLI_TEXT}   Join domain                              ${RUN_MODE}\n"                        
-            printf "${CLI_BORDER}==================================================\n"
+            # ---- prompts ----
+            while true; do
+                printf "${CLI_BORDER}==================================================\n"
+                printf "${CLI_TEXT}   Join domain                              ${RUN_MODE}\n"                        
+                printf "${CLI_BORDER}==================================================\n"
 
-            ask --label "Hostname" --var HOST --default "$HOST" --colorize both 
-            ask --label "Domain" --var DOMAIN --default "$DOMAIN" --colorize both
-            ask --label "Authorized user" --var ADM_USR --default "$ADM_USR" --colorize both
-            
-             # Normalize to lowercase (for smb.conf)
-            DOMAIN_LC="$(printf '%s' "$DOMAIN" | tr '[:upper:]' '[:lower:]')"
-            # Derive realm in uppercase (for Kerberos)
-            REALM_UC="$(printf '%s' "$DOMAIN_LC" | tr '[:lower:]' '[:upper:]')"
-            REALM_UC="${REALM_UC%%.*}"   # keep only first label; remove this line if you want EXAMPLE.COM
+                ask --label "Hostname" --var HOST --default "$HOST" --colorize both 
+                ask --label "Domain" --var DOMAIN --default "$DOMAIN" --colorize both
+                ask --label "Authorized user" --var ADM_USR --default "$ADM_USR" --colorize both
+                
+                # Normalize to lowercase (for smb.conf)
+                DOMAIN_LC="$(printf '%s' "$DOMAIN" | tr '[:upper:]' '[:lower:]')"
+                # Derive realm in uppercase (for Kerberos)
+                REALM_UC="$(printf '%s' "$DOMAIN_LC" | tr '[:lower:]' '[:upper:]')"
+                REALM_UC="${REALM_UC%%.*}"   # keep only first label; remove this line if you want EXAMPLE.COM
 
-            # Show derived values (don’t let user overwrite them unless you truly want that)
-            printf "%sDerived domain   : %s\n" "${CLI_ITALIC}" "${DOMAIN_LC:-<none>}"
-            printf "%sKerberos realm   : %s\n" "${CLI_ITALIC}" "${REALM_UC:-<none>}"
+                # Show derived values (don’t let user overwrite them unless you truly want that)
+                printf "%sDerived domain   : %s\n" "${CLI_ITALIC}" "${DOMAIN_LC:-<none>}"
+                printf "%sKerberos realm   : %s\n" "${CLI_ITALIC}" "${REALM_UC:-<none>}"                      
+                printf "${CLI_BORDER}==================================================\n"
 
-            printf "%s==================================================\n" "${CLI_BORDER}"
+                decision=0
+                ask_ok_redo_quit "Continue with domain join?" || decision=$?
+                
+                saydebug "Decision: ${decision}"
 
-            decision=0
-            ask_ok_redo_quit "Continue with domain join?" || decision=$?
-            
-            saydebug "Decision: ${decision}"
-
-            case "$decision" in
-                    0)  saydebug "Proceding"
-                        break ;;
-                    1)  saydebug "Redo" 
-                        continue ;;
-                    2)  saycancel "Cancelled as per user request"
-                        exit 1 ;;
-                    *)  sayfail "Unexpected response: $decision" 
-                        exit 2 ;;
-            esac
-        done
-        __save_domain_settings
-    }
-    __save_domain_settings()
-    {
-        td_state_set "DOMAIN" "$DOMAIN"
-        td_state_set "ADM_USR" "$ADM_USR"
-    }
-
-    __join_domain(){
-        saystart "Joining domain"
-
-        __get_domain_settings
+                case "$decision" in
+                        0)  saydebug "Proceding"
+                            break ;;
+                        1)  saydebug "Redo" 
+                            continue ;;
+                        2)  saycancel "Cancelled as per user request"
+                            exit 1 ;;
+                        *)  sayfail "Unexpected response: $decision" 
+                            exit 2 ;;
+                esac
+            done
+            __save_domain_settings
+        }
+        __save_domain_settings()
+        {
+            td_state_set "DOMAIN" "$DOMAIN"
+            td_state_set "ADM_USR" "$ADM_USR"
+        }
 
 
-        sayend "Joined to ${DOMAIN}"
-    }
 
-# --- main() must be the last function in the script -------------------------
+# === main() must be the last function in the script ==============================
     main() {
-        # --- Bootstrap ------------------------------------------------------
-            # --- Source libraries ------------------c------------------------------------
-            td_source_libs
+        # --- Bootstrap -----------------------------------------------------------
+            # -- Source libraries
+                td_source_libs
             
-            # --- Ensure sudo or non-sudo as desired ---------------------------
+            # -- Ensure sudo or non-sudo as desired 
                 need_root "$@"
                 #cannot_root "$@"
 
-            # --- Load previous state and config
+            # -- Load previous state and config
                 # enable if desired:
                 td_state_load
                 #td_cfg_load
 
-            # --- Parse arguments
+            # -- Parse arguments
                 td_parse_args "$@"
                 FLAG_DRYRUN="${FLAG_DRYRUN:-0}"   
                 FLAG_VERBOSE="${FLAG_VERBOSE:-0}"
@@ -597,6 +606,7 @@ set -euo pipefail
                             FLAG_VERBOSE=1
                             sayinfo "Verbose mode enabled."
                         fi
+                        __set_runmodes
                         ;;
                     7)
                         wait_after=0.5
@@ -607,6 +617,7 @@ set -euo pipefail
                             FLAG_DRYRUN=1
                             sayinfo "Dry-Run mode enabled."
                         fi
+                        __set_runmodes
                         ;;
                     8)
                         sayinfo "Exiting..."
