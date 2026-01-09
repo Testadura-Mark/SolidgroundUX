@@ -12,7 +12,7 @@
 #   User interaction functions. 
 # ===============================================================================
 
-# --- Overrides ----------------------------------------------------------
+# --- Overrides -----------------------------------------------------------------
   # _sh_err override: use say --type FAIL if available
   _sh_err() 
   {
@@ -45,7 +45,7 @@
       fi
   }
 
-# --- UI functions -------------------------------------------------------
+# --- UI functions --------------------------------------------------------------
   # --- say() global defaults ----------------------------------------------------
   
   # Can be overridden in:
@@ -57,7 +57,7 @@
   SAY_WRITELOG_DEFAULT="${SAY_WRITELOG_DEFAULT:-0}"     # 0 = no log, 1 = log
   SAY_DATE_FORMAT="${SAY_DATE_FORMAT:-%Y-%m-%d %H:%M:%S}"  # date format for --date
 
-  # --- Say -----------------------------------------------------------------------
+  # --- say -----------------------------------------------------------------------
     # Options supported by say():
       #
       #   - --type <TYPE>
@@ -157,251 +157,251 @@
       #   - Colorize only the date, leave label/msg plain
       #     say --date --colorize=date INFO "Daily maintenance window started"
      # ---------------------------------------------------------------------------
-  say() {
-    local type="EMPTY"
-    local add_date="${SAY_DATE_DEFAULT:-0}"
-    local show="${SAY_SHOW_DEFAULT:-label}"
-    local colorize="${SAY_COLORIZE_DEFAULT:-label}"
-    local writelog="${SAY_WRITELOG_DEFAULT:-0}"
-    local logfile="${LOG_FILE:-}"
+    say() {
+      local type="EMPTY"
+      local add_date="${SAY_DATE_DEFAULT:-0}"
+      local show="${SAY_SHOW_DEFAULT:-label}"
+      local colorize="${SAY_COLORIZE_DEFAULT:-label}"
+      local writelog="${SAY_WRITELOG_DEFAULT:-0}"
+      local logfile="${LOG_FILE:-}"
 
-    local explicit_type=0
-    local msg
-    local s_label=0 s_icon=0 s_symbol=0 prefixlength=0
+      local explicit_type=0
+      local msg
+      local s_label=0 s_icon=0 s_symbol=0 prefixlength=0
 
-    # --- Parse options
-    while [[ $# -gt 0 ]]; do
-      case "$1" in
-        --type)
-          type="${2^^}"
-          explicit_type=1
-          shift 2
-          ;;
-        --date)
-          add_date=1
-          prefixlength=$((prefixlength + 19))
-          shift
-          ;;
-        --show)
-          show="$2"
-          shift 2
-          ;;
-        --colorize)
-          colorize="$2"
-          shift 2
-          ;;
-        --writelog)
-          writelog=1
-          shift
-          ;;
-        --logfile)
-          logfile="$2"
-          shift 2
-          ;;
-        --)
-          shift
-          break
-          ;;
-        *)
-      # Positional TYPE: say STRT "message"
-      if (( ! explicit_type )); then
-        local maybe="${1^^}"
-        case "$maybe" in
-          INFO|STRT|WARN|FAIL|CNCL|OK|END|DEBUG|EMPTY)
-            type="$maybe"
+      # --- Parse options
+      while [[ $# -gt 0 ]]; do
+        case "$1" in
+          --type)
+            type="${2^^}"
             explicit_type=1
+            shift 2
+            ;;
+          --date)
+            add_date=1
+            prefixlength=$((prefixlength + 19))
             shift
-            continue
             ;;
-        esac
-      fi
-      # First non-option, non-type token -> start of message
-      break
-      ;;
-      esac
-    done
-
-    msg="${*:-}"
-
-    # Normalize TYPE
-    type="${type^^}"
-    case "$type" in
-      INFO|STRT|WARN|FAIL|CNCL|OK|END|DEBUG|EMPTY) ;;
-      "") type="EMPTY" ;;
-      *) type="EMPTY" ;;
-    esac
-    
-    if [[ "$type" != "EMPTY" ]]; then
-      
-      # Resolve maps via namerefs
-      #   Expects LBL_<TYPE>, ICO_<TYPE>, SYM_<TYPE>, CLR_<TYPE>
-      wrk="LBL_${type}"
-      declare -n lbl="$wrk"
-      wrk="ICO_${type}"
-      declare -n icn="$wrk"
-      wrk="SYM_${type}"
-      declare -n smb="$wrk"
-      wrk="CLR_${type}"
-    
-      declare -n clr="$wrk"
-     
-      # Decode --show (supports "label,icon", "label+symbol", "all")
-      local sel p
-      IFS=',+' read -r -a sel <<<"$show"
-      if [[ "${#sel[@]}" -eq 0 ]]; then sel=(label); fi
-
-      for p in "${sel[@]}"; do
-        case "${p,,}" in
-          label)  s_label=1
-                  prefixlength=$((prefixlength + 8));;
-          icon)   s_icon=1  
-                  prefixlength=$((prefixlength + 1));;
-          symbol) s_symbol=1 
-                  prefixlength=$((prefixlength + 3))
+          --show)
+            show="$2"
+            shift 2
             ;;
-          all)
-            s_label=1
-            s_icon=1
-            s_symbol=1
-            prefixlength=$((prefixlength + 16))
+          --colorize)
+            colorize="$2"
+            shift 2
             ;;
+          --writelog)
+            writelog=1
+            shift
+            ;;
+          --logfile)
+            logfile="$2"
+            shift 2
+            ;;
+          --)
+            shift
+            break
+            ;;
+          *)
+        # Positional TYPE: say STRT "message"
+        if (( ! explicit_type )); then
+          local maybe="${1^^}"
+          case "$maybe" in
+            INFO|STRT|WARN|FAIL|CNCL|OK|END|DEBUG|EMPTY)
+              type="$maybe"
+              explicit_type=1
+              shift
+              continue
+              ;;
+          esac
+        fi
+        # First non-option, non-type token -> start of message
+        break
+        ;;
         esac
       done
 
-      # default: at least label
-      if (( s_label + s_icon + s_symbol == 0 )); then
-        s_label=1
-        prefixlength=$((prefixlength + 8))
-      fi
+      msg="${*:-}"
 
-      # Decode colorize: none|label|msg|date|both|all
-      local c_label=0 c_msg=0 c_date=0
-
-      case "${colorize,,}" in
-        none)
-          # all stay 0
-          ;;
-        label)
-          c_label=1
-          ;;
-        msg)
-          c_msg=1
-          ;;
-        date)
-          c_date=1
-          ;;
-        both|all)
-          c_label=1
-          c_msg=1
-          c_date=1
-          ;;
-        *)
-          # default to 'label'
-          c_label=1
-          ;;
+      # Normalize TYPE
+      type="${type^^}"
+      case "$type" in
+        INFO|STRT|WARN|FAIL|CNCL|OK|END|DEBUG|EMPTY) ;;
+        "") type="EMPTY" ;;
+        *) type="EMPTY" ;;
       esac
+      
+      if [[ "$type" != "EMPTY" ]]; then
+        
+        # Resolve maps via namerefs
+        #   Expects LBL_<TYPE>, ICO_<TYPE>, SYM_<TYPE>, CLR_<TYPE>
+        wrk="LBL_${type}"
+        declare -n lbl="$wrk"
+        wrk="ICO_${type}"
+        declare -n icn="$wrk"
+        wrk="SYM_${type}"
+        declare -n smb="$wrk"
+        wrk="CLR_${type}"
+      
+        declare -n clr="$wrk"
+      
+        # Decode --show (supports "label,icon", "label+symbol", "all")
+        local sel p
+        IFS=',+' read -r -a sel <<<"$show"
+        if [[ "${#sel[@]}" -eq 0 ]]; then sel=(label); fi
 
-      # Build final line
-      local fnl=""
-      local date_str=""
-      local prefix_parts=()
-      local rst="${RESET:-}"
+        for p in "${sel[@]}"; do
+          case "${p,,}" in
+            label)  s_label=1
+                    prefixlength=$((prefixlength + 8));;
+            icon)   s_icon=1  
+                    prefixlength=$((prefixlength + 1));;
+            symbol) s_symbol=1 
+                    prefixlength=$((prefixlength + 3))
+              ;;
+            all)
+              s_label=1
+              s_icon=1
+              s_symbol=1
+              prefixlength=$((prefixlength + 16))
+              ;;
+          esac
+        done
 
-
-      # timestamp
-      if (( add_date )); then
-        date_str="$(date "+${SAY_DATE_FORMAT}")"
-        if (( c_date )); then
-          prefix_parts+=("${clr}${date_str}${rst}")
-        else
-          prefix_parts+=("$date_str")
+        # default: at least label
+        if (( s_label + s_icon + s_symbol == 0 )); then
+          s_label=1
+          prefixlength=$((prefixlength + 8))
         fi
-      fi
 
-    l_len=$(visible_len "$lbl")
-    pad=""
+        # Decode colorize: none|label|msg|date|both|all
+        local c_label=0 c_msg=0 c_date=0
 
-    if (( l_len < 8 )); then
-        printf -v pad '%*s' $((8 - l_len)) ''
-    fi
+        case "${colorize,,}" in
+          none)
+            # all stay 0
+            ;;
+          label)
+            c_label=1
+            ;;
+          msg)
+            c_msg=1
+            ;;
+          date)
+            c_date=1
+            ;;
+          both|all)
+            c_label=1
+            c_msg=1
+            c_date=1
+            ;;
+          *)
+            # default to 'label'
+            c_label=1
+            ;;
+        esac
 
-    lbl="${lbl}${pad}"
-     
-      # label / icon / symbol
-      if (( s_label )); then
-        if (( c_label )); then
-          prefix_parts+=("${clr}${lbl}${rst}")
-        else
-          prefix_parts+=("$lbl")
+        # Build final line
+        local fnl=""
+        local date_str=""
+        local prefix_parts=()
+        local rst="${RESET:-}"
+
+
+        # timestamp
+        if (( add_date )); then
+          date_str="$(date "+${SAY_DATE_FORMAT}")"
+          if (( c_date )); then
+            prefix_parts+=("${clr}${date_str}${rst}")
+          else
+            prefix_parts+=("$date_str")
+          fi
         fi
+
+      l_len=$(visible_len "$lbl")
+      pad=""
+
+      if (( l_len < 8 )); then
+          printf -v pad '%*s' $((8 - l_len)) ''
       fi
 
-      if (( s_icon )); then
-        if (( c_label )); then
-          prefix_parts+=("${clr}${icn}${rst}")
-        else
-          prefix_parts+=("$icn")
+      lbl="${lbl}${pad}"
+      
+        # label / icon / symbol
+        if (( s_label )); then
+          if (( c_label )); then
+            prefix_parts+=("${clr}${lbl}${rst}")
+          else
+            prefix_parts+=("$lbl")
+          fi
         fi
-      fi
 
-      if (( s_symbol )); then
-        if (( c_label )); then
-          prefix_parts+=("${clr}${smb}${rst}")
-        else
-          prefix_parts+=("$smb")
+        if (( s_icon )); then
+          if (( c_label )); then
+            prefix_parts+=("${clr}${icn}${rst}")
+          else
+            prefix_parts+=("$icn")
+          fi
         fi
-      fi
 
-      # join prefix with spaces
-      if ((${#prefix_parts[@]} > 0)); then
-        fnl+="${prefix_parts[*]} "
-        prefixlength=$((prefixlength + 1))  # space after prefix
-      fi
+        if (( s_symbol )); then
+          if (( c_label )); then
+            prefix_parts+=("${clr}${smb}${rst}")
+          else
+            prefix_parts+=("$smb")
+          fi
+        fi
 
-      # compute visible prefix length (ANSI-stripped)
-      local v_len
-      v_len=$(visible_len "$fnl")
+        # join prefix with spaces
+        if ((${#prefix_parts[@]} > 0)); then
+          fnl+="${prefix_parts[*]} "
+          prefixlength=$((prefixlength + 1))  # space after prefix
+        fi
 
-      # pad to desired message column (prefixlength)
-      local pad=""
-      if (( v_len < prefixlength )); then
-          printf -v pad '%*s' $((prefixlength - v_len)) ''
+        # compute visible prefix length (ANSI-stripped)
+        local v_len
+        v_len=$(visible_len "$fnl")
+
+        # pad to desired message column (prefixlength)
+        local pad=""
+        if (( v_len < prefixlength )); then
+            printf -v pad '%*s' $((prefixlength - v_len)) ''
+        else
+            pad=" "
+        fi
+        fnl+="$pad"
+
+        # message text
+        if (( c_msg )); then
+          fnl+="${clr}${msg}${rst}"
+        else
+          fnl+="$msg"
+        fi
+
+        printf '%s\n' "$fnl $RESET"
       else
-          pad=" "
-      fi
-      fnl+="$pad"
-
-      # message text
-      if (( c_msg )); then
-        fnl+="${clr}${msg}${rst}"
-      else
-        fnl+="$msg"
+        # EMPTY type: just print message (no prefix) 
+        printf '%s\n' "$msg"
       fi
 
-      printf '%s\n' "$fnl $RESET"
-    else
-      # EMPTY type: just print message (no prefix) 
-      printf '%s\n' "$msg"
-    fi
 
+      # Optional log (plain; no ANSI)
+      # Always include date+type in logs for clarity
+      if (( writelog )) && [[ -n "$logfile" ]]; then
+        local log_ts log_line
+        if [[ -n "$date_str" ]]; then
+          log_ts="$date_str"
+        else
+          log_ts="$(date "+${SAY_DATE_FORMAT}")"
+        fi
 
-    # Optional log (plain; no ANSI)
-    # Always include date+type in logs for clarity
-    if (( writelog )) && [[ -n "$logfile" ]]; then
-      local log_ts log_line
-      if [[ -n "$date_str" ]]; then
-        log_ts="$date_str"
-      else
-        log_ts="$(date "+${SAY_DATE_FORMAT}")"
+        # lbl is typically "[INFO]" / "[WARN]" etc. If you prefer raw type, use "$type".
+        log_line="$log_ts $lbl $msg"
+
+        printf '%s\n' "$log_line" >>"$logfile" 2>/dev/null || true
       fi
-
-      # lbl is typically "[INFO]" / "[WARN]" etc. If you prefer raw type, use "$type".
-      log_line="$log_ts $lbl $msg"
-
-      printf '%s\n' "$log_line" >>"$logfile" 2>/dev/null || true
-    fi
-    
-  }
+      
+    }
   # --- say shorthand ------------------------------------------------------------
     sayinfo() {
         say INFO "$@"
@@ -454,184 +454,184 @@
       justsay "Just saying"
     }
   # --- ask ---------------------------------------------------------------------
-    #   Prompt user for input with optional:
-    #     --label TEXT       Display label
-    #     --var NAME         Store result in variable NAME
-    #     --default VALUE    Pre-filled editable default
-    #     --colorize MODE    none|label|input|both  (default: none)
-    #     --validate FUNC    Validation function FUNC "$value"
-    #     --echo             Echo value with ✓ / ✗
-    #
-    #   Validation functions
-          #	Filesystem validations
-            #	validate_file_exists()
-            #	validate_path_exists()
-            #	validate_dir_exists()
-            #	validate_executable()
-            #	validate_file_not_exists()
+      #   Prompt user for input with optional:
+      #     --label TEXT       Display label
+      #     --var NAME         Store result in variable NAME
+      #     --default VALUE    Pre-filled editable default
+      #     --colorize MODE    none|label|input|both  (default: none)
+      #     --validate FUNC    Validation function FUNC "$value"
+      #     --echo             Echo value with ✓ / ✗
+      #
+      #   Validation functions
+            #	Filesystem validations
+              #	validate_file_exists()
+              #	validate_path_exists()
+              #	validate_dir_exists()
+              #	validate_executable()
+              #	validate_file_not_exists()
 
-          #	Type validations
-            #	validate_int() {
-            #	validate_numeric() 
-            #	validate_text() 
-            #	validate_bool() 
-            #	validate_date() 
-            #	validate_ip() 
-            #	validate_slug() 
-            #	validate_fs_name() 
-    #   Usage examples:
-      #   Ask for filename with exists validation
-      #     ask --label "Template script file" 
-      #         --default "$default_template" 
-      #         --validate validate_file_exists 
-      #         --var TEMPLATE_SCRIPT
-      #
-      #   Ask for an ip address with validation 
-      #     ask --label "Bind IP address" 
-      #         --default "127.0.0.1" 
-      #         --validate validate_ip 
-      #         --var BIND_IP
-      #
-      #   Retry-loop
-      #     while true; do
-      #       __collect_settings
-      #
-      #       ask_ok_retry_quit "Proceed with these settings?"
-      #       choice=$?
-      #
-      #       case $choice in
-      #         0)  break ;;               # OK
-      #        10) continue ;;            # Retry
-      #        20) say WARN "Aborted." ; exit 1 ;;
-      #       esac
-      #    done
-      #
-      #   Ask with different color settings
-      #     ask --label "Service name" 
-      #         --default "my-service" 
-      #         --colorize input 
-      #         --var SERVICE_NAME
-      #   
-      #     ask --label "Owner" 
-      #         --default "$USER" 
-      #         --colorize label 
-      #         --var SERVICE_OWNER
-      #   
-      #     ask --label "Description" 
-      #         --default "" 
-      #         --colorize both 
-      #         --var SERVICE_DESC
-      #
-      #   Press Enter to continue
-      #     ask_continue "Review the settings above"
-      #   
-      #   Alternative syntax
-      #     USER_EMAIL=$(ask --label "Email address" --default "user@example.com")
-    #
-    #   Coloring stored in active style,(when empty default)
-    #     CLR_LABEL
-    #     CLR_INPUT
-    #     CLR_TEXT
-    #     CLR_DEFAULT
-    #     CLR_VALID
-    #     CLR_INVALID
-  ask(){
-    local label="" var_name="" colorize="both"
-    local validate_fn="" def_value="" echo_input=0
+            #	Type validations
+              #	validate_int() {
+              #	validate_numeric() 
+              #	validate_text() 
+              #	validate_bool() 
+              #	validate_date() 
+              #	validate_ip() 
+              #	validate_slug() 
+              #	validate_fs_name() 
+      #   Usage examples:
+        #   Ask for filename with exists validation
+        #     ask --label "Template script file" 
+        #         --default "$default_template" 
+        #         --validate validate_file_exists 
+        #         --var TEMPLATE_SCRIPT
+        #
+        #   Ask for an ip address with validation 
+        #     ask --label "Bind IP address" 
+        #         --default "127.0.0.1" 
+        #         --validate validate_ip 
+        #         --var BIND_IP
+        #
+        #   Retry-loop
+        #     while true; do
+        #       __collect_settings
+        #
+        #       ask_ok_retry_quit "Proceed with these settings?"
+        #       choice=$?
+        #
+        #       case $choice in
+        #         0)  break ;;               # OK
+        #        10) continue ;;            # Retry
+        #        20) say WARN "Aborted." ; exit 1 ;;
+        #       esac
+        #    done
+        #
+        #   Ask with different color settings
+        #     ask --label "Service name" 
+        #         --default "my-service" 
+        #         --colorize input 
+        #         --var SERVICE_NAME
+        #   
+        #     ask --label "Owner" 
+        #         --default "$USER" 
+        #         --colorize label 
+        #         --var SERVICE_OWNER
+        #   
+        #     ask --label "Description" 
+        #         --default "" 
+        #         --colorize both 
+        #         --var SERVICE_DESC
+        #
+        #   Press Enter to continue
+        #     ask_continue "Review the settings above"
+        #   
+        #   Alternative syntax
+        #     USER_EMAIL=$(ask --label "Email address" --default "user@example.com")
+        #
+        #   Coloring stored in active style,(when empty default)
+        #     CLR_LABEL
+        #     CLR_INPUT
+        #     CLR_TEXT
+        #     CLR_DEFAULT
+        #     CLR_VALID
+        #     CLR_INVALID
+    ask(){
+      local label="" var_name="" colorize="both"
+      local validate_fn="" def_value="" echo_input=0
 
-    # ---- parse options ------------------------------------------------------
-    while [[ $# -gt 0 ]]; do
-        case "$1" in
-            --label)    label="$2"; shift 2 ;;
-            --var)      var_name="$2"; shift 2 ;;
-            --colorize) colorize="$2"; shift 2 ;;
-            --validate) validate_fn="$2"; shift 2 ;;
-            --default)  def_value="$2"; shift 2 ;;
-            --echo)     echo_input=1; shift ;;
-            --)         shift; break ;;
-            *)          [[ -z "$label" ]] && label="$1"; shift ;;
-        esac
-    done
+      # ---- parse options ------------------------------------------------------
+      while [[ $# -gt 0 ]]; do
+          case "$1" in
+              --label)    label="$2"; shift 2 ;;
+              --var)      var_name="$2"; shift 2 ;;
+              --colorize) colorize="$2"; shift 2 ;;
+              --validate) validate_fn="$2"; shift 2 ;;
+              --default)  def_value="$2"; shift 2 ;;
+              --echo)     echo_input=1; shift ;;
+              --)         shift; break ;;
+              *)          [[ -z "$label" ]] && label="$1"; shift ;;
+          esac
+      done
 
-    # ---- resolve color mode -------------------------------------------------
+      # ---- resolve color mode -------------------------------------------------
+        
+      local label_color="$CLR_LABEL"
+      local input_color="$CLR_INPUT"
+      local default_color="$CLR_DEFAULT"
+
+      case "$colorize" in
+          label)
+              label_color="$CLR_LABEL"
+              ;;
+          input)
+              input_color="$CLR_INPUT"
+              ;;
+          both)
+              label_color="$CLR_LABEL"
+              input_color="$CLR_INPUT"
+              ;;
+          none|*) ;;
+      esac
       
-    local label_color="$CLR_LABEL"
-    local input_color="$CLR_INPUT"
-    local default_color="$CLR_DEFAULT"
+      # ---- build prompt -------------------------------------------------------
+      local prompt=""
+      if [[ -n "$label" ]]; then
+          # label in label_color, then ": ", then switch to input_color for typing
+          prompt+="${label_color}${label}${RESET}: ${input_color}"
+      fi
 
-    case "$colorize" in
-        label)
-            label_color="$CLR_LABEL"
-            ;;
-        input)
-            input_color="$CLR_INPUT"
-            ;;
-        both)
-            label_color="$CLR_LABEL"
-            input_color="$CLR_INPUT"
-            ;;
-        none|*) ;;
-    esac
-    
-    # ---- build prompt -------------------------------------------------------
-    local prompt=""
-    if [[ -n "$label" ]]; then
-        # label in label_color, then ": ", then switch to input_color for typing
-        prompt+="${label_color}${label}${RESET}: ${input_color}"
-    fi
+      # ---- use bash readline pre-fill (-i) -----------------------------------
+      local value ok
+      if [[ -n "$def_value" ]]; then
+          # LABEL is a real prompt (not editable), def_value is editable
+          IFS= read -e -p "$prompt" -i "$def_value" value
+          [[ -z "$value" ]] && value="$def_value"
+      else
+          # no default — simple prompt
+          IFS= read -e -p "$prompt" value
+      fi
 
-    # ---- use bash readline pre-fill (-i) -----------------------------------
-    local value ok
-    if [[ -n "$def_value" ]]; then
-        # LABEL is a real prompt (not editable), def_value is editable
-        IFS= read -e -p "$prompt" -i "$def_value" value
-        [[ -z "$value" ]] && value="$def_value"
-    else
-        # no default — simple prompt
-        IFS= read -e -p "$prompt" value
-    fi
+      # reset color after the line, so the rest of the script isn't tinted
+      printf "%b" "$RESET"
 
-    # reset color after the line, so the rest of the script isn't tinted
-    printf "%b" "$RESET"
+      # ---- validation ---------------------------------------------------------
+      ok=1
+      if [[ -n "$validate_fn" ]]; then
+          if "$validate_fn" "$value"; then
+              ok=1
+          else
+              ok=0
+          fi
+      fi
 
-    # ---- validation ---------------------------------------------------------
-    ok=1
-    if [[ -n "$validate_fn" ]]; then
-        if "$validate_fn" "$value"; then
-            ok=1
-        else
-            ok=0
-        fi
-    fi
+      # ---- echo with ✓ / ✗ ----------------------------------------------------
+      if (( echo_input )); then
+          if (( ok )); then
+              printf "  %b%s%b %b✓%b\n" \
+                  "$input_color" "$value" "$RESET" \
+                  "$CLR_VALID" "$RESET"
+          else
+              printf "  %b%s%b %b✗%b\n" \
+                  "$CLR_INPUT" "$value" "$RESET" \
+                  "$CLR_INVALID" "$RESET"
+          fi
+      fi
 
-    # ---- echo with ✓ / ✗ ----------------------------------------------------
-    if (( echo_input )); then
-        if (( ok )); then
-            printf "  %b%s%b %b✓%b\n" \
-                "$input_color" "$value" "$RESET" \
-                "$CLR_VALID" "$RESET"
-        else
-            printf "  %b%s%b %b✗%b\n" \
-                "$CLR_INPUT" "$value" "$RESET" \
-                "$CLR_INVALID" "$RESET"
-        fi
-    fi
+      # Re-prompt on validation failure
+      if (( !ok )); then
+          printf "%bInvalid value. Please try again.%b\n" "$CLR_INVALID" "$RESET"
+          ask "$@"   # recursive retry
+          return
+      fi
 
-    # Re-prompt on validation failure
-    if (( !ok )); then
-        printf "%bInvalid value. Please try again.%b\n" "$CLR_INVALID" "$RESET"
-        ask "$@"   # recursive retry
-        return
-    fi
-
-    # ---- return value -------------------------------------------------------
-    if [[ -n "$var_name" ]]; then
-        printf -v "$var_name" '%s' "$value"
-    elif [[ "$echo_input" -eq 1 ]]; then
-        printf "%s\n" "$value"
-    fi
-  }
-  # --- Ask shorthand
+      # ---- return value -------------------------------------------------------
+      if [[ -n "$var_name" ]]; then
+          printf -v "$var_name" '%s' "$value"
+      elif [[ "$echo_input" -eq 1 ]]; then
+          printf "%s\n" "$value"
+      fi
+    }
+  # --- ask shorthand
     ask_yesno(){
       local prompt="$1"
       local yn_response
@@ -723,7 +723,7 @@
               printf "${CLR_TEXT}\nPaused. Press any key to continue, or 'c' to cancel... ${RESET}"
               IFS= read -r -n 1 -s key
           else
-              printf "\r${CLR_TEXT}Continuing in %ds… (any key=now, p=pause, c=cancel) ${RESET}" "$seconds"
+              printf "\r\033[K${CLR_TEXT}Continuing in %ds… (any key=now, p=pause, c=cancel) ${RESET}" "$seconds"
               IFS= read -r -n 1 -s -t 1 key || key=""
           fi
 
@@ -753,7 +753,7 @@
               fi
           fi
       done
-  }
+   } 
   # --- File system validations
       validate_file_exists() {
           local path="$1"
@@ -827,12 +827,287 @@
         [[ "$1" =~ ^[A-Za-z0-9._-]+$ ]] && return 0
       return 1
     }
-# -- Dialogs ----------------------------------------------------------------
+# --- Dialogs --------------------------------------------------------------------
+  # -- Terminal cursor control
+    __get_cursor_pos() {
+          # Prints: "row col" (1-based), returns 0 on success
+          local oldstty
+          oldstty="$(stty -g)"
+
+          # Raw-ish so we can read the terminal's response without waiting for Enter
+          stty -echo -icanon time 1 min 0
+
+          # Ask terminal for cursor position
+          printf '\033[6n' > /dev/tty
+
+          # Response ends with 'R': ESC [ row ; col R
+          local reply=""
+          IFS= read -r -d R reply < /dev/tty
+
+          # Restore terminal settings
+          stty "$oldstty"
+
+          # Strip leading ESC[
+          reply="${reply#*$'\e['}"
+
+          local row="${reply%%;*}"
+          local col="${reply##*;}"
+
+          [[ "$row" =~ ^[0-9]+$ && "$col" =~ ^[0-9]+$ ]] || return 1
+
+          printf '%s %s\n' "$row" "$col"
+          return 0
+      }
+
+    __cup() {
+        # Move cursor to 1-based row/col
+        # tput cup expects 0-based row/col
+        local row="$1"
+        local col="$2"
+        tput cup $((row - 1)) $((col - 1))
+    }
+    __clear_eol() {
+        # Clear to end-of-line
+        # Prefer tput if available; otherwise ANSI.
+        if command -v tput >/dev/null 2>&1; then
+            tput el
+        else
+            printf '\033[K'
+        fi
+    }
+
+    __status_print() {
+        local text="$1"
+
+        if [[ -n "$anchor_row" && -n "$anchor_col" ]]; then
+            __cup "$anchor_row" "$anchor_col"
+            tput ed          # clear from cursor to end of screen
+            printf '%b' "$text"
+        else
+            printf '\r'
+            tput ed
+            printf '%b' "$text"
+        fi
+    }
+
+  __dlg_keymap(){
+      local choices="$1"
+      local keymap=""
+
+      [[ "$choices" == *"E"* ]] && keymap+="Enter=continue; "
+      [[ "$choices" == *"R"* ]] && keymap+="R=redo; "
+      [[ "$choices" == *"C"* ]] && keymap+="C/Esc=cancel; "
+
+      [[ "$choices" == *"Q"* ]] && keymap+="Q=quit; "
+      [[ "$choices" == *"A"* ]] && keymap+="Any key=continue; "
+     
+      if [[ "$choices" == *"P"* ]]; then
+          if (( paused )); then
+              keymap+="P/Space=resume; "
+          else
+              keymap+="P/Space=pause; "
+          fi
+      fi
+        # Trim trailing "; "
+        keymap="${keymap%; }"
+
+        printf '%s' "$keymap"
+  }
+
+  # -- Auto-continue dialog
+    # Arguments:
+    #   $1 = seconds to wait before auto-continue (default: 5)
+    #   $2 = message to display above prompt (default: none)
+    #   $3 = allowed choices (string containing any of A,E,R,C,P,Q)
+    #         A = any key to continue
+    #         E = Enter to continue
+    #         R = R to redo
+    #         C = C or Esc to cancel
+    #         P = P or Space to pause/resume countdown
+    #         Q = Q to quit
+  dlg_autocontinue() {
+      # Returns:
+      #   0 = continue (user)
+      #   1 = continue (timeout)
+      #   2 = cancelled
+      #   3 = redo
+      #   4 = quit
+      local seconds="${1:-5}"
+      local msg="${2:-}"
+      local dlgchoices="${3:-"AERCPQ"}"
+
+      saydebug "Auto-continue dialog: ${msg:-none}, KeyOptions ${dlgchoices} (timeout: ${seconds}s)"
+
+      if [[ ! -t 0 || ! -t 1 ]]; then
+          return 0
+      fi
+
+      local paused=0
+      local key=""
+      local keymap=;
+      keymap="$(__dlg_keymap "$dlgchoices")"
+      printf "\n"
+
+      local anchor_row=""
+      local anchor_col=""
+      if read -r anchor_row anchor_col < <(__get_cursor_pos); then
+          :
+      else
+          anchor_row=""
+          anchor_col=""
+      fi
+
+      while true; do
+          local status_msg=""
+          local got=0
+          keymap="$(__dlg_keymap "$dlgchoices")"
+          if [[ -n "$msg" ]]; then
+              status_msg+="${CLR_TEXT}${msg}${RESET}\n"
+          fi
+          if [[ -n "$keymap" ]]; then
+              status_msg+="${CLR_TEXT}${keymap}${RESET}\n"
+          fi
+
+          if (( paused )); then
+              status_msg+="${CLR_TEXT}Paused... Press P or space to resume countdown${RESET}"
+              __status_print "$status_msg"
+              if IFS= read -r -n 1 -s key; then
+                  got=1          # key event (could be empty => Enter)
+              fi
+          else
+              status_msg+="${CLR_TEXT}Continuing in ${seconds}s...\n ${RESET}"
+              __status_print "$status_msg"
+              if IFS= read -r -n 1 -s -t 1 key; then
+                  got=1          # key event (could be empty => Enter)
+              else
+                  got=0          # timeout (no key)
+              fi
+          fi
+
+          if (( got )); then
+              if [[ -z "$key" ]]; then
+                  key=$'\n'  # Treat Enter as newline token
+              fi
+              case "$key" in
+                  p|P|" ")
+                      if [[ "$dlgchoices" != *"P"* ]]; then
+                          # Pause not allowed; ignore key
+                          key=""
+                          continue
+                      fi
+                      printf "\n"
+                      if (( paused )); then
+                          paused=0
+                          saydebug "Resumed."
+                      else
+                          paused=1
+                          saydebug "Paused."
+                      fi
+                      key=""
+                      continue
+                      ;;
+                  r|R)
+                      if [[ "$dlgchoices" != *"R"* && "$dlgchoices" != *"A"* ]]; then
+                          key=""
+                          continue
+                      fi
+                      printf "\n"
+                      saydebug "Redo as per user's request."
+                      return 3
+                      ;;
+                  c|C|$'\e')
+                      if [[ "$dlgchoices" != *"C"* && "$dlgchoices" != *"A"* ]]; then
+                          key=""
+                          continue
+                      fi
+                      printf "\n"
+                      saydebug "Cancelled as per user's request."
+                      return 2
+                      ;;
+                  q|Q)
+                      if [[ "$dlgchoices" != *"Q"* && "$dlgchoices" != *"A"* ]]; then
+                          key=""
+                          continue
+                      fi
+                      printf "\n"
+                      saydebug "Quit as per user's request."
+                      return 4
+                      ;;
+                  # Enter key    
+                  $'\n'|$'\r') 
+                      if [[ "$dlgchoices" != *"E"* && "$dlgchoices" != *"A"* ]]; then
+                          key=""
+                          continue
+                      fi
+                      printf "\n"
+                      saydebug "Continuing."
+                      return 0
+                      ;;
+                  # Any other key
+                  *)
+                      if [[ "$dlgchoices" != *"A"* ]]; then
+                          key=""
+                          continue
+                      fi
+                      printf "\n"
+                      saydebug "Continuing."
+                      return 0
+                      ;;
+              esac
+          fi
+
+          if (( ! paused )); then
+              ((seconds--))
+              if (( seconds <= 0 )); then
+                  printf "\n"
+                  return 1   # timeout
+              fi
+          fi
+      done
+  }
+
+  # -- Debug
+  __temp_TestingDlg() {
+    ################################################################################
+    # Test dialog functions
+    ################################################################################
+    if dlg_autocontinue 15 "With a message to the user above the prompt." "ACRPQ"; then
+        rc=0
+    else
+        rc=$?
+    fi
+    saydebug "Decision: ${rc:- <none> }"
+    __temp_mapoutcome $rc
+
+    if dlg_autocontinue 5 "Just wait..." " " ; then
+        rc=0
+    else
+        rc=$?
+    fi
+    __temp_mapoutcome $rc
+
+    if dlg_autocontinue 15 "Press any key to continue" "A" ; then
+        rc=0
+    else
+        rc=$?
+    fi
+    saydebug "Decision: ${rc:- <none> }"
+    __temp_mapoutcome $rc
+        
+}
+__temp_mapoutcome(){
+         rc=$1
+         case $rc in
+            0)  saydebug "User chose to continue" ;;
+            1)  saydebug "Auto-continue timeout reached" ;;
+            2)  saycancel "Cancelled as per user request" ;;
+            3)  saydebug "Redo as per user request." ;;
+            4)  sayinfo "Quit as per user request."
+                exit 0 ;;
+            *)  sayfail "Unexpected response: $rc"
+                exit 1 ;;
+        esac
+}
+
   
-
-
-
-
-
-
 

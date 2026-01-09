@@ -118,6 +118,7 @@ set -euo pipefail
     #   - After parsing you can use: FLAG_VERBOSE, VAL_CONFIG, ENUM_MODE, ...
     # ------------------------------------------------------------------------
     TD_ARGS_SPEC=(
+        "auto|a|flag|FLAG_AUTO|Repeat with last settings|"
         "undeploy|u|flag|FLAG_UNDEPLOY|Remove files from main root|"
         "source|s|value|SRC_ROOT|Set Source directory|"
         "target|t|value|DEST_ROOT|Set Target directory|"
@@ -222,11 +223,30 @@ set -euo pipefail
         fi
     }
 
+    __update_lastdeployinfo(){
+        td_state_set "last_deploy_run" "$(date --iso-8601=seconds)"
+        td_state_set "last_deploy_source" "$SRC_ROOT"
+        td_state_set "last_deploy_target" "${DEST_ROOT:-/}"
+        td_state_set "last_deploy_link_exes" "$FLAG_LINK_EXES"
+    }
+
     __getparameters() {
 
         local default_src default_dst
         default_src="${last_deploy_source:-$USER_HOME/dev}"
         default_dst="${last_deploy_target:-/}"
+
+        if [[ "${FLAG_AUTO:-0}" -eq 1 ]]; then
+            if [[ -n "${last_deploy_source:-}" && -n "${last_deploy_target:-}" ]]; then
+                sayinfo "Auto mode: using last deployment settings."
+                SRC_ROOT="$last_deploy_source"
+                DEST_ROOT="$last_deploy_target"
+                FLAG_LINK_EXES="${last_deploy_link_exes:-0}"
+                return 0
+            else
+                saywarning "Auto mode requested, but no previous deployment settings found."
+            fi
+        fi
 
         while true; do
             # --- Source root -----------------------------------------------------
@@ -286,10 +306,6 @@ set -euo pipefail
 
             if ask_ok_redo_quit "Continue with deployment?"; then
                 sayinfo "Proceeding with deployment."
-                td_state_set "last_deploy_run" "$(date --iso-8601=seconds)"
-                td_state_set "last_deploy_source" "$SRC_ROOT"
-                td_state_set "last_deploy_target" "${DEST_ROOT:-/}"
-                td_state_set "last_deploy_link_exes" "$FLAG_LINK_EXES"
                 return 0
             fi
 
@@ -485,6 +501,7 @@ set -euo pipefail
         sayend "Symlink cleanup complete."
     }
 
+
 # === main() must be the last function in the script ===========================
     main() {        
     # --- Bootstrap ------------------------------------------------------------
@@ -515,6 +532,7 @@ set -euo pipefail
                 if [[ "$FLAG_LINK_EXES" -eq 1 ]]; then
                     __link_executables
                 fi
+                __update_lastdeployinfo
             else
                 __undeploy
                 if [[ "$FLAG_LINK_EXES" -eq 1 ]]; then
