@@ -150,8 +150,7 @@ set -euo pipefail
         done
     }
 
-    __set_runmodes()
-    {
+    __set_runmodes(){
         RUN_MODE=$([ "${FLAG_DRYRUN:-0}" -eq 1 ] && echo "${BOLD_ORANGE}DRYRUN${RESET}" || echo "${BOLD_GREEN}COMMIT${RESET}")
 
         if [[ "${FLAG_DRYRUN:-0}" -eq 1 ]]; then
@@ -174,25 +173,25 @@ set -euo pipefail
     __menuline() { printf "%b\n" "$*"; }
     __show_mainmenu() {
         _barcolor="${CLI_BORDER}"
-        _titelecolor="${CLI_TEXT}"
+        _titlecolor="${CLI_HIGHLIGHT}"
         _itemcolor="${CLI_TEXT}"
 
-        _verb=$([ "${FLAG_VERBOSE:-0}" -eq 1 ] && echo "${BOLD_SILVER}ON${RESET}" || echo "${FAINT_SILVER}OFF${RESET}")
-        _dry=$([ "${FLAG_DRYRUN:-0}" -eq 1 ] && echo "${BOLD_GREEN}ON${RESET}" || echo "${BOLD_ORANGE}OFF${RESET}")
+        _verb=$([ "${FLAG_VERBOSE:-0}" -eq 1 ] && echo "${BOLD_YELLOW}ON${RESET}" || echo "${BOLD_YELLOW}OFF${RESET}")
+        _dry=$([ "${FLAG_DRYRUN:-0}" -eq 1 ] && echo "${BOLD_YELLOW}ON${RESET}" || echo "${BOLD_YELLOW}OFF${RESET}")
 
         __menuline "${_barcolor}====================================================="
-        __menuline "${_titelecolor}   Clone Configuration Menu                    ${RUN_MODE}"
+        __menuline "${_titlecolor}   Clone Configuration Menu                    ${RUN_MODE}"
         __menuline "${_barcolor}====================================================="
-        __menuline "${_itemcolor}    --- Basic configuration tasks ---"
+        __menuline "${_titlecolor}    --- Basic configuration tasks ---${_itemcolor}"
         __menuline "    1) Setup Machine ID"
         __menuline "    2) Configure Hostname and Network"
         __menuline "    3) Enable SSH and set authorized keys"
         __menuline ""
-        __menuline "    --- Additional tasks ---"
+        __menuline "${_titlecolor}     --- Additional tasks ---${_itemcolor}"
         __menuline "    4) Join Domain (optional)"
         __menuline "    5) Prepare template for next clone"
         __menuline ""
-        __menuline "    --- Modes ---"
+        __menuline "${_titlecolor}    --- Modes ---${_itemcolor}"
         __menuline "    6) Toggle Verbose mode ($_verb)"
         __menuline "    7) Toggle Dry-Run mode ($_dry)"
         __menuline ""
@@ -211,40 +210,39 @@ set -euo pipefail
         td_state_set "NETPLAN_FILE" "$NETPLAN_FILE"
     }
 
-    # --- Menu actions -----------------------------------------------------------
+    # --- Menu actions ------------------------------------------------------------
         # 1) Setup Machine ID
         __setup_machine_id() {
 
-        saystart "Setting up Machine ID..."
-        
-        # 1) machine-id
-        if [[ ! -s /etc/machine-id || "$(cat /etc/machine-id)" == "00000000000000000000000000000000" ]]; then
-            if [[ FLAG_DRYRUN -eq 1 ]]; then
-                saydebug "Would have generated a machine-id"
+            saydebug "Setting up Machine ID..."
+            
+            # 1) machine-id
+            if [[ ! -s /etc/machine-id || "$(cat /etc/machine-id)" == "00000000000000000000000000000000" ]]; then
+                if [[ FLAG_DRYRUN -eq 1 ]]; then
+                    saydebug "Would have generated a machine-id"
+                fi
+                if [[ FLAG_VERBOSE -eq 1 ]]; then
+                saydebug "Generating machine-id"
+                fi
+                truncate -s 0 /etc/machine-id
+                systemd-machine-id-setup
             fi
-            if [[ FLAG_VERBOSE -eq 1 ]]; then
-            saydebug "Generating machine-id"
-            fi
-            truncate -s 0 /etc/machine-id
-            systemd-machine-id-setup
-        fi
 
-        # keep D-Bus in sync
-        if [[ -e /var/lib/dbus/machine-id ]]; then
-            if [[ FLAG_DRYRUN -eq 1 ]]; then
-                saydebug "Would have linked D-Bus machine-id"
+            # keep D-Bus in sync
+            if [[ -e /var/lib/dbus/machine-id ]]; then
+                if [[ FLAG_DRYRUN -eq 1 ]]; then
+                    saydebug "Would have linked D-Bus machine-id"
+                fi
+                if [[ FLAG_VERBOSE -eq 1 ]]; then
+                saydebug "Linking D-Bus machine-id"
+                fi
+                ln -sf /etc/machine-id /var/lib/dbus/machine-id
             fi
-            if [[ FLAG_VERBOSE -eq 1 ]]; then
-            saydebug "Linking D-Bus machine-id"
-            fi
-            ln -sf /etc/machine-id /var/lib/dbus/machine-id
-        fi
 
-        local id
-        id=$(cat /etc/machine-id)
-        sayend "Machine ID setup complete. (ID: $id)"
+            local id
+            id=$(cat /etc/machine-id)
+            sayend "Machine ID setup complete. (ID: $id)"
         }
-
         
         # 2) Configure Hostname and Network
         __configure_network(){
@@ -260,10 +258,10 @@ set -euo pipefail
 
        # 3) Enable SSH and set authorized keys
         __enable_shh(){
-            saystart "Enabling SSH and setting authorized keys..."
+            saydebug "Enabling SSH and setting authorized keys..."
 
             if [[ FLAG_DRYRUN -eq 1 ]]; then
-                saydebug "Would have generated SSH host keys"
+                sayinfo "Would have generated SSH host keys"
             else
                 if [[ FLAG_VERBOSE -eq 1 ]]; then
                     saydebug "Generating SSH host keys"
@@ -296,7 +294,7 @@ set -euo pipefail
                 systemctl restart ssh || systemctl start ssh || true
             fi
 
-            sayend "SSH enabled and authorized keys set."
+            sayok "SSH enabled and authorized keys set."
         }
        
        # 4) Join Domain (optional)
@@ -304,12 +302,39 @@ set -euo pipefail
             saystart "Joining domain"
 
             __get_domain_settings
-
+            __install_samba_client
+            __write_smbconf
+            __finalize_domain_join
 
             sayend "Joined to ${DOMAIN}"
         }
+      # 5) Prepare template for next clone
+        __prepare_template(){
+            saystart "Preparing template for next clone"
 
-    # --- Network config
+            __get_clone_defaults
+
+            # Clear machine-id
+            #__clear_machine_id
+
+            # Remove SSH host keys
+            #__remove_ssh_host_keys
+
+            # Clear temporary and transient directories
+            #__clear_temp_and_caches
+
+            # Clear DHCP leases
+            #__clear_dhcp_leases
+
+            # Trim logs
+            #__trim_logs
+
+            # Ensure first-boot service is present and enabled
+            #__enable_firstboot_service
+
+            sayend "Template preparation complete."
+        }
+    # --- Network config ----------------------------------------------------------
         __get_network_settings(){
             saystart "Collecting settings for Hostname and Network configuration..."
             printf '\n'
@@ -485,9 +510,8 @@ set -euo pipefail
                 sayinfo "Would have applied newly created netplan"
             fi
         }
-        
 
-    # --- Domain join
+    # --- Domain join -------------------------------------------------------------
         __get_domain_settings(){
             saydebug "Collecting settings for Domain Join..."
             printf '\n' 
@@ -510,7 +534,8 @@ set -euo pipefail
                 DOMAIN_LC="$(printf '%s' "$DOMAIN" | tr '[:upper:]' '[:lower:]')"
                 # Derive realm in uppercase (for Kerberos)
                 REALM_UC="$(printf '%s' "$DOMAIN_LC" | tr '[:lower:]' '[:upper:]')"
-                REALM_UC="${REALM_UC%%.*}"   # keep only first label; remove this line if you want EXAMPLE.COM
+                WORKGROUP="${REALM_UC%%.*}"   # keep only first label; remove this line if you want EXAMPLE.COM
+
 
                 # Show derived values (don’t let user overwrite them unless you truly want that)
                 printf "%sDerived domain   : %s\n" "${CLI_ITALIC}" "${DOMAIN_LC:-<none>}"
@@ -535,13 +560,313 @@ set -euo pipefail
             done
             __save_domain_settings
         }
-        __save_domain_settings()
-        {
+        __save_domain_settings(){
             td_state_set "DOMAIN" "$DOMAIN"
             td_state_set "ADM_USR" "$ADM_USR"
         }
 
+        __write_smbconf(){
+            saydebug "Writing smb.conf for domain join..."
+            if [ "${FLAG_DRYRUN:-0}" -eq 1 ]; then
+                sayinfo "Would have written /etc/samba/smb.conf as:"
+                TARGET="/dev/stdout"
+            else
+                TARGET="/etc/samba/smb.conf"
+            fi
+            {
+                printf "%s\n" "[global]"
+                printf "%s\n" "   workgroup = ${WORKGROUP:-${REALM_UC%%.*}}"
+                printf "%s\n" "   realm = ${REALM_UC}"
+                printf "%s\n" "   security = ADS"
+                printf "%s\n" "   server role = member server"
+                printf "%s\n" ""
+                printf "%s\n" "   dedicated keytab file = /etc/krb5.keytab"
+                printf "%s\n" "   kerberos method = secrets and keytab"
+                printf "%s\n" "   allow dns updates = secure only"
+                printf "%s\n" ""
+                printf "%s\n" "   # Pre-join: single idmap so winbind can start"
+                printf "%s\n" "   idmap config * : backend = tdb"
+                printf "%s\n" "   idmap config * : range   = 10000-999999"
+                printf "%s\n" ""
+                printf "%s\n" "   winbind use default domain = yes"
+                printf "%s\n" "   winbind nss info = rfc2307"
+                printf "%s\n" "   winbind offline logon = yes"
+                printf "%s\n" ""
+                printf "%s\n" "   vfs objects = acl_xattr"
+                printf "%s\n" "   map acl inherit = yes"
+                printf "%s\n" "   store dos attributes = yes"
+                printf "%s\n" "   ea support = yes"
+                printf "%s\n" "   template shell = /bin/bash"
+            } > "$TARGET"
+            sayok "smb.conf written to $TARGET"
+        }
 
+        __install_samba_client(){
+            if is_true "$FLAG_DRYRUN"; then
+                sayinfo "Would have installed Samba AD client stack"
+            else
+                saydebug "Installing Samba AD client stack"
+                apt update -y
+                apt install -y samba winbind libnss-winbind libpam-winbind libwbclient0 dnsutils acl attr krb5-user
+                sayok "Samba AD client stack installed"
+            fi
+        }
+
+        __finalize_domain_join(){
+            # -- NSS update
+                if is_true "$FLAG_DRYRUN"; then
+                    sayinfo "Would have updated NSS for domain users"
+                else
+                    saydebug "Updating NSS for domain users"
+
+                    # Safer: ensure winbind is present on passwd/group lines (append if missing)
+                    if grep -qE '^[[:space:]]*passwd:.*\bwinbind\b' /etc/nsswitch.conf; then
+                        saydebug "nsswitch.conf passwd line already includes winbind"
+                    else
+                        sed -i -E 's/^([[:space:]]*passwd:[[:space:]]*.*)$/\1 winbind/' /etc/nsswitch.conf
+                    fi
+
+                    if grep -qE '^[[:space:]]*group:.*\bwinbind\b' /etc/nsswitch.conf; then
+                        saydebug "nsswitch.conf group line already includes winbind"
+                    else
+                        sed -i -E 's/^([[:space:]]*group:[[:space:]]*.*)$/\1 winbind/' /etc/nsswitch.conf
+                    fi
+
+                    sayok "NSS updated for domain users"
+                fi
+            # -- Restart Samba and join domain
+                if is_true "$FLAG_DRYRUN"; then
+                    sayinfo "Would have restarted Samba services"
+                else
+                    saydebug "Restarting Samba services"
+                    systemctl restart smbd nmbd winbind
+                    sayok "Samba services restarted"
+                fi
+
+                if is_true "$FLAG_DRYRUN"; then
+                    sayinfo "Would have joined domain ${DOMAIN} as user ${ADM_USR}"
+                else
+                    saydebug "Joining domain ${DOMAIN} as user ${ADM_USR_NORM}"
+                    kinit "${ADM_USR_NORM}@${REALM_UC}" || { sayfail "kinit failed"; return 1; }
+                    net ads join -U "${ADM_USR_NORM}"    || { sayfail "net ads join failed"; return 1; }
+                    net ads testjoin                     || { sayfail "net ads testjoin failed"; return 1; }
+                    sayok "Joined domain ${DOMAIN} as user ${ADM_USR_NORM}"
+                fi
+            # -- Switch to RID idmap mapping
+                if is_true "$FLAG_DRYRUN"; then
+                    sayinfo "Would have switched to RID idmap mapping"
+                else
+                    saydebug "Switching to RID idmap mapping"
+
+                    [ -n "$WORKGROUP" ] || { sayfail "WORKGROUP is empty"; return 1; }
+
+                    # If it's already RID, skip
+                    if grep -qE "^[[:space:]]*idmap config[[:space:]]+$WORKGROUP[[:space:]]*:[[:space:]]*backend[[:space:]]*=[[:space:]]*rid" /etc/samba/smb.conf; then
+                        sayinfo "RID idmap already configured for $WORKGROUP (skipping)"
+                        return 0
+                    fi
+
+                    tmp="$(mktemp /tmp/smb.conf.XXXXXX)" || { sayfail "mktemp failed"; return 1; }
+
+                    # preserve perms/owner from existing file
+                    chmod --reference=/etc/samba/smb.conf "$tmp" 2>/dev/null || true
+                    chown --reference=/etc/samba/smb.conf "$tmp" 2>/dev/null || true
+
+                    awk -v WG="$WORKGROUP" '
+                        { print }
+                        /kerberos method/ && !x {
+                            x=1
+                            print ""
+                            print "   idmap config *          : backend = tdb"
+                            print "   idmap config *          : range   = 10000-19999"
+                            print "   idmap config " WG "          : backend = rid"
+                            print "   idmap config " WG "          : range   = 20000-999999"
+                        }
+                    ' /etc/samba/smb.conf > "$tmp" && mv "$tmp" /etc/samba/smb.conf || {
+                        rc=$?
+                        rm -f "$tmp"
+                        sayfail "Failed to update smb.conf (rc=$rc)"
+                        return "$rc"
+                    }
+
+                    sayok "Switched to RID idmap mapping"
+                fi
+            # -- Restart services and verify
+            if is_true "$FLAG_DRYRUN"; then
+                sayinfo "Would have restarted winbind and Samba services"
+            else
+                saydebug "Restarting winbind and Samba services"
+                systemctl restart winbind smbd nmbd
+                sayok "winbind and Samba services restarted"
+            fi
+
+            if wbinfo -p && getent passwd "${WORKGROUP}\\${ADM_USR}" >/dev/null; then
+                sayok "Joined and domain users resolvable."
+            else
+                sayfail "Domain join verification failed"
+            fi
+        }
+
+
+
+    # --- Prepare for next clone ---------------------------------------------------
+        __get_clone_defaults(){
+            : "${CLONE_NIC:=${NIC:-eth0}}"
+            : "${CLONE_NETPLAN_FILE:=/etc/netplan/10-netplan-clone.yaml}"
+            : "${CLONE_HOST:=${HOST:-td-ubuntu-template}}"
+            : "${CLONE_IP:=${IP:-192.168.0.200}}"
+            : "${CLONE_CIDR:=${CIDR:-24}}"
+            : "${CLONE_GW:=${GW:-192.168.0.1}}"
+            : "${CLONE_DNS:=${DNS:-192.168.0.1}}"
+
+
+            while true; do
+                printf "${CLI_BORDER}==================================================\n"
+                printf "${CLI_TEXT}   Prepare template for next clone settings\n"
+                printf "${CLI_BORDER}==================================================\n"
+
+                ask --label "Hostname for template" --var CLONE_HOST --default "$CLONE_HOST" --colorize both 
+                ask --label "Network interface for template" --var CLONE_NIC --default "$CLONE_NIC" --colorize both  
+                ask --label "Static IPv4 for template" --var CLONE_IP --default "$CLONE_IP" --colorize=both --validate_fn=validate_ip
+                ask --label "CIDR prefix for template (e.g. 24)" --var CLONE_CIDR --default "$CLONE_CIDR" --colorize=both --validate_fn=validate_cidr 
+                ask --label "Gateway IPv4 for template" --var CLONE_GW --default "$CLONE_GW" --colorize=both --validate_fn=validate_ip
+                ask --label "DNS servers for template (comma-separated)" --var CLONE_DNS --default "$CLONE_DNS" --colorize=both 
+                ask --label "Netplan filename for template" --var CLONE_NETPLAN_FILE --default "$CLONE_NETPLAN_FILE" --colorize=both
+
+                printf "${CLI_BORDER}==================================================\n"
+
+                ask_autocontinue 15 
+                rc=$?
+                printf "shoudlve printed something"
+                printf "Decision: %d\n" "$rc"
+                case "$rc" in
+                    0)  saydebug "Proceding"
+                        break ;;
+                    1)  saydebug "Redo" 
+                        continue ;;
+                    2)  saycancel "Cancelled as per user request"
+                        exit 1 ;;
+                    *)  sayfail "Unexpected response: $rc" 
+                        exit 2 ;;
+                esac
+            done
+            __save_clone_defaults
+
+        }
+        __save_clone_defaults(){
+            td_state_set "CLONE_NIC" "$CLONE_NIC"
+            td_state_set "CLONE_HOST" "$CLONE_HOST"
+            td_state_set "CLONE_IP" "$CLONE_IP"
+            td_state_set "CLONE_CIDR" "$CLONE_CIDR"
+            td_state_set "CLONE_GW" "$CLONE_GW"
+            td_state_set "CLONE_DNS" "$CLONE_DNS"
+            td_state_set "CLONE_NETPLAN_FILE" "$CLONE_NETPLAN_FILE"
+        }
+
+        __clear_machine_id(){
+            saydebug "Clearing machine-id..."
+            if [[ "${FLAG_DRYRUN:-0}" -eq 1 ]]; then
+                sayinfo "Would have cleared /etc/machine-id"
+            else
+                truncate -s 0 /etc/machine-id
+                sayok "/etc/machine-id cleared"
+            fi
+        }
+
+        __remove_ssh_host_keys(){
+            saydebug "Removing SSH host keys..."
+            if [[ "${FLAG_DRYRUN:-0}" -eq 1 ]]; then
+                sayinfo "Would have removed SSH host keys in /etc/ssh/"
+            else
+                rm -f /etc/ssh/ssh_host_*
+                sayok "SSH host keys removed"
+            fi
+        }
+
+        __clear_temp_and_caches(){
+            saydebug "Clearing temporary files and caches..."
+            if [[ "${FLAG_DRYRUN:-0}" -eq 1 ]]; then
+                sayinfo "Would have cleared /tmp and /var/tmp"
+            else
+                rm -rf /tmp/* /var/tmp/*
+                sayok "Temporary files and caches cleared"
+            fi
+        }
+
+        __clear_dhcp_leases(){
+            saydebug "Clearing DHCP leases..."
+            if [[ "${FLAG_DRYRUN:-0}" -eq 1 ]]; then
+                sayinfo "Would have cleared DHCP leases in /var/lib/dhcp/"
+            else
+                rm -f /var/lib/dhcp/dhclient*.leases
+                sayok "DHCP leases cleared"
+            fi
+        }
+
+        __trim_logs(){
+            saydebug "Trimming log files..."
+            if [[ "${FLAG_DRYRUN:-0}" -eq 1 ]]; then
+                sayinfo "Would have trimmed log files in /var/log/"
+            else
+                find /var/log -type f -exec truncate -s 0 {} \;
+                sayok "Log files trimmed"
+            fi
+        }
+
+        __cleanup_netplans(){
+            saydebug "Cleaning up netplan configurations..."
+            if [[ "${FLAG_DRYRUN:-0}" -eq 1 ]]; then
+                sayinfo "Would have removed existing netplan configurations except the active one"
+            else
+                for f in /etc/netplan/*.yaml; do
+                    if [ "$f" != "$NETPLAN_FILE" ]; then
+                        rm -f "$f"
+                    fi
+                done
+                sayok "Netplan configurations cleaned up"
+            fi
+        }
+
+        __create_netplan(){
+            saydebug "Creating minimal netplan configuration..."
+            if [[ "${FLAG_DRYRUN:-0}" -eq 1 ]]; then
+                NETPLAN_PREVIEW="$(__minimal_netplan)"
+                sayinfo "Netplan config would be:"
+                echo
+                echo "$NETPLAN_PREVIEW"
+            else
+                __minimal_netplan > "$CLONE_NETPLAN_FILE"
+                chmod 0600 "$CLONE_NETPLAN_FILE"
+                sayok "Minimal netplan written to $CLONE_NETPLAN_FILE"
+            fi
+        }
+        __enable_firstboot_service(){
+            saydebug "Enabling first-boot service..."
+            if [[ "${FLAG_DRYRUN:-0}" -eq 1 ]]; then
+                sayinfo "Would have ensured first-boot service is enabled"
+            else
+                # Placeholder: Implement enabling first-boot service as needed
+                sayok "First-boot service enabled (placeholder)"
+            fi
+        }
+
+        __minimal_netplan(){
+            echo "# Minimal netplan generated by clone-config.sh"
+            echo "network:"
+            echo "  version: 2"
+            echo "  renderer: networkd"
+            echo "  ethernets:"
+            echo "    $CLONE_NIC:"
+            echo "      dhcp4: no"
+            echo "      addresses:"
+            echo "        - {$CLONE_IP}/$CLONE_CIDR"
+            echo "      routes:"
+            echo "        - to: default"
+            echo "          via: $CLONE_GW"
+            echo "      nameservers:"
+            echo "        addresses:"
+            echo "          - $CLONE_DNS"
+        }
 
 # === main() must be the last function in the script ==============================
     main() {
@@ -582,7 +907,7 @@ set -euo pipefail
                         ;;
                     2)
                         wait_after=5
-                    __configure_network
+                        __configure_network
                         ;;
                     3)
                         wait_after=5
@@ -594,8 +919,7 @@ set -euo pipefail
                         ;;
                     5)
                         wait_after=10
-                        sayinfo "Preparing template for next clone..."
-                        # Placeholder for actual implementation
+                        __prepare_template
                         ;;
                     6)
                         wait_after=0.5
