@@ -869,47 +869,6 @@ set -euo pipefail
         }
 #
 
-__temp_TestingDlg() {
-    ################################################################################
-    # Test dialog functions
-    ################################################################################
-    if dlg_autocontinue 15 "With a message to the user above the prompt." "ACRPQ"; then
-        rc=0
-    else
-        rc=$?
-    fi
-    saydebug "Decision: ${rc:- <none> }"
-    __temp_mapoutcome $rc
-
-    if dlg_autocontinue 5 "Just wait..." " " ; then
-        rc=0
-    else
-        rc=$?
-    fi
-    __temp_mapoutcome $rc
-
-    if dlg_autocontinue 15 "Press any key to continue" "A" ; then
-        rc=0
-    else
-        rc=$?
-    fi
-    saydebug "Decision: ${rc:- <none> }"
-    __temp_mapoutcome $rc
-        
-}
-__temp_mapoutcome(){
-         rc=$1
-         case $rc in
-            0)  saydebug "User chose to continue" ;;
-            1)  saydebug "Auto-continue timeout reached" ;;
-            2)  saycancel "Cancelled as per user request" ;;
-            3)  saydebug "Redo as per user request." ;;
-            4)  sayinfo "Quit as per user request."
-                exit 0 ;;
-            *)  sayfail "Unexpected response: $rc"
-                exit 1 ;;
-        esac
-}
 # === main() must be the last function in the script ==============================
     main() {
         # --- Bootstrap -----------------------------------------------------------
@@ -936,9 +895,7 @@ __temp_mapoutcome(){
             wait_after=0
             while true; do
                 clear
-                __temp_TestingDlg
-
-
+               
                 __show_mainmenu
 
                 read -rp "${BOLD_SILVER}Select an option [1-8]: ${BOLD_YELLOW}" choice
