@@ -1,2 +1,2 @@
 #!/usr/bin/env bash
-exec bash <path to .sh> "$@"
+exec bash /usr/local/lib/testadura/common/tools/prepare-release.sh "$@"

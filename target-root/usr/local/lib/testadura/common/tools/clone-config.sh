@@ -20,9 +20,9 @@ set -euo pipefail
     TD_SCRIPT_DIR="$(cd -- "$(dirname -- "$TD_SCRIPT_FILE")" && pwd)"
     TD_SCRIPT_BASE="$(basename -- "$TD_SCRIPT_FILE")"
     TD_SCRIPT_NAME="${TD_SCRIPT_BASE%.sh}"
+    TD_LOG_PATH="/var/log/testadura/${SGND_PRODUCT:-$TD_SCRIPT_NAME}.log"
     TD_SCRIPT_DESC="Canonical executable template for Testadura scripts"
     TD_SCRIPT_VERSION="1.0"
-    TD_SCRIPT_VERSION_STATUS="beta"
     TD_SCRIPT_BUILD="20250110"    
     TD_SCRIPT_DEVELOPERS="Mark Fieten"
     TD_SCRIPT_COMPANY="Testadura Consultancy"
@@ -31,17 +31,47 @@ set -euo pipefail
 
 # --- Framework roots (explicit) --------------------------------------------------
     # Override from environment if desired:
-    # Directory where Testadura framework is installed
-    TD_FRAMEWORK_ROOT="${TD_FRAMEWORK_ROOT:-/}"
-    # Application root (where this script is deployed)
-    TD_APPLICATION_ROOT="${TD_APPLICATION_ROOT:-/}"
-    # Common libraries path
-    TD_COMMON_LIB="${TD_COMMON_LIB:-$TD_FRAMEWORK_ROOT/usr/local/lib/testadura/common}"
-    # State and config files
-    TD_STATE_FILE="${TD_STATE_FILE:-"$TD_APPLICATION_ROOT/var/testadura/$TD_SCRIPT_NAME.state"}"
-    TD_CFG_FILE="${TD_CFG_FILE:-"$TD_APPLICATION_ROOT/etc/testadura/$TD_SCRIPT_NAME.cfg"}"
-    # User home directory
-    TD_USER_HOME="$(getent passwd "${SUDO_USER:-$USER}" | cut -d: -f6)"
+    TD_FRAMEWORK_ROOT="${TD_FRAMEWORK_ROOT:-/}" # Directory where Testadura framework is installed
+    TD_APPLICATION_ROOT="${TD_APPLICATION_ROOT:-/}" # Application root (where this script is deployed)
+    TD_COMMON_LIB="${TD_COMMON_LIB:-$TD_FRAMEWORK_ROOT/usr/local/lib/testadura/common}" # Common libraries path
+    TD_STATE_FILE="${TD_STATE_FILE:-"$TD_APPLICATION_ROOT/var/testadura/$TD_SCRIPT_NAME.state"}" # State file path
+    TD_CFG_FILE="${TD_CFG_FILE:-"$TD_APPLICATION_ROOT/etc/testadura/$TD_SCRIPT_NAME.cfg"}" # Config file path
+    TD_USER_HOME="$(getent passwd "${SUDO_USER:-$USER}" | cut -d: -f6)" # User home directory
+
+    TD_LOGFILE_ENABLED="${TD_LOGFILE_ENABLED:-0}"  # Enable logging to file (1=yes,0=no)
+    TD_CONSOLE_MSGTYPES="${TD_CONSOLE_MSGTYPES:-STRT|WARN|FAIL|END}"  # Enable logging to file (1=yes,0=no)
+    TD_LOG_PATH="${TD_LOG_PATH:-/var/log/testadura/solidgroundux.log}" # Log file path
+    TD_ALTLOG_PATH="${TD_ALTLOG_PATH:-~/.state/testadura/solidgroundux.log}" # Alternate Log file path
+
+
+# --- UI Control --------------------------------------------------------------------
+    ui_init() {
+        UI_ACTIVE=0
+        if ! exec 3<>/dev/tty; then
+            UIFD=""
+            return 1
+        fi
+        UIFD=3
+        trap ui_leave EXIT INT TERM
+    }
+
+    ui_enter() { 
+        UI_ACTIVE=1
+        tput smcup >&"$UIFD"; tput clear >&"$UIFD"; 
+    }
+    
+    ui_leave() {
+        if [[ "$UI_ACTIVE" -eq 0 ]]; then
+            return 0
+        fi
+        UI_ACTIVE=0  
+        tput rmcup >&"$UIFD"
+        tput cud1  >&"$UIFD"   # cursor down 1
+    }
+    
+    ui_print() { printf '%s' "$*" >&$UIFD; }
+
+    ui_printf() { printf "$@" >&$UIFD ; }
 
 # --- Minimal fallback UI (overridden by ui.sh when sourced) ----------------------
     saystart()   { printf '[STRT] %s\n' "$*" >&2; }
@@ -872,6 +902,8 @@ set -euo pipefail
 # === main() must be the last function in the script ==============================
     main() {
         # --- Bootstrap -----------------------------------------------------------
+            # -- UI Control
+                ui_init
             # -- Source libraries
                 td_source_libs
             

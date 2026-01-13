@@ -17,9 +17,9 @@ set -euo pipefail
     TD_SCRIPT_DIR="$(cd -- "$(dirname -- "$TD_SCRIPT_FILE")" && pwd)"
     TD_SCRIPT_BASE="$(basename -- "$TD_SCRIPT_FILE")"
     TD_SCRIPT_NAME="${TD_SCRIPT_BASE%.sh}"
+    TD_LOG_PATH="/var/log/testadura/${SGND_PRODUCT:-$TD_SCRIPT_NAME}.log"
     TD_SCRIPT_DESC=" Creates a clean tar.gz release archive of a workspace"
     TD_SCRIPT_VERSION="1.0"
-    TD_SCRIPT_VERSION_STATUS="beta"
     TD_SCRIPT_BUILD="20250110"    
     TD_SCRIPT_DEVELOPERS="Mark Fieten"
     TD_SCRIPT_COMPANY="Testadura Consultancy"
@@ -28,47 +28,62 @@ set -euo pipefail
 
 # --- Framework roots (explicit) --------------------------------------------------
     # Override from environment if desired:
-    # Directory where Testadura framework is installed
-    TD_FRAMEWORK_ROOT="${TD_FRAMEWORK_ROOT:-/}"
-    # Application root (where this script is deployed)
-    TD_APPLICATION_ROOT="${TD_APPLICATION_ROOT:-/}"
-    # Common libraries path
-    TD_COMMON_LIB="${TD_COMMON_LIB:-$TD_FRAMEWORK_ROOT/usr/local/lib/testadura/common}"
-    # State and config files
-    TD_STATE_FILE="${TD_STATE_FILE:-"$TD_APPLICATION_ROOT/var/testadura/$TD_SCRIPT_NAME.state"}"
-    TD_CFG_FILE="${TD_CFG_FILE:-"$TD_APPLICATION_ROOT/etc/testadura/$TD_SCRIPT_NAME.cfg"}"
+    TD_FRAMEWORK_ROOT="${TD_FRAMEWORK_ROOT:-/}" # Directory where Testadura framework is installed
+    TD_APPLICATION_ROOT="${TD_APPLICATION_ROOT:-/}" # Application root (where this script is deployed)
+    TD_COMMON_LIB="${TD_COMMON_LIB:-$TD_FRAMEWORK_ROOT/usr/local/lib/testadura/common}" # Common libraries path
+    TD_STATE_FILE="${TD_STATE_FILE:-"$TD_APPLICATION_ROOT/var/testadura/$TD_SCRIPT_NAME.state"}" # State file path
+    TD_CFG_FILE="${TD_CFG_FILE:-"$TD_APPLICATION_ROOT/etc/testadura/$TD_SCRIPT_NAME.cfg"}" # Config file path
+    TD_USER_HOME="$(getent passwd "${SUDO_USER:-$USER}" | cut -d: -f6)" # User home directory
+
+    TD_LOGFILE_ENABLED="${TD_LOGFILE_ENABLED:-0}"  # Enable logging to file (1=yes,0=no)
+    TD_CONSOLE_MSGTYPES="${TD_CONSOLE_MSGTYPES:-STRT|WARN|FAIL|END}"  # Enable logging to file (1=yes,0=no)
+    TD_LOG_PATH="${TD_LOG_PATH:-/var/log/testadura/solidgroundux.log}" # Log file path
+    TD_ALTLOG_PATH="${TD_ALTLOG_PATH:-~/.state/testadura/solidgroundux.log}" # Alternate Log file path
+    TD_LOG_MAX_BYTES="${TD_LOG_MAX_BYTES:-$((25 * 1024 * 1024))}" # 25 MiB
+    TD_LOG_KEEP="${TD_LOG_KEEP:-20}" # keep N rotated logs
+    TD_LOG_COMPRESS="${TD_LOG_COMPRESS:-1}" # gzip rotated logs (1/0)
     # User home directory
     TD_USER_HOME="$(getent passwd "${SUDO_USER:-$USER}" | cut -d: -f6)"
 
 # --- Minimal fallback UI (overridden by ui.sh when sourced) ----------------------
-    saystart()   { printf '[STRT] %s\n' "$*" >&2; }
-    saywarning() { printf '[WARN] %s\n' "$*" >&2; }
-    sayfail()    { printf '[FAIL] %s\n' "$*" >&2; }
-    saycancel()  { printf '[CNCL] %s\n' "$*" >&2; }
-    sayend()     { printf '[END ] %s\n' "$*" >&2; }
-    sayok()      { printf '[OK  ] %s\n' "$*" >&2; }
-    sayinfo()    { printf '[INFO] %s\n' "$*" >&2; }
-    sayerror()   { printf '[ERR ] %s\n' "$*" >&2; }
+    saystart()   { printf 'START  \t%s\n' "$*" >&2; }
+    saywarning() { printf 'WARNING \t%s\n' "$*" >&2; }
+    sayfail()    { printf 'FAIL    \t%s\n' "$*" >&2; }
+    saycancel()  { printf 'CANCEL  \t%s\n' "$*" >&2; }
+    sayend()     { printf 'END     \t%s\n' "$*" >&2; }
+    sayok()      { printf 'OK      \t%s\n' "$*" >&2; }
+    sayinfo()    { printf 'INFO    \t%s\n' "$*" >&2; }
+    sayerror()   { printf 'ERR     \t%s\n' "$*" >&2; }
+
 # --- UI Control --------------------------------------------------------------------
     ui_init() {
-        exec 3<>/dev/tty
+        UI_ACTIVE=0
+        if ! exec 3<>/dev/tty; then
+            UIFD=""
+            return 1
+        fi
         UIFD=3
-        
         trap ui_leave EXIT INT TERM
-        ui_enter
     }
 
-    ui_enter() { tput smcup >&"$UIFD"; tput clear >&"$UIFD"; }
-    ui_leave() { 
+    ui_enter() { 
+        UI_ACTIVE=1
+        tput smcup >&"$UIFD"; tput clear >&"$UIFD"; 
+    }
+    
+    ui_leave() {
+        if [[ "$UI_ACTIVE" -eq 0 ]]; then
+            return 0
+        fi
+        UI_ACTIVE=0  
         tput rmcup >&"$UIFD"
         tput cud1  >&"$UIFD"   # cursor down 1
     }
     
     ui_print() { printf '%s' "$*" >&$UIFD; }
 
-    ui_printf() {
-        printf "$@" >&$UIFD
-    }
+    ui_printf() { printf "$@" >&$UIFD ; }
+
 # --- Using / imports -------------------------------------------------------------
     # Libraries to source from TD_COMMON_LIB
     TD_USING=(
@@ -157,6 +172,10 @@ set -euo pipefail
         printf "TD_STATE_FILE       : %s\n" "${TD_STATE_FILE:-<none>}"
         printf "TD_CFG_FILE         : %s\n" "${TD_CFG_FILE:-<none>}"
 
+        printf "TD_LOGFILE_ENABLED : %s\n" "${TD_LOGFILE_ENABLED:-<none>}"
+        printf "TD_LOG_PATH        : %s\n" "${TD_LOG_PATH:-<none>}"
+        printf "TD_ALTLOG_PATH     : %s\n" "${TD_ALTLOG_PATH:-<none>}"
+        
         printf -- "Arguments / Flags:\n"
 
         local entry varname
@@ -210,7 +229,6 @@ set -euo pipefail
         TAR_FILE="${TAR_FILE:-"$RELEASE.tar.gz"}"
         FLAG_AUTO="${FLAG_AUTO:-0}"
         FLAG_CLEANUP="${FLAG_CLEANUP:-0}"
-        FLAG_USEEXISTING="${FLAG_USEEXISTING:-0}"
 
         if [[ "${FLAG_AUTO:-0}" -eq 1 ]]; then
              sayinfo "Auto mode: using last deployment or default settings."
@@ -218,10 +236,9 @@ set -euo pipefail
         fi
 
         while true; do
-            ui_printf "\n${CLI_BORDER}================================================================\n"
-            ui_printf "${CLI_TEXT}   Prepare Release                                        ${RUN_MODE}\n"                        
-            ui_printf "${CLI_BORDER}================================================================\n"
-
+            printf "\n${CLI_BORDER}================================================================\n"
+            printf "${CLI_TEXT}   Prepare Release                                        ${RUN_MODE}\n"                        
+            printf "${CLI_BORDER}================================================================\n"
             ask --label "Release" --var RELEASE --default "$RELEASE" --colorize both 
             ask --label "Source directory" --var SOURCE_DIR --default "$SOURCE_DIR" --validate_fn validate_dir_exists --colorize both
             ask --label "Staging directory" --var STAGING_ROOT --default "$STAGING_ROOT" --validate_fn validate_dir_exists--colorize both
@@ -237,16 +254,22 @@ set -euo pipefail
             else
                 FLAG_CLEANUP=0
             fi
-            ask --label "Use existing staging files (Y/N)" --var usestaging --default "$usestaging" --choices "Y,N" --colorize both
-            if [[ "$usestaging" == "Y" || "$usestaging" == "y" ]]; then
+            
+             if [[ "$FLAG_USEEXISTING" -eq 1 ]]; then
+                useexisting="Y"
+            else
+                useexisting="N"
+            fi
+            ask --label "Use existing staging files (Y/N)" --var useexisting --default "$useexisting" --choices "Y,N" --colorize both
+            if [[ "$useexisting" == "Y" || "$useexisting" == "y" ]]; then
                 FLAG_USEEXISTING=1
             else
                 FLAG_USEEXISTING=0
             fi
-            ui_printf "${CLI_BORDER}===============================================================\n"
-            ui_printf "\n"
+            printf "${CLI_BORDER}===============================================================\n"
+            printf "\n"
             
-            if dlg_autocontinue 10 "" "APRC"; then
+            if dlg_autocontinue 10 "Create a release using these settings?" "APRC"; then
                 rc=0
             else
                 rc=$?
@@ -264,7 +287,6 @@ set -euo pipefail
                     ;;
                 2)
                     saycancel "Operation cancelled by user."
-                    break
                     exit 1
                     ;;
                 3)
@@ -278,12 +300,11 @@ set -euo pipefail
         done
     }
 
-
    __create_tar() {
 
     saystart "Creating release: $RELEASE"
 
-    STAGE_PATH="${STAGING_DIR%/}/$RELEASE"
+    STAGE_PATH="${STAGING_ROOT%/}/$RELEASE"
 
     if [[ "$FLAG_DRYRUN" -eq 1 ]]; then
         sayinfo "Would have check/created directory: $STAGE_PATH"
@@ -309,7 +330,7 @@ set -euo pipefail
     fi
 
     # --- Create tar.gz -----------------------------------------------------------
-    TAR_PATH="${STAGING_DIR%/}/$TAR_FILE"
+    TAR_PATH="${STAGING_ROOT%/}/$TAR_FILE"
     saydebug "Creating tar.gz archive $TAR_PATH from staged files in $STAGE_PATH"
 
     if [[ "$FLAG_DRYRUN" -eq 1 ]]; then
@@ -333,55 +354,26 @@ set -euo pipefail
     fi
 
     if [[ "$FLAG_DRYRUN" -eq 1 ]]; then
-        sayinfo "Would have listed available releases in: ${STAGING_DIR%/}"
+        sayinfo "Would have listed available releases in: ${STAGING_ROOT%/}"
     else
         sayinfo "Release created successfully. Available releases:"
-        ls -ltr "${STAGING_DIR%/}"/*.tar.gz 2>/dev/null || true
+        ls -ltr "${STAGING_ROOT%/}"/*.tar.gz 2>/dev/null || true
     fi
 
     sayend "Release created."
 
     dlg_autocontinue 15 "Press any key to continue..." "A"
-}
-
-
+    }
     
+
 # === main() must be the last function in the script ==============================
-___quicktest()
-{
-        if dlg_autocontinue 15 "Create release with these settings?" "EPRC"; then
-                rc=0
-            else
-                rc=$?
-            fi
-            case "$rc" in
-                0) 
-                    saydebug "Proceding with release creation..."
-                    __save_parameters
-                    break;
-                    ;;
-                1)
-                    saydebug "Redoing input..."
-                    continue
-                    ;;
-                2)
-                    saycancel "Operation cancelled by user."
-                    ui_leave
-                    exit 1
-                    ;;
-                *)
-                    continue
-                    ;;
-            esac
-}
     main() {
     # --- Bootstrap ---------------------------------------------------------------
-
+        # -- Initialize  UI 
+            ui_init
 
         # -- Source libraries 
-        td_source_libs
-
-        ui_init
+            td_source_libs
 
         # -- Ensure sudo or non-sudo as desired 
             #need_root "$@"
@@ -397,6 +389,7 @@ ___quicktest()
             FLAG_DRYRUN="${FLAG_DRYRUN:-0}"   
             FLAG_VERBOSE="${FLAG_VERBOSE:-0}"
             FLAG_STATERESET="${FLAG_STATERESET:-0}"
+            FLAG_USEEXISTING="${FLAG_USEEXISTING:-0}"
             __set_runmodes
 
     # --- Main script logic here --------------------------------------------------

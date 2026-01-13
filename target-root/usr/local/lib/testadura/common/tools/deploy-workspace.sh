@@ -36,29 +36,34 @@ set -euo pipefail
     TD_SCRIPT_COPYRIGHT="© 2025 Mark Fieten — Testadura Consultancy"
     TD_SCRIPT_LICENSE="Testadura Non-Commercial License (TD-NC) v1.0"
 
+    TD_LOGFILE_ENABLED="${TD_LOGFILE_ENABLED:-1}"  # Enable logging to file (1=yes,0=no)
+    TD_CONSOLE_MSGTYPES="${TD_CONSOLE_MSGTYPES:-STRT|WARN|FAIL|END}"  # Enable logging to file (1=yes,0=no)
+    TD_LOG_PATH="${TD_LOG_PATH:-/var/log/testadura/solidgroundux.log}" # Log file path
+    TD_ALTLOG_PATH="${TD_ALTLOG_PATH:-~/.state/testadura/solidgroundux.log}" # Alternate Log file path
+
 # --- Framework roots (explicit) -----------------------------------------------
     # Override from environment if desired:
-    # Directory where Testadura framework is installed
-    TD_FRAMEWORK_ROOT="${TD_FRAMEWORK_ROOT:-/}"
-    # Application root (where this script is deployed)
-    TD_APPLICATION_ROOT="${TD_APPLICATION_ROOT:-/}"
-    # Common libraries path
-    TD_COMMON_LIB="${TD_COMMON_LIB:-$TD_FRAMEWORK_ROOT/usr/local/lib/testadura/common}"
-    # State and config files
-    TD_STATE_FILE="${TD_STATE_FILE:-"$TD_APPLICATION_ROOT/var/testadura/$TD_SCRIPT_NAME.state"}"
-    TD_CFG_FILE="${TD_CFG_FILE:-"$TD_APPLICATION_ROOT/etc/testadura/$TD_SCRIPT_NAME.cfg"}"
-    # User home directory
-    TD_USER_HOME="$(getent passwd "${SUDO_USER:-$USER}" | cut -d: -f6)"
+    TD_FRAMEWORK_ROOT="${TD_FRAMEWORK_ROOT:-/}" # Directory where Testadura framework is installed
+    TD_APPLICATION_ROOT="${TD_APPLICATION_ROOT:-/}" # Application root (where this script is deployed)
+    TD_COMMON_LIB="${TD_COMMON_LIB:-$TD_FRAMEWORK_ROOT/usr/local/lib/testadura/common}" # Common libraries path
+    TD_STATE_FILE="${TD_STATE_FILE:-"$TD_APPLICATION_ROOT/var/testadura/$TD_SCRIPT_NAME.state"}" # State file path
+    TD_CFG_FILE="${TD_CFG_FILE:-"$TD_APPLICATION_ROOT/etc/testadura/$TD_SCRIPT_NAME.cfg"}" # Config file path
+    TD_USER_HOME="$(getent passwd "${SUDO_USER:-$USER}" | cut -d: -f6)" # User home directory
+
+    TD_LOGFILE_ENABLED="${TD_LOGFILE_ENABLED:-0}"  # Enable logging to file (1=yes,0=no)
+    TD_CONSOLE_MSGTYPES="${TD_CONSOLE_MSGTYPES:-STRT|WARN|FAIL|END}"  # Enable logging to file (1=yes,0=no)
+    TD_LOG_PATH="${TD_LOG_PATH:-/var/log/testadura/solidgroundux.log}" # Log file path
+    TD_ALTLOG_PATH="${TD_ALTLOG_PATH:-~/.state/testadura/solidgroundux.log}" # Alternate Log file path
 
 # --- Minimal fallback UI (overridden by ui.sh when sourced) -------------------
-    saystart()   { printf '[STRT] %s\n' "$*" >&2; }
-    saywarning() { printf '[WARN] %s\n' "$*" >&2; }
-    sayfail()    { printf '[FAIL] %s\n' "$*" >&2; }
-    saycancel()  { printf '[CNCL] %s\n' "$*" >&2; }
-    sayend()     { printf '[END ] %s\n' "$*" >&2; }
-    sayok()      { printf '[OK  ] %s\n' "$*" >&2; }
-    sayinfo()    { printf '[INFO] %s\n' "$*" >&2; }
-    sayerror()   { printf '[ERR ] %s\n' "$*" >&2; }
+    saystart()   { printf 'STRT   %s\n' "$*" >&2; }
+    saywarning() { printf 'WARN   %s\n' "$*" >&2; }
+    sayfail()    { printf 'FAIL   %s\n' "$*" >&2; }
+    saycancel()  { printf 'CANCEL %s\n' "$*" >&2; }
+    sayend()     { printf 'END    %s\n' "$*" >&2; }
+    sayok()      { printf 'OK     %s\n' "$*" >&2; }
+    sayinfo()    { printf 'INFO   %s\n' "$*" >&2; }
+    sayerror()   { printf 'ERROR  %s\n' "$*" >&2; }
 
 # --- Using / imports ----------------------------------------------------------
     # Edit this list per script, like a “using” section in C#.

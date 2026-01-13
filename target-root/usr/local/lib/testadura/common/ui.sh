@@ -58,7 +58,151 @@
   SAY_DATE_FORMAT="${SAY_DATE_FORMAT:-%Y-%m-%d %H:%M:%S}"  # date format for --date
 
   # --- say -----------------------------------------------------------------------
-    # Options supported by say():
+    # Helpers
+        __say_should_print_console() {
+            local type="${1^^}"
+            local list="${TD_CONSOLE_MSGTYPES^^}"
+
+            [[ "${FLAG_VERBOSE:-0}" -eq 1 ]] && return 0
+            [[ "|$list|" == *"|$type|"* ]]
+         }
+        __can_append() {
+            # Returns 0 if we can append to $1 (file exists and writable, or dir writable to create)
+            local f="$1"
+            local d
+
+            [[ -n "$f" ]] || return 1
+            d="$(dirname -- "$f")"
+
+            # Existing file must be writable
+            if [[ -e "$f" ]]; then
+                [[ -f "$f" && -w "$f" ]] || return 1
+                return 0
+            fi
+
+            # Non-existing file: directory must exist and be writable, OR be creatable (mkdir -p)
+            if [[ -d "$d" ]]; then
+                [[ -w "$d" ]] || return 1
+                return 0
+            fi
+
+            # Try to create directory path (silently)
+            mkdir -p -- "$d" 2>/dev/null || return 1
+            [[ -w "$d" ]] || return 1
+            return 0
+         }
+        __td_logfile() {
+            
+            # Determine logfile path according to priority:
+            # 1. TD_LOG_PATH if set and usable
+            if [[ -n "${TD_LOG_PATH:-}" ]] && __can_append "$TD_LOG_PATH"; then
+                printf '%s' "$TD_LOG_PATH"
+                return 0
+            fi
+
+            # 2. TD_ALT_LOGPATH if set and usable
+            if [[ -n "${TD_ALT_LOGPATH:-}" ]] && __can_append "$TD_ALT_LOGPATH"; then
+                printf '%s' "$TD_ALT_LOGPATH"
+                return 0
+            fi
+
+            return 1
+         }
+        __say_caller() {
+        local i
+        for ((i=1; i<${#FUNCNAME[@]}; i++)); do
+            case "${FUNCNAME[$i]}" in
+                say|sayinfo|saywarning|sayfail|saydebug|justsay)
+                    continue
+                    ;;
+                *)
+                    printf '%s:%s:%s' \
+                        "${FUNCNAME[$i]}" \
+                        "${BASH_SOURCE[$i]}" \
+                        "${BASH_LINENO[$((i-1))]}"
+                    return
+                    ;;
+            esac
+        done
+        printf '<main>:<unknown>:?'
+     }
+        __say_write_log() {
+            local type="${1^^}"
+            local msg="$2"
+            local date_str="$3"
+
+            (( TD_LOGFILE_ENABLED )) || return 0
+
+            local logfile
+            logfile="$(__td_logfile)" || return 0
+            [[ -n "$logfile" ]] || return 0
+
+            local log_ts log_user caller_func caller_file caller_line clean_msg log_line
+
+            if [[ -n "$date_str" ]]; then
+                log_ts="$date_str"
+            else
+                log_ts="$(date "+${SAY_DATE_FORMAT}")"
+            fi
+
+            log_user="$(id -un 2>/dev/null || printf '%s' "${USER:-unknown}")"
+            IFS=$'\t' read -r caller_func caller_file caller_line <<< "$(__say_caller)"
+
+            clean_msg="$msg"
+            clean_msg="$(printf '%s' "$clean_msg" | sed -r 's/\x1B\[[0-9;]*[[:alpha:]]//g')"
+            clean_msg="${clean_msg//$'\r'/}"
+            clean_msg="${clean_msg//$'\n'/\\n}"
+            clean_msg="${clean_msg//$'\t'/\\t}"
+
+            log_line="${log_ts} user=${log_user} type=${type} caller=${caller_func}:${caller_file}:${caller_line} msg=${clean_msg}"
+
+            local size add_bytes
+            size=$(stat -c %s "$logfile" 2>/dev/null || echo 0)
+            add_bytes=$(( ${#log_line} + 1 ))   # +1 for '\n'
+
+            saydebug "Log size: $size + ${add_bytes} bytes; max is $TD_LOG_MAX_BYTES bytes"
+
+            if (( size + add_bytes >= TD_LOG_MAX_BYTES )); then
+                __td_rotate_logs "$logfile"
+            fi
+
+            printf '%s\n' "$log_line" >>"$logfile" 2>/dev/null || true
+         }
+         __td_rotate_logs() {
+                # Usage: __td_rotate_logs "/path/to/logfile"
+                local logfile="$1"
+                [[ -n "$logfile" ]] || return 0
+                [[ -f "$logfile" ]] || return 0
+
+                # If not exceeding, do nothing (caller can pre-check; keep safe here too)
+                local size
+                size="$(wc -c < "$logfile" 2>/dev/null)" || return 0
+                (( size >= TD_LOG_MAX_BYTES )) || return 0
+
+                local i src dst
+                # Shift: logfile.N(.gz) -> logfile.(N+1)(.gz)
+                for (( i=TD_LOG_KEEP; i>=1; i-- )); do
+                    src="${logfile}.${i}"
+                    dst="${logfile}.$((i+1))"
+                    [[ -f "$src" ]] && mv -f -- "$src" "$dst" 2>/dev/null || true
+                    [[ -f "${src}.gz" ]] && mv -f -- "${src}.gz" "${dst}.gz" 2>/dev/null || true
+                done
+
+                # Move current to .1
+                mv -f -- "$logfile" "${logfile}.1" 2>/dev/null || true
+
+                # Recreate (keep perms reasonable; adjust if you manage perms elsewhere)
+                : > "$logfile" 2>/dev/null || true
+
+                # Compress rotated file
+                if (( TD_LOG_COMPRESS )) && [[ -f "${logfile}.1" ]]; then
+                    gzip -f "${logfile}.1" 2>/dev/null || true
+                fi
+
+                # Trim oldest beyond keep
+                rm -f -- "${logfile}.$((TD_LOG_KEEP+1))" "${logfile}.$((TD_LOG_KEEP+1)).gz" 2>/dev/null || true
+            }
+        # Options supported by say():
       #
       #   - --type <TYPE>
       #       Explicitly set message type.
@@ -190,14 +334,6 @@
             colorize="$2"
             shift 2
             ;;
-          --writelog)
-            writelog=1
-            shift
-            ;;
-          --logfile)
-            logfile="$2"
-            shift 2
-            ;;
           --)
             shift
             break
@@ -318,14 +454,14 @@
           fi
         fi
 
-      l_len=$(visible_len "$lbl")
-      pad=""
+        l_len=$(visible_len "$lbl")
+        pad=""
 
-      if (( l_len < 8 )); then
-          printf -v pad '%*s' $((8 - l_len)) ''
-      fi
+        if (( l_len < 8 )); then
+            printf -v pad '%*s' $((8 - l_len)) ''
+        fi
 
-      lbl="${lbl}${pad}"
+        lbl="${lbl}${pad}"
       
         # label / icon / symbol
         if (( s_label )); then
@@ -378,30 +514,21 @@
           fnl+="$msg"
         fi
 
-        printf '%s\n' "$fnl $RESET"
-      else
-        # EMPTY type: just print message (no prefix) 
-        printf '%s\n' "$msg"
-      fi
-
-
-      # Optional log (plain; no ANSI)
-      # Always include date+type in logs for clarity
-      if (( writelog )) && [[ -n "$logfile" ]]; then
-        local log_ts log_line
-        if [[ -n "$date_str" ]]; then
-          log_ts="$date_str"
-        else
-          log_ts="$(date "+${SAY_DATE_FORMAT}")"
+        if __say_should_print_console "$type"; then
+            printf '%s\n' "$fnl $RESET"
         fi
-
-        # lbl is typically "[INFO]" / "[WARN]" etc. If you prefer raw type, use "$type".
-        log_line="$log_ts $lbl $msg"
-
-        printf '%s\n' "$log_line" >>"$logfile" 2>/dev/null || true
+      else
+        if __say_should_print_console "EMPTY"; then
+            printf '%s\n' "$msg"
+        fi
       fi
+
+      __say_write_log "$type" "$msg" "$date_str"
       
-    }
+      
+     }
+     
+
   # --- say shorthand ------------------------------------------------------------
     sayinfo() {
         say INFO "$@"
@@ -827,94 +954,32 @@
         [[ "$1" =~ ^[A-Za-z0-9._-]+$ ]] && return 0
       return 1
     }
-# --- Dialogs --------------------------------------------------------------------
-  # -- Terminal cursor control
-    __get_cursor_pos() {
-          # Prints: "row col" (1-based), returns 0 on success
-          local oldstty
-          oldstty="$(stty -g)"
+# --- Dialog helpers --------------------------------------------------------------------
+    __dlg_keymap(){
+        local choices="$1"
+        local keymap=""
 
-          # Raw-ish so we can read the terminal's response without waiting for Enter
-          stty -echo -icanon time 1 min 0
+        [[ "$choices" == *"E"* ]] && keymap+="Enter=continue; "
+        [[ "$choices" == *"R"* ]] && keymap+="R=redo; "
+        [[ "$choices" == *"C"* ]] && keymap+="C/Esc=cancel; "
 
-          # Ask terminal for cursor position
-          printf '\033[6n' > /dev/tty
-
-          # Response ends with 'R': ESC [ row ; col R
-          local reply=""
-          IFS= read -r -d R reply < /dev/tty
-
-          # Restore terminal settings
-          stty "$oldstty"
-
-          # Strip leading ESC[
-          reply="${reply#*$'\e['}"
-
-          local row="${reply%%;*}"
-          local col="${reply##*;}"
-
-          [[ "$row" =~ ^[0-9]+$ && "$col" =~ ^[0-9]+$ ]] || return 1
-
-          printf '%s %s\n' "$row" "$col"
-          return 0
-      }
-
-    __cup() {
-        # Move cursor to 1-based row/col
-        # tput cup expects 0-based row/col
-        local row="$1"
-        local col="$2"
-        tput cup $((row - 1)) $((col - 1))
-    }
-    __clear_eol() {
-        # Clear to end-of-line
-        # Prefer tput if available; otherwise ANSI.
-        if command -v tput >/dev/null 2>&1; then
-            tput el
-        else
-            printf '\033[K'
+        [[ "$choices" == *"Q"* ]] && keymap+="Q=quit; "
+        [[ "$choices" == *"A"* ]] && keymap+="Press any key to continue; "
+        
+        if [[ "$choices" == *"P"* ]]; then
+            if (( paused )); then
+                keymap+="P/Space=resume; "
+            else
+                keymap+="P/Space=pause; "
+            fi
         fi
+            # Trim trailing "; "
+            keymap="${keymap%; }"
+
+            printf '%s' "$keymap"
     }
 
-    __status_print() {
-        local text="$1"
-
-        if [[ -n "$anchor_row" && -n "$anchor_col" ]]; then
-            __cup "$anchor_row" "$anchor_col"
-            tput ed          # clear from cursor to end of screen
-            printf '%b' "$text"
-        else
-            printf '\r'
-            tput ed
-            printf '%b' "$text"
-        fi
-    }
-
-  __dlg_keymap(){
-      local choices="$1"
-      local keymap=""
-
-      [[ "$choices" == *"E"* ]] && keymap+="Enter=continue; "
-      [[ "$choices" == *"R"* ]] && keymap+="R=redo; "
-      [[ "$choices" == *"C"* ]] && keymap+="C/Esc=cancel; "
-
-      [[ "$choices" == *"Q"* ]] && keymap+="Q=quit; "
-      [[ "$choices" == *"A"* ]] && keymap+="Any key=continue; "
-     
-      if [[ "$choices" == *"P"* ]]; then
-          if (( paused )); then
-              keymap+="P/Space=resume; "
-          else
-              keymap+="P/Space=pause; "
-          fi
-      fi
-        # Trim trailing "; "
-        keymap="${keymap%; }"
-
-        printf '%s' "$keymap"
-  }
-
-  # -- Auto-continue dialog
+# -- Auto-continue dialog
     # Arguments:
     #   $1 = seconds to wait before auto-continue (default: 5)
     #   $2 = message to display above prompt (default: none)
@@ -925,189 +990,120 @@
     #         C = C or Esc to cancel
     #         P = P or Space to pause/resume countdown
     #         Q = Q to quit
-  dlg_autocontinue() {
-      # Returns:
-      #   0 = continue (user)
-      #   1 = continue (timeout)
-      #   2 = cancelled
-      #   3 = redo
-      #   4 = quit
-      local seconds="${1:-5}"
-      local msg="${2:-}"
-      local dlgchoices="${3:-"AERCPQ"}"
+    #         H = show keymap
+    dlg_autocontinue() {
+        local seconds="${1:-5}"
+        local msg="${2:-}"
+        local dlgchoices="${3:-AERCPQ}"
 
-      saydebug "Auto-continue dialog: ${msg:-none}, KeyOptions ${dlgchoices} (timeout: ${seconds}s)"
+        local tty="/dev/tty"
+        [[ -e "$tty" ]] || return 0
+        if [[ ! -t 0 && ! -t 1 ]]; then
+            return 0
+        fi
 
-      if [[ ! -t 0 || ! -t 1 ]]; then
-          return 0
-      fi
+        local paused=0
+        local key=""
+        local got=0
 
-      local paused=0
-      local key=""
-      local keymap=;
-      keymap="$(__dlg_keymap "$dlgchoices")"
-      printf "\n"
+        local lines=1
+        local hide_keymap=0
+        if [[ "$dlgchoices" == *"H"* ]]; then
+            hide_keymap=1
+        else
+            hide_keymap=0
+            ((lines++))
+        fi
 
-      local anchor_row=""
-      local anchor_col=""
-      if read -r anchor_row anchor_col < <(__get_cursor_pos); then
-          :
-      else
-          anchor_row=""
-          anchor_col=""
-      fi
+        if [[ -n "$msg" ]]; then
+            ((lines++))
+        fi
 
-      while true; do
-          local status_msg=""
-          local got=0
-          keymap="$(__dlg_keymap "$dlgchoices")"
-          if [[ -n "$msg" ]]; then
-              status_msg+="${CLR_TEXT}${msg}${RESET}\n"
-          fi
-          if [[ -n "$keymap" ]]; then
-              status_msg+="${CLR_TEXT}${keymap}${RESET}\n"
-          fi
+        while true; do
+            local line_keymap
+            line_keymap="$(__dlg_keymap "$dlgchoices" "$paused")"
 
-          if (( paused )); then
-              status_msg+="${CLR_TEXT}Paused... Press P or space to resume countdown${RESET}"
-              __status_print "$status_msg"
-              if IFS= read -r -n 1 -s key; then
-                  got=1          # key event (could be empty => Enter)
-              fi
-          else
-              status_msg+="${CLR_TEXT}Continuing in ${seconds}s...\n ${RESET}"
-              __status_print "$status_msg"
-              if IFS= read -r -n 1 -s -t 1 key; then
-                  got=1          # key event (could be empty => Enter)
-              else
-                  got=0          # timeout (no key)
-              fi
-          fi
+            # Message line (optional)
+            if [[ -n "$msg" ]]; then
+                printf '\r\e[K%s\n' "${CLR_TEXT}${msg}${RESET}" >"$tty"
+            fi
 
-          if (( got )); then
-              if [[ -z "$key" ]]; then
-                  key=$'\n'  # Treat Enter as newline token
-              fi
-              case "$key" in
-                  p|P|" ")
-                      if [[ "$dlgchoices" != *"P"* ]]; then
-                          # Pause not allowed; ignore key
-                          key=""
-                          continue
-                      fi
-                      printf "\n"
-                      if (( paused )); then
-                          paused=0
-                          saydebug "Resumed."
-                      else
-                          paused=1
-                          saydebug "Paused."
-                      fi
-                      key=""
-                      continue
-                      ;;
-                  r|R)
-                      if [[ "$dlgchoices" != *"R"* && "$dlgchoices" != *"A"* ]]; then
-                          key=""
-                          continue
-                      fi
-                      printf "\n"
-                      saydebug "Redo as per user's request."
-                      return 3
-                      ;;
-                  c|C|$'\e')
-                      if [[ "$dlgchoices" != *"C"* && "$dlgchoices" != *"A"* ]]; then
-                          key=""
-                          continue
-                      fi
-                      printf "\n"
-                      saydebug "Cancelled as per user's request."
-                      return 2
-                      ;;
-                  q|Q)
-                      if [[ "$dlgchoices" != *"Q"* && "$dlgchoices" != *"A"* ]]; then
-                          key=""
-                          continue
-                      fi
-                      printf "\n"
-                      saydebug "Quit as per user's request."
-                      return 4
-                      ;;
-                  # Enter key    
-                  $'\n'|$'\r') 
-                      if [[ "$dlgchoices" != *"E"* && "$dlgchoices" != *"A"* ]]; then
-                          key=""
-                          continue
-                      fi
-                      printf "\n"
-                      saydebug "Continuing."
-                      return 0
-                      ;;
-                  # Any other key
-                  *)
-                      if [[ "$dlgchoices" != *"A"* ]]; then
-                          key=""
-                          continue
-                      fi
-                      printf "\n"
-                      saydebug "Continuing."
-                      return 0
-                      ;;
-              esac
-          fi
+            # Keymap line
+            if (( ! hide_keymap )); then
+                printf '\r\e[K%s\n' "${CLR_TEXT}${line_keymap}${RESET}" >"$tty"
+            fi
 
-          if (( ! paused )); then
-              ((seconds--))
-              if (( seconds <= 0 )); then
-                  printf "\n"
-                  return 1   # timeout
-              fi
-          fi
-      done
-  }
+            # Status line (no newline; we keep cursor on this line)
+            if (( paused )); then
+                printf '\r\e[K%s' "${CLR_TEXT}Paused... Press P or Space to resume countdown${RESET}" >"$tty"
+            else
+                printf '\r\e[K%s' "${CLR_TEXT}Continuing in ${seconds}s...${RESET}" >"$tty"
+            fi
 
-  # -- Debug
-  __temp_TestingDlg() {
-    ################################################################################
-    # Test dialog functions
-    ################################################################################
-    if dlg_autocontinue 15 "With a message to the user above the prompt." "ACRPQ"; then
-        rc=0
-    else
-        rc=$?
-    fi
-    saydebug "Decision: ${rc:- <none> }"
-    __temp_mapoutcome $rc
+            # Read key
+            got=0
+            key=""
+            if (( paused )); then
+                if IFS= read -r -n 1 -s key <"$tty"; then got=1; fi
+            else
+                if IFS= read -r -n 1 -s -t 1 key <"$tty"; then got=1; fi
+            fi
 
-    if dlg_autocontinue 5 "Just wait..." " " ; then
-        rc=0
-    else
-        rc=$?
-    fi
-    __temp_mapoutcome $rc
+            # Move cursor back up to redraw block next iteration (IMPORTANT: to tty)
+            printf '\r' >"$tty"
+            if (( lines == 3 )); then
+                printf '\e[2A' >"$tty"
+            else
+                printf '\e[1A' >"$tty"
+            fi
 
-    if dlg_autocontinue 15 "Press any key to continue" "A" ; then
-        rc=0
-    else
-        rc=$?
-    fi
-    saydebug "Decision: ${rc:- <none> }"
-    __temp_mapoutcome $rc
-        
-}
-__temp_mapoutcome(){
-         rc=$1
-         case $rc in
-            0)  saydebug "User chose to continue" ;;
-            1)  saydebug "Auto-continue timeout reached" ;;
-            2)  saycancel "Cancelled as per user request" ;;
-            3)  saydebug "Redo as per user request." ;;
-            4)  sayinfo "Quit as per user request."
-                exit 0 ;;
-            *)  sayfail "Unexpected response: $rc"
-                exit 1 ;;
-        esac
-}
+            if (( got )); then
+                [[ -z "$key" ]] && key=$'\n'
+
+                case "$key" in
+                    p|P|" ")
+                        [[ "$dlgchoices" == *"P"* ]] || continue
+                        (( paused )) && paused=0 || paused=1
+                        continue
+                        ;;
+                    r|R)
+                        [[ "$dlgchoices" == *"R"* || "$dlgchoices" == *"A"* ]] || continue
+                        printf '\n' >"$tty"
+                        return 3
+                        ;;
+                    c|C|$'\e')
+                        [[ "$dlgchoices" == *"C"* || "$dlgchoices" == *"A"* ]] || continue
+                        printf '\r\e[%dB\n' "$((lines-1))" >"$tty"
+                        return 2
+                        ;;
+                    q|Q)
+                        [[ "$dlgchoices" == *"Q"* || "$dlgchoices" == *"A"* ]] || continue
+                        printf '\n' >"$tty"
+                        return 4
+                        ;;
+                    $'\n'|$'\r')
+                        [[ "$dlgchoices" == *"E"* || "$dlgchoices" == *"A"* ]] || continue
+                        printf '\r\e[%dB\n' "$((lines-1))" >"$tty"
+                        return 0
+                        ;;
+                    *)
+                        [[ "$dlgchoices" == *"A"* ]] || continue
+                        printf '\r\e[%dB\n' "$((lines-1))" >"$tty"
+                        return 0
+                        ;;
+                esac
+            fi
+
+            if (( ! paused )); then
+                ((seconds--))
+                if (( seconds <= 0 )); then
+                    printf '\n' >"$tty"
+                    return 1
+                fi
+            fi
+        done
+    }
+
 
   
 
