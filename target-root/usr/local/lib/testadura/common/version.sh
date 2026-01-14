@@ -1,6 +1,0 @@
-# SolidgroundUX Framework Version
-SGND_PRODUCT="SolidgroundUX"
-SGND_VERSION="1.1-beta"
-SGND_VERSION_DATE="2026-01-08"
-
-export SGND_VERSION SGND_VERSION_DATE SGND_PRODUCT

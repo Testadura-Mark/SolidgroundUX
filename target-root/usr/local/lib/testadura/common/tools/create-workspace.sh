@@ -19,13 +19,13 @@
 #   ./create-workspace.sh -p MyProject -f /path/to/project --dryrun
 # ==============================================================================
 set -euo pipefail
+source /home/sysadmin/dev/solidgroundux/target-root/usr/local/lib/testadura/common/td-bootstrap.sh
 
 # --- Script metadata ----------------------------------------------------------
     TD_SCRIPT_FILE="$(readlink -f "${BASH_SOURCE[0]}")"
     TD_SCRIPT_DIR="$(cd -- "$(dirname -- "$TD_SCRIPT_FILE")" && pwd)"
     TD_SCRIPT_BASE="$(basename -- "$TD_SCRIPT_FILE")"
     TD_SCRIPT_NAME="${TD_SCRIPT_BASE%.sh}"
-    TD_LOG_PATH="/var/log/testadura/${SGND_PRODUCT:-$TD_SCRIPT_NAME}.log"
     TD_SCRIPT_DESC="Create a new project workspace from templates"
     TD_SCRIPT_VERSION="1.0"
     TD_SCRIPT_BUILD="20250110"    
@@ -34,57 +34,10 @@ set -euo pipefail
     TD_SCRIPT_COPYRIGHT="© 2025 Mark Fieten — Testadura Consultancy"
     TD_SCRIPT_LICENSE="Testadura Non-Commercial License (TD-NC) v1.0"
 
-# --- Framework roots (explicit) -----------------------------------------------
-    # Override from environment if desired:
-    TD_FRAMEWORK_ROOT="${TD_FRAMEWORK_ROOT:-/}" # Directory where Testadura framework is installed
-    TD_APPLICATION_ROOT="${TD_APPLICATION_ROOT:-/}" # Application root (where this script is deployed)
-    TD_COMMON_LIB="${TD_COMMON_LIB:-$TD_FRAMEWORK_ROOT/usr/local/lib/testadura/common}" # Common libraries path
-    TD_STATE_FILE="${TD_STATE_FILE:-"$TD_APPLICATION_ROOT/var/testadura/$TD_SCRIPT_NAME.state"}" # State file path
-    TD_CFG_FILE="${TD_CFG_FILE:-"$TD_APPLICATION_ROOT/etc/testadura/$TD_SCRIPT_NAME.cfg"}" # Config file path
-    TD_USER_HOME="$(getent passwd "${SUDO_USER:-$USER}" | cut -d: -f6)" # User home directory
-
-    TD_LOGFILE_ENABLED="${TD_LOGFILE_ENABLED:-0}"  # Enable logging to file (1=yes,0=no)
-    TD_CONSOLE_MSGTYPES="${TD_CONSOLE_MSGTYPES:-STRT|WARN|FAIL|END}"  # Enable logging to file (1=yes,0=no)
-    TD_LOG_PATH="${TD_LOG_PATH:-/var/log/testadura/solidgroundux.log}" # Log file path
-    TD_ALTLOG_PATH="${TD_ALTLOG_PATH:-~/.state/testadura/solidgroundux.log}" # Alternate Log file path
-
-# --- Minimal fallback UI (overridden by ui.sh when sourced) -------------------
-    saystart()   { printf '[STRT] %s\n' "$*" >&2; }
-    saywarning() { printf '[WARN] %s\n' "$*" >&2; }
-    sayfail()    { printf '[FAIL] %s\n' "$*" >&2; }
-    saycancel()  { printf '[CNCL] %s\n' "$*" >&2; }
-    sayend()     { printf '[END ] %s\n' "$*" >&2; }
-    sayok()      { printf '[OK  ] %s\n' "$*" >&2; }
-    sayinfo()    { printf '[INFO] %s\n' "$*" >&2; }
-    sayerror()   { printf '[ERR ] %s\n' "$*" >&2; }
-# --- UI Control --------------------------------------------------------------------
-    ui_init() {
-        UI_ACTIVE=0
-        if ! exec 3<>/dev/tty; then
-            UIFD=""
-            return 1
-        fi
-        UIFD=3
-        trap ui_leave EXIT INT TERM
-    }
-
-    ui_enter() { 
-        UI_ACTIVE=1
-        tput smcup >&"$UIFD"; tput clear >&"$UIFD"; 
-    }
-    
-    ui_leave() {
-        if [[ "$UI_ACTIVE" -eq 0 ]]; then
-            return 0
-        fi
-        UI_ACTIVE=0  
-        tput rmcup >&"$UIFD"
-        tput cud1  >&"$UIFD"   # cursor down 1
-    }
-    
-    ui_print() { printf '%s' "$*" >&$UIFD; }
-
-    ui_printf() { printf "$@" >&$UIFD ; }
+    TD_STATE_FILE="${TD_STATE_FILE:-"$TD_STATE_DIR/$TD_SCRIPT_NAME.state"}" # State file path
+    TD_CFG_FILE="${TD_CFG_FILE:-"$TD_SYSCFG_DIR/$TD_SCRIPT_NAME.cfg"}" # Config file path
+    TD_LOG_MAX_BYTES="${TD_LOG_MAX_BYTES:-$((25 * 1024 * 1024))}"
+   
 # --- Using / imports ----------------------------------------------------------
     # Libraries to source from TD_COMMON_LIB
     TD_USING=(
@@ -95,33 +48,6 @@ set -euo pipefail
     "ui.sh"     # user inetractive helpers
     "cfg.sh"    # td_cfg_load, config discovery + source, td_state_set/load
     )
-
-    td_source_libs() {
-        local lib path
-        saystart "Sourcing libraries from: $TD_COMMON_LIB" >&2
-
-        for lib in "${TD_USING[@]}"; do
-            path="$TD_COMMON_LIB/$lib"
-
-            if [[ -f "$path" ]]; then
-                #sayinfo "Using library: $path" >&2
-                # shellcheck source=/dev/null
-                source "$path"
-                continue
-            fi
-
-            # core.sh is required
-            if [[ "$lib" == "core.sh" ]]; then
-                sayfail "Required library not found: $path" >&2
-                td_die "Cannot continue without core library."
-            fi
-
-            saywarning "Library not found (optional): $path" >&2
-        done
-
-        sayend "All libraries sourced." >&2
-    }
-
 
 # --- Argument specification and processing ------------------------------------
     # --- Example: Arguments -------------------------------------------------------
@@ -183,26 +109,6 @@ set -euo pipefail
             for arg in "${TD_POSITIONAL[@]:-}"; do
                 printf "  %s\n" "$arg"
             done
-    }
-
-    __set_runmodes()
-    {
-        RUN_MODE=$([ "${FLAG_DRYRUN:-0}" -eq 1 ] && echo "${BOLD_ORANGE}DRYRUN${RESET}" || echo "${BOLD_GREEN}COMMIT${RESET}")
-
-        if [[ "${FLAG_DRYRUN:-0}" -eq 1 ]]; then
-            sayinfo "Running in Dry-Run mode (no changes will be made)."
-        else
-            saywarning "Running in Normal mode (changes will be applied)."
-        fi
-
-        if [[ "${FLAG_VERBOSE:-0}" -eq 1 ]]; then
-            __td_showarguments
-        fi
-
-        if [[ "${FLAG_STATERESET:-0}" -eq 1 ]]; then
-            td_state_reset
-            sayinfo "State file reset as requested."
-        fi
     }
 
 # --- local script functions ---------------------------------------------------
@@ -322,27 +228,13 @@ EOF
 
 # === main() must be the last function in the script ===========================
    main() {
-    # --- Bootstrap ------------------------------------------------------------
-        # -- Initialize  UI 
-            ui_init
-        # -- Source libraries 
-            td_source_libs
+    # --- Bootstrap ---------------------------------------------------------------
             
-        # -- Ensure sudo or non-sudo as desired 
-            #need_root "$@"
-            cannot_root "$@"
-
-        # -- Load previous state and config
-            # enable if desired:
-            #td_state_load
-            #td_cfg_load
-
-        # -- Parse arguments
-            td_parse_args "$@"
-            FLAG_DRYRUN="${FLAG_DRYRUN:-0}"   
-            FLAG_VERBOSE="${FLAG_VERBOSE:-0}"
-            FLAG_STATERESET="${FLAG_STATERESET:-0}"
-            __set_runmodes
+            td_bootstrap --state -- "$@"
+            if [[ "${FLAG_STATERESET:-0}" -eq 1 ]]; then
+                td_state_reset
+                sayinfo "State file reset as requested."
+            fi
 
     # --- Main script logic here ---------------------------------------------
         # -- Resolve settings (0=OK, 1=abort, 2=skip template)

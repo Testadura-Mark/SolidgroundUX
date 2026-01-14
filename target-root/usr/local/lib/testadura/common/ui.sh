@@ -45,20 +45,48 @@
       fi
   }
 
-# --- UI functions --------------------------------------------------------------
-  # --- say() global defaults ----------------------------------------------------
-  
-  # Can be overridden in:
-  #   - environment
-  #   - styles/*.sh
-  SAY_DATE_DEFAULT="${SAY_DATE_DEFAULT:-0}"              # 0 = no date, 1 = add date
-  SAY_SHOW_DEFAULT="${SAY_SHOW_DEFAULT:-label}"         # label|icon|symbol|all|label,icon|...
-  SAY_COLORIZE_DEFAULT="${SAY_COLORIZE_DEFAULT:-label}" # none|label|msg|both|all|date
-  SAY_WRITELOG_DEFAULT="${SAY_WRITELOG_DEFAULT:-0}"     # 0 = no log, 1 = log
-  SAY_DATE_FORMAT="${SAY_DATE_FORMAT:-%Y-%m-%d %H:%M:%S}"  # date format for --date
+# --- UI Control ----------------------------------------------------------------
+    ui_init() {
+        UI_ACTIVE=0
+        if ! exec 3<>/dev/tty; then
+            UIFD=""
+            return 1
+        fi
+        UIFD=3
+        trap ui_leave EXIT INT TERM
+    }
 
-  # --- say -----------------------------------------------------------------------
-    # Helpers
+    ui_enter() { 
+        UI_ACTIVE=1
+        tput smcup >&"$UIFD"; tput clear >&"$UIFD"; 
+    }
+    
+    ui_leave() {
+        if [[ "$UI_ACTIVE" -eq 0 ]]; then
+            return 0
+        fi
+        UI_ACTIVE=0  
+        tput rmcup >&"$UIFD"
+        tput cud1  >&"$UIFD"   # cursor down 1
+    }
+    
+    ui_print()  { printf '%s' "$*" >&"$UIFD"; }
+    ui_println() { printf '%s\n' "$*" >&"$UIFD"; }
+    ui_printf() { printf -- "$@" >&"$UIFD"; }
+# --- UI functions ---------------------------------------------------------------
+  # -- say() global defaults ---------------------------------------------------
+  
+    # Can be overridden in:
+    #   - environment
+    #   - styles/*.sh
+    SAY_DATE_DEFAULT="${SAY_DATE_DEFAULT:-0}"              # 0 = no date, 1 = add date
+    SAY_SHOW_DEFAULT="${SAY_SHOW_DEFAULT:-label}"         # label|icon|symbol|all|label,icon|...
+    SAY_COLORIZE_DEFAULT="${SAY_COLORIZE_DEFAULT:-label}" # none|label|msg|both|all|date
+    SAY_WRITELOG_DEFAULT="${SAY_WRITELOG_DEFAULT:-0}"     # 0 = no log, 1 = log
+    SAY_DATE_FORMAT="${SAY_DATE_FORMAT:-%Y-%m-%d %H:%M:%S}"  # date format for --date
+
+  # -- say ---------------------------------------------------------------------
+    # - Helpers
         __say_should_print_console() {
             local type="${1^^}"
             local list="${TD_CONSOLE_MSGTYPES^^}"
@@ -160,7 +188,9 @@
             size=$(stat -c %s "$logfile" 2>/dev/null || echo 0)
             add_bytes=$(( ${#log_line} + 1 ))   # +1 for '\n'
 
-            saydebug "Log size: $size + ${add_bytes} bytes; max is $TD_LOG_MAX_BYTES bytes"
+            #TD_LOG_MAX_BYTES="${TD_LOG_MAX_BYTES:-$((25 * 1024 * 1024))}" 
+
+            #saydebug "Log size: $size + ${add_bytes} bytes; max is $TD_LOG_MAX_BYTES bytes"
 
             if (( size + add_bytes >= TD_LOG_MAX_BYTES )); then
                 __td_rotate_logs "$logfile"
@@ -202,7 +232,7 @@
                 # Trim oldest beyond keep
                 rm -f -- "${logfile}.$((TD_LOG_KEEP+1))" "${logfile}.$((TD_LOG_KEEP+1)).gz" 2>/dev/null || true
             }
-        # Options supported by say():
+     # Options supported by say():
       #
       #   - --type <TYPE>
       #       Explicitly set message type.
