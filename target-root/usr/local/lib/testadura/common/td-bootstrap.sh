@@ -345,7 +345,7 @@ TD_BOOTSTRAP_LOADED=1
         fi
 
         if [[ "${FLAG_VERBOSE:-0}" -eq 1 ]]; then
-            __td_showarguments
+            td_showarguments
         fi
     }    
 # --- Public API -------------------------------------------------------------

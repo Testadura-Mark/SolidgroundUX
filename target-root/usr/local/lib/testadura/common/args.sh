@@ -99,6 +99,7 @@
 
         [[ "$ok" -eq 1 ]]
     }
+
     # Initialize option variables from ARGS_SPEC.
     # (idempotent: re-running sets them back to defaults)
     __td_arg_init_defaults() {
@@ -117,6 +118,24 @@
                 enum)  printf -v "$__td_var" ''  ;;
             esac
         done
+    }
+
+    # Print a key-value pair
+    _td_print_global() {
+        local name="$1"
+        local value
+
+        [[ -z "$name" ]] && return 0
+
+        # Optional safety check
+        if [[ ! "$name" =~ ^[a-zA-Z_][a-zA-Z0-9_]*$ ]]; then
+            printf '%-22s : %s\n' "$name" "<invalid name>"
+            return 0
+        fi
+
+        # Safe under set -u
+        value="${!name-<unset>}"
+        printf '%-22s : %s\n' "$name" "$value"
     }
 # --- Public API ------------------------------------------------------------------
     # Help generator
@@ -292,4 +311,77 @@
         done
 
         return 0
+    }
+
+   
+    td_showarguments() {
+            printf '%s\n' "--- Script info"
+            printf "File                : %s\n" "$TD_SCRIPT_FILE"
+            printf "Script              : %s\n" "$TD_SCRIPT_NAME"
+            printf "Script description  : %s\n" "$TD_SCRIPT_DESC"
+            printf "Script dir          : %s\n" "$TD_SCRIPT_DIR"
+            printf "Script version      : %s (build %s)\n" "$TD_SCRIPT_VERSION" "$TD_SCRIPT_BUILD"
+            printf "\n"
+            
+            printf '%s\n' "--- System framework settings"
+            td_show_globals sys
+            printf "\n"
+
+            printf '%s\n' "--- User framework settings"
+            td_show_globals usr
+            printf "\n"
+            
+            printf '%s\n' "--- Arguments / Flags:\n"
+
+            local entry varname
+            for entry in "${TD_ARGS_SPEC[@]:-}"; do
+                IFS='|' read -r name short type var help choices <<< "$entry"
+                varname="${var}"
+                printf "  --%s (-%s) : %s = %s\n" "$name" "$short" "$varname" "${!varname:-<unset>}"
+            done
+
+            printf -- "Positional args:\n"
+            for arg in "${TD_POSITIONAL[@]:-}"; do
+                printf "  %s\n" "$arg"
+            done
+    }
+    td_show_globals() {
+        # Usage: td_show_globals sys|usr|both
+        local which="${1:-both}"
+        local name value
+        local -A usr_seen=()
+
+        case "$which" in
+            sys)
+                for name in "${TD_SYS_GLOBALS[@]:-}"; do
+                    _td_print_global "$name"
+                done
+                ;;
+            usr)
+                for name in "${TD_USR_GLOBALS[@]:-}"; do
+                    _td_print_global "$name"
+                done
+                ;;
+            both)
+                # Mark user globals
+                for name in "${TD_USR_GLOBALS[@]:-}"; do
+                    usr_seen["$name"]=1
+                done
+
+                # Print system globals EXCEPT those overridden by user
+                for name in "${TD_SYS_GLOBALS[@]:-}"; do
+                    [[ -n "${usr_seen[$name]:-}" ]] && continue
+                    _td_print_global "$name"
+                done
+
+                # Then print user globals
+                for name in "${TD_USR_GLOBALS[@]:-}"; do
+                    _td_print_global "$name"
+                done
+                ;;
+            *)
+                printf 'td_show_globals: invalid selector: %s\n' "$which" >&2
+                return 2
+                ;;
+        esac
     }

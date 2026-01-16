@@ -16,7 +16,6 @@
 set -euo pipefail
 
 source /home/sysadmin/dev/solidgroundux/target-root/usr/local/lib/testadura/common/td-bootstrap.sh
-source /home/sysadmin/dev/solidgroundux/target-root/usr/local/lib/testadura/common/td-globals.sh
 
 # --- Script metadata -------------------------------------------------------------
     TD_SCRIPT_FILE="$(readlink -f "${BASH_SOURCE[0]}")"
