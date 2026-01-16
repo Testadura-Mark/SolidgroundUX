@@ -1,17 +1,12 @@
 # Framwork root
-    TD_FRAMEWORK_ROOT="${TD_FRAMEWORK_ROOT:-/}"
-    TD_APPLICATION_ROOT="${TD_APPLICATION_ROOT:-/}" # Application root (where this script is deployed)
-    
-    TD_COMMON_LIB="${TD_COMMON_LIB:-$TD_FRAMEWORK_ROOT/usr/local/lib/testadura/common}"
-    TD_SYSCFG_DIR="${TD_SYSCFG_DIR:-$TD_APPLICATION_ROOT/etc/testadura}" # Sys config directory path
-   
-    TD_USRCFG_DIR="${TD_USRCFG_DIR:-$HOME/.config}/testadura" # Usr config directory path
-    
+    TD_FRAMEWORK_ROOT="${TD_FRAMEWORK_ROOT:-}"
+    TD_APPLICATION_ROOT="${TD_APPLICATION_ROOT:-}" # Application root (where this script is deployed)    
 
 # --- Minimal fallback UI (overridden by ui.sh when sourced) ----------------------
-    saystart()   { printf 'START  \t%s\n' "$*" >&2; }
+    saystart()   { printf 'START   \t%s\n' "$*" >&2; }
     saywarning() { printf 'WARNING \t%s\n' "$*" >&2; }
     sayfail()    { printf 'FAIL    \t%s\n' "$*" >&2; }
+    saydebug()   { printf 'DEBUG   \t%s\n' "$*" >&2; }
     saycancel()  { printf 'CANCEL  \t%s\n' "$*" >&2; }
     sayend()     { printf 'END     \t%s\n' "$*" >&2; }
     sayok()      { printf 'OK      \t%s\n' "$*" >&2; }
@@ -81,6 +76,11 @@
         )
     # -- Helpers
         __create_cfg_template() {
+            if [[ "${FLAG_INIT_CONFIG:-0}" -ne 1 ]]; then
+                saydebug "Init config flag is off"
+                return 0
+            fi
+
             local dir="$1"
             local filename="$2"
             local template_fn="$3"
@@ -112,20 +112,21 @@
             local cfg_file="$1"          # e.g. solidgroundux.cfg
             local cfg_create="${2:-0}"   # 0/1
             local template_fn="${3:-}"   # e.g. __create_cfg_template
-
+            local sysdir="${TD_SYSCFG_DIR:-$TD_APPLICATION_ROOT/etc/testadura}"
+            local usrdir="${TD_USRCFG_DIR:-$HOME/.config/testadura}"
             local cfg_source=0
             local user_cfg=""
 
             # --- system cfg ---
-            if [[ -r "$TD_SYSCFG_DIR/$cfg_file" ]]; then
+            if [[ -r "$sysdir/$cfg_file" ]]; then
                 # shellcheck disable=SC1090
-                source "$TD_SYSCFG_DIR/$cfg_file"
+                source "$sysdir/$cfg_file"
                 cfg_source=1
             fi
 
             # --- optional user cfg (dev override) ---
             if [[ "${EUID:-$(id -u)}" -ne 0 ]]; then
-                user_cfg="$TD_USRCFG_DIR/$cfg_file"
+                user_cfg="$usrdir/$cfg_file"
                 if [[ -r "$user_cfg" ]]; then
                     # shellcheck disable=SC1090
                     source "$user_cfg"
@@ -136,20 +137,28 @@
             # --- create if requested and none found ---
             if (( cfg_create == 1 )) && (( cfg_source == 0 )); then
                 if [[ "${EUID:-$(id -u)}" -eq 0 ]]; then
-                    __create_cfg_template \
-                        "$TD_SYSCFG_DIR" \
-                        "$cfg_file" \
-                        "$template_fn"
+                    if (( ${FLAG_DRYRUN:-0} == 1 )); then
+                        sayinfo "Would have created system config $sysdir/$cfg_file"
+                    else
+                        __create_cfg_template \
+                            "$sysdir" \
+                            "$cfg_file" \
+                            "$template_fn"
+                        saydebug "created system config $sysdir/$cfg_file"
+                    fi
                 else
-                    __create_cfg_template \
-                        "$TD_USRCFG_DIR" \
-                        "$cfg_file" \
-                        "$template_fn"
+                 if (( ${FLAG_DRYRUN:-0} == 1 )); then
+                        sayinfo "Would have created user config $usrdir/$cfg_file"
+                    else
+                        __create_cfg_template \
+                            "$usrdir" \
+                            "$cfg_file" \
+                            "$template_fn"
+                         saydebug "created user config $usrdir/$cfg_file"
+                    fi
                 fi
             fi
 
-            # return source indicator if you want
-            # echo "$cfg_source"
             return 0
         }
 
@@ -199,13 +208,13 @@
                 printf 'TD_APPLICATION_ROOT=%q\n' "$TD_APPLICATION_ROOT"
                 printf "%s\n" ""
 
-                printf 'TD_USRCFG_DIR=%q\n' "$TD_USRCFG_DIR"
-                printf "%s\n" ""
-
                 printf "%s\n" "# Initially derived, but overridable here"
-                printf 'TD_COMMON_LIB=%q\n' "$TD_COMMON_LIB"
-                printf 'TD_SYSCFG_DIR=%q\n' "$TD_SYSCFG_DIR"
-            }      
+
+                printf 'TD_COMMON_LIB=%q\n' "${TD_COMMON_LIB:-$TD_FRAMEWORK_ROOT/usr/local/lib/testadura/common}" 
+                printf 'TD_SYSCFG_DIR=%q\n' "${TD_SYSCFG_DIR:-$TD_APPLICATION_ROOT/etc/testadura}"
+                printf 'TD_USRCFG_DIR=%q\n' "${TD_USRCFG_DIR:-$HOME/.config/testadura}"
+            }
+  
 
     # -- Main sequence        
         __parse_bootstrap_args() {
@@ -226,7 +235,7 @@
                     --needroot)  exe_root=1; shift ;;
                     --cannotroot)exe_root=2; shift ;;
                     --args)      exe_args=1; shift ;;
-                    --init-config)
+                    --initcfg)
                         FLAG_INIT_CONFIG=1; shift ;;
                     --) shift; TD_BOOTSTRAP_REST=("$@"); return 0 ;;
                     *) TD_BOOTSTRAP_REST=("$@"); return 0 ;;
@@ -239,17 +248,21 @@
         __init_bootstrap() {
             cfg_source=0  # 0 defaults, 1 system, 2 user
             cfg_file="solidgroundux.cfg"
-            __source_systemoruser "$cfg_file" 1 "__print_bootstrap_cfg"
-            
-            TD_COMMON_LIB="${TD_COMMON_LIB:-$TD_FRAMEWORK_ROOT/usr/local/lib/testadura/common}" # Reset if root has changed AND isn't set by cfg load
-
-            if [[ ! -r "$TD_COMMON_LIB/core.sh" ]]; then
-                echo "Invalid TD_FRAMEWORK_ROOT: $TD_FRAMEWORK_ROOT (missing $TD_COMMON_LIB/core.sh)" >&2
-                exit 2
-            fi
+            __source_systemoruser "$cfg_file" 1 "__print_bootstrap_cfg"           
         }
 
         __source_globals(){
+            # load td-globals and register define globals
+            TD_COMMON_LIB="${TD_COMMON_LIB:-"${TD_FRAMEWORK_ROOT}/usr/local/lib/testadura/common"}"
+            if [[ ! -r "$TD_COMMON_LIB/td-globals.sh" ]]; then
+                sayfail "Cannot source globals: $TD_COMMON_LIB/td-globals.sh not found"
+                exit 2
+            fi
+            saydebug "Sourcing $TD_COMMON_LIB/td-globals.sh"
+            source "$TD_COMMON_LIB/td-globals.sh"
+            init_derived_paths
+            init_global_defaults
+
             cfg_source=0  # 0 defaults, 1 system, 2 user
             cfg_file="td-globals.cfg"
 
@@ -259,6 +272,9 @@
                 __source_systemoruser "$cfg_file" 1 "__print_usrglobals_cfg"
             fi
 
+            # re-derive anything still unset based on possibly-updated anchors
+            init_derived_paths
+            init_script_paths
         }
         __source_corelibs(){
             local lib path
@@ -294,12 +310,14 @@
         }    
 
         td_bootstrap() {
-            __init_bootstrap
-            __source_corelibs
-            __source_globals
+            FLAG_INIT_CONFIG="${FLAG_INIT_CONFIG:-0}"
+            FLAG_DRYRUN="${FLAG_DRYRUN:-0}"
 
-            FLAG_INIT_CONFIG=0;
             __parse_bootstrap_args "$@"
+
+            __init_bootstrap
+            __source_globals
+            __source_corelibs
 
             # If you want ui, init after libs (unless ui_init is dependency-free)
             (( exe_ui )) && ui_init
@@ -313,10 +331,7 @@
             fi
 
             # Load state/cfg and parse *script* args (not bootstrap args)
-             TD_STATE_FILE="${TD_STATE_FILE:-"$TD_STATE_DIR/$TD_SCRIPT_NAME.state"}" # State file path
-             TD_SYSCFG_FILE="${TD_SYSCFG_FILE:-"$TD_SYSCFG_DIR/$TD_SCRIPT_NAME.cfg"}" # Config file path
-             TD_USRCFG_FILE="${TD_USRCFG_FILE:-"$TD_USRCFG_DIR/$TD_SCRIPT_NAME.cfg"}" # Config file path
-
+             
             (( exe_state )) && td_state_load
             (( exe_cfg ))   && td_cfg_load
 

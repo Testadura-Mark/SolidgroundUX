@@ -15,7 +15,6 @@
 
 set -euo pipefail
 source /home/sysadmin/dev/solidgroundux/target-root/usr/local/lib/testadura/common/td-bootstrap.sh
-source /home/sysadmin/dev/solidgroundux/target-root/usr/local/lib/testadura/common/td-globals.sh
 
 # --- Script metadata -------------------------------------------------------------
     TD_SCRIPT_FILE="$(readlink -f "${BASH_SOURCE[0]}")"
@@ -30,14 +29,9 @@ source /home/sysadmin/dev/solidgroundux/target-root/usr/local/lib/testadura/comm
     TD_SCRIPT_COPYRIGHT="© 2025 Mark Fieten — Testadura Consultancy"
     TD_SCRIPT_LICENSE="Testadura Non-Commercial License (TD-NC) v1.0"
 
-    TD_STATE_FILE="${TD_STATE_FILE:-"$TD_STATE_DIR/$TD_SCRIPT_NAME.state"}" # State file path
-    TD_SYSCFG_FILE="${TD_SYSCFG_FILE:-"$TD_SYSCFG_DIR/$TD_SCRIPT_NAME.cfg"}" # Config file path
-    TD_LOG_MAX_BYTES="${TD_LOG_MAX_BYTES:-$((25 * 1024 * 1024))}"
-
 # --- Using / imports -------------------------------------------------------------
     # Libraries to source from TD_COMMON_LIB
     TD_USING=(
-   
     )
 
 # --- Argument specification and processing ---------------------------------------
@@ -151,24 +145,23 @@ source /home/sysadmin/dev/solidgroundux/target-root/usr/local/lib/testadura/comm
             # 1) machine-id
             if [[ ! -s /etc/machine-id || "$(cat /etc/machine-id)" == "00000000000000000000000000000000" ]]; then
                 if [[ FLAG_DRYRUN -eq 1 ]]; then
-                    saydebug "Would have generated a machine-id"
+                    sayinfo "Would have generated a machine-id"
+                else
+                    saydebug "Generating machine-id"
+                
+                    truncate -s 0 /etc/machine-id
+                    systemd-machine-id-setup
                 fi
-                if [[ FLAG_VERBOSE -eq 1 ]]; then
-                saydebug "Generating machine-id"
-                fi
-                truncate -s 0 /etc/machine-id
-                systemd-machine-id-setup
             fi
 
             # keep D-Bus in sync
             if [[ -e /var/lib/dbus/machine-id ]]; then
                 if [[ FLAG_DRYRUN -eq 1 ]]; then
-                    saydebug "Would have linked D-Bus machine-id"
+                    sayinfo "Would have linked D-Bus machine-id"
+                else
+                    saydebug "Linking D-Bus machine-id"
+                    ln -sf /etc/machine-id /var/lib/dbus/machine-id
                 fi
-                if [[ FLAG_VERBOSE -eq 1 ]]; then
-                saydebug "Linking D-Bus machine-id"
-                fi
-                ln -sf /etc/machine-id /var/lib/dbus/machine-id
             fi
 
             local id
@@ -240,7 +233,7 @@ source /home/sysadmin/dev/solidgroundux/target-root/usr/local/lib/testadura/comm
 
             sayend "Joined to ${DOMAIN}"
         }
-      # 5) Prepare template for next clone
+       # 5) Prepare template for next clone
         __prepare_template(){
             saystart "Preparing template for next clone"
 
@@ -788,23 +781,23 @@ source /home/sysadmin/dev/solidgroundux/target-root/usr/local/lib/testadura/comm
             echo "  version: 2"
             echo "  renderer: networkd"
             echo "  ethernets:"
-            echo "    $CLONE_NIC:"
+            echo "    ${CLONE_NIC:-ens99}"
             echo "      dhcp4: no"
             echo "      addresses:"
-            echo "        - {$CLONE_IP}/$CLONE_CIDR"
+            echo "        - ${CLONE_IP:-192.168.0.251}/${CLONE_CIDR:-24}"
             echo "      routes:"
             echo "        - to: default"
-            echo "          via: $CLONE_GW"
+            echo "          via: ${CLONE_GW:-192.168.0.1}"
             echo "      nameservers:"
             echo "        addresses:"
-            echo "          - $CLONE_DNS"
+            echo "          - ${CLONE_DNS:-1.1.1.1}"
         }
 #
 
 # === main() must be the last function in the script ==============================
     main() {
     # --- Bootstrap ---------------------------------------------------------------
-        td_bootstrap --state -- "$@"
+        td_bootstrap --state --needroot -- "$@"
         if [[ "${FLAG_STATERESET:-0}" -eq 1 ]]; then
             td_state_reset
             sayinfo "State file reset as requested."
@@ -814,7 +807,9 @@ source /home/sysadmin/dev/solidgroundux/target-root/usr/local/lib/testadura/comm
         wait_after=0
         while true; do
             clear
-            
+            if [[ $FLAG_VERBOSE ]]; then
+                __td_showarguments
+            fi
             __show_mainmenu
 
             read -rp "${BOLD_SILVER}Select an option [1-8]: ${BOLD_YELLOW}" choice
@@ -851,7 +846,7 @@ source /home/sysadmin/dev/solidgroundux/target-root/usr/local/lib/testadura/comm
                         FLAG_VERBOSE=1
                         sayinfo "Verbose mode enabled."
                     fi
-                    __set_runmodes
+                    RUN_MODE=$([ "${FLAG_DRYRUN:-0}" -eq 1 ] && echo "${BOLD_ORANGE}DRYRUN${RESET}" || echo "${BOLD_GREEN}COMMIT${RESET}")
                     ;;
                 7)
                     wait_after=0.5
@@ -862,7 +857,7 @@ source /home/sysadmin/dev/solidgroundux/target-root/usr/local/lib/testadura/comm
                         FLAG_DRYRUN=1
                         sayinfo "Dry-Run mode enabled."
                     fi
-                    __set_runmodes
+                    RUN_MODE=$([ "${FLAG_DRYRUN:-0}" -eq 1 ] && echo "${BOLD_ORANGE}DRYRUN${RESET}" || echo "${BOLD_GREEN}COMMIT${RESET}")
                     ;;
                 8)
                     sayinfo "Exiting..."

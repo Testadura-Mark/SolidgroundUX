@@ -33,8 +33,11 @@
 
   # need_root -- require the script to run as root, re-exec with sudo if not.
   need_root() {
-      if [[ ${EUID:-$(id -u)} -ne 0 ]]; then
-          exec sudo -- "$0" "$@"
+      if [[ ${EUID:-$(id -u)} -ne 0 && -z "${TD_ALREADY_ROOT:-}" ]]; then
+          exec sudo \
+              --preserve-env=TD_FRAMEWORK_ROOT,TD_APPLICATION_ROOT,PATH \
+              TD_ALREADY_ROOT=1 \
+              -- "$0" "$@"
       fi
   }
 

@@ -31,19 +31,9 @@ source /home/sysadmin/dev/solidgroundux/target-root/usr/local/lib/testadura/comm
     TD_SCRIPT_COPYRIGHT="© 2025 Mark Fieten — Testadura Consultancy"
     TD_SCRIPT_LICENSE="Testadura Non-Commercial License (TD-NC) v1.0"
 
-    TD_STATE_FILE="${TD_STATE_FILE:-"$TD_STATE_DIR/$TD_SCRIPT_NAME.state"}" # State file path
-    TD_SYSCFG_FILE="${TD_SYSCFG_FILE:-"$TD_SYSCFG_DIR/$TD_SCRIPT_NAME.cfg"}" # Config file path
-    TD_LOG_MAX_BYTES="${TD_LOG_MAX_BYTES:-$((25 * 1024 * 1024))}"
-
 # --- Using / imports -------------------------------------------------------------
     # Libraries to source from TD_COMMON_LIB
     TD_USING=(
-    "core.sh"   # td_die/td_warn/td_info, need_root, etc. (you decide contents)
-    "args.sh"   # td_parse_args, td_show_help
-    "default-colors.sh" # color definitions for terminal output
-    "default-styles.sh" # text styles for terminal output
-    "ui.sh"     # user inetractive helpers
-    "cfg.sh"    # td_cfg_load, config discovery + source, td_state_set/load
     )
 
 # --- Argument specification and processing ---------------------------------------
