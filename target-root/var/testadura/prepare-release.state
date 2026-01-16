@@ -1,7 +1,0 @@
-STAGING_DIR=/home/sysadmin/dev/solidgroundux/releases
-RELEASE=SolidgroundUX-1.1-beta
-SOURCE_DIR=/home/sysadmin/dev/solidgroundux/target-root
-STAGING_ROOT=/home/sysadmin/dev/solidgroundux/releases
-TAR_FILE=SolidgroundUX-1.1-beta.tar.gz
-FLAG_CLEANUP=0
-FLAG_USEEXISTING=0

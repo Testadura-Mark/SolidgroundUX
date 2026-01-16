@@ -6,3 +6,4 @@ releases/
 .idea/
 .hidden-folder/
 .DS_Store
+*.state
