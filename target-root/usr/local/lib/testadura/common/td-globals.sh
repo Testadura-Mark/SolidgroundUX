@@ -31,7 +31,7 @@
     [[ -n "${TD_GLOBALS_LOADED:-}" ]] && return 0
     TD_GLOBALS_LOADED=1
 
-# --- Framwork info ---------------------------------------------------------------
+# --- Framework info ---------------------------------------------------------------
     TD_PRODUCT="SolidgroundUX"
     TD_VERSION="1.1-beta"
     TD_VERSION_DATE="2026-01-08"

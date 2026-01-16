@@ -22,15 +22,15 @@
 # =================================================================================
 
 # --- Validate use ----------------------------------------------------------------
-  # Refuse to execute (library only)
-  [[ "${BASH_SOURCE[0]}" != "$0" ]] || {
-    echo "This is a library; source it, do not execute it: ${BASH_SOURCE[0]}" >&2
-    exit 2
-  }
+    # Refuse to execute (library only)
+    [[ "${BASH_SOURCE[0]}" != "$0" ]] || {
+      echo "This is a library; source it, do not execute it: ${BASH_SOURCE[0]}" >&2
+      exit 2
+    }
 
-  # Load guard
-  [[ -n "${TD_CORE_LOADED:-}" ]] && return 0
-  TD_CORE_LOADED=1
+    # Load guard
+    [[ -n "${TD_CORE_LOADED:-}" ]] && return 0
+    TD_CORE_LOADED=1
 
 # --- Internals -------------------------------------------------------------------
   # _sh_err -- print an error message to stderr (internal, minimal).
