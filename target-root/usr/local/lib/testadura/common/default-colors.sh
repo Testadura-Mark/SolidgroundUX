@@ -1,13 +1,15 @@
-#!/usr/bin/env bash
 # ===============================================================================
 # Testadura Consultancy — default-colors.sh
 # -------------------------------------------------------------------------------
-# Purpose : Text color codes for bash scripts
-# Author  : Mark <mark@solidground.local>
-# 
+# Purpose    : ANSI color/style escape codes for console output
+# Author     : Mark Fieten
+#
 # © 2025 Mark Fieten — Testadura Consultancy
 # Licensed under the Testadura Non-Commercial License (TD-NC) v1.0.
 # -------------------------------------------------------------------------------
+# Design rules:
+#   - Constants only (no functions, no side effects).
+#
 # Usage:
 #   printf "%sItalic Yellow%s\n" "$ITALIC_YELLOW" "$RESET"
 #   printf "%sFaint Red%s\n" "$FAINT_RED" "$RESET"

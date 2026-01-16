@@ -2,10 +2,23 @@
 # ==================================================================================
 # Testadura Consultancy — prepare-release.sh
 # ----------------------------------------------------------------------------------
-# Purpose : Creates a clean tar.gz release archive of the application
-# Author  : Mark Fieten
+# Purpose    : Create a clean tar.gz release archive of the current application
+# Author     : Mark Fieten
+#
 # © 2025 Mark Fieten — Testadura Consultancy
 # Licensed under the Testadura Non-Commercial License (TD-NC) v1.0.
+# ----------------------------------------------------------------------------------
+# Description:
+#   Developer utility that assembles a reproducible release archive from the
+#   current workspace, excluding build artifacts and non-distributable files.
+#
+# Assumptions:
+#   - Run from within an application workspace or repository
+#   - Testadura framework is available and bootstrapped
+#
+# Effects:
+#   - Creates a tar.gz archive in the release/output directory
+#   - May create or remove temporary staging directories
 # ==================================================================================
 
 set -euo pipefail

@@ -2,22 +2,32 @@
 # ===============================================================================
 # Testadura Consultancy — create-workspace.sh
 # -------------------------------------------------------------------------------
-# Purpose : Generic script template
-# Author  : Mark Fieten
-# Version : 1.0 (2025-11-20)
-# 
+# Purpose    : Create a new development workspace from templates
+# Author     : Mark Fieten
+#
 # © 2025 Mark Fieten — Testadura Consultancy
 # Licensed under the Testadura Non-Commercial License (TD-NC) v1.0.
 # -------------------------------------------------------------------------------
-# Description :
-#   Script to create a workspace from a source root to a target root.
-#   - Sets up directory structure
-#   - Creates a VS Code workspace file
-#   - Copies template files
+# Description:
+#   Developer utility that scaffolds a new project workspace from a source
+#   template into a target directory.
+#
+#   - Creates the required directory structure
+#   - Copies framework or project template files
+#   - Optionally generates a VS Code workspace file
+#
+# Assumptions:
+#   - Target directory does not already contain a conflicting workspace
+#   - Intended for development use (not deployment)
+#
+# Effects:
+#   - Creates directories and files under the specified target path
+#   - May overwrite existing files if explicitly allowed
+#
 # Usage examples:
 #   ./create-workspace.sh --project MyProject --folder /path/to/project
 #   ./create-workspace.sh -p MyProject -f /path/to/project --dryrun
-# ==============================================================================
+# ===============================================================================
 set -euo pipefail
 source /home/sysadmin/dev/solidgroundux/target-root/usr/local/lib/testadura/common/td-bootstrap.sh
 

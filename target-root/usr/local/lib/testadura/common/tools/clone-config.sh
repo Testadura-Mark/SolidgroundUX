@@ -2,15 +2,28 @@
 # ==============================================================================
 # Testadura Consultancy — clone-config.sh
 # ------------------------------------------------------------------------------
-# Purpose : Menu application for cloned VM configuration management
-# Author  : Mark Fieten
+# Purpose    : Interactive menu for cloned VM configuration
+# Author     : Mark Fieten
+#
 # © 2025 Mark Fieten — Testadura Consultancy
 # Licensed under the Testadura Non-Commercial License (TD-NC) v1.0.
-# -------------------------------------------------------------------------------
-# Design:
-#   - Executable scripts are explicit: set paths, import libs, then run.
-#   - Libraries never auto-run (templating, not inheritance).
-#   - Args parsing and config loading are opt-in by defining ARGS_SPEC and/or CFG_*.
+# ------------------------------------------------------------------------------
+# Description:
+#   Interactive menu application used after cloning a VM to apply machine-specific
+#   configuration (identity, network, SSH, domain join, etc.).
+#
+# Assumptions:
+#   - Requires an interactive TTY
+#   - Some actions may require root privileges
+#
+# Effects:
+#   - May modify system configuration files and network settings
+#   - May enable/disable services (e.g., SSH) depending on selected actions
+#
+# Design notes:
+#   - Executables are explicit: set paths, import libs, then run.
+#   - Libraries never auto-run (composition, not inheritance).
+#   - Args parsing and config/state loading are opt-in via ARGS_SPEC and/or CFG_*.
 # ==============================================================================
 
 set -euo pipefail

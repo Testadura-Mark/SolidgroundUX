@@ -1,16 +1,21 @@
-#!/usr/bin/env bash
 # ===============================================================================
 # Testadura Consultancy — default-styles.sh
 # -------------------------------------------------------------------------------
-# Purpose : Centralized styles for cli bash scripts
-# Author  : Mark <mark@solidground.local>
-# 
+# Purpose    : Default CLI labels, symbols, and color mappings
+# Author     : Mark Fieten
+#
 # © 2025 Mark Fieten — Testadura Consultancy
 # Licensed under the Testadura Non-Commercial License (TD-NC) v1.0.
 # -------------------------------------------------------------------------------
+# Design rules:
+#   - Constants only (no functions, no side effects).
+#
+# Non-goals:
+#   - Output formatting logic (see ui-say.sh)
+#   - User interaction (see ui-ask.sh)
+#
 # Usage:
-#   printf "%s%s %s%s\n" "$CLR_INFO" "$LBL_INFO" /
-#           "System initialized" "$RESET"
+#   printf "%s%s %s%s\n" "$CLR_INFO" "$LBL_INFO" "System initialized" "$RESET"
 # ===============================================================================
 
 # --- Message type labels and icons ---------------------------------------------

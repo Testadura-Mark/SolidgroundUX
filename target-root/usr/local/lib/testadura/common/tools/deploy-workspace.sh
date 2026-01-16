@@ -2,24 +2,36 @@
 # ===============================================================================
 # Testadura Consultancy — deploy-workspace.sh
 # -------------------------------------------------------------------------------
-# Purpose : Generic script template
-# Author  : Mark Fieten
-# 
+# Purpose    : Deploy or remove a development workspace to/from a target root
+# Author     : Mark Fieten
+#
 # © 2025 Mark Fieten — Testadura Consultancy
 # Licensed under the Testadura Non-Commercial License (TD-NC) v1.0.
 # -------------------------------------------------------------------------------
-# Description :
-#   Deploy a development workspace to a target root filesystem.
-#   - Copies files from source to target, preserving structure.
-#   - Sets permissions based on predefined rules.
-#   - Optionally creates/removes symlinks for executables in /usr/local/bin.
+# Description:
+#   Deployment utility for synchronizing a development workspace into a target
+#   root filesystem.
+#
+#   - Copies files from source to target, preserving directory structure.
+#   - Sets ownership and permissions based on predefined rules.
+#   - Optionally creates or removes executable symlinks in /usr/local/bin.
+#   - Supports undeploy (removal) operations.
+#
+# Assumptions:
+#   - Target root is a prepared filesystem (e.g. /, chroot, image root).
+#   - May require root privileges depending on target.
+#
+# Effects:
+#   - Creates, overwrites, or removes files under the target root.
+#   - May modify /usr/local/bin within the target root.
+#
 # Usage examples:
-#   ./deploy-workspace.sh --source /home/user/dev/myworkspace --target --dryrun
-#   ./deploy-workspace.sh -s /home/user/dev/myworkspace -t --verbose
-#   ./deploy-workspace.sh --undeploy -s /home/user/dev/myworkspace -t 
-#  or simply:
-#   ./deploy-workspace.sh and follow prompts.
-# ==============================================================================
+#   ./deploy-workspace.sh --source /home/user/dev/myworkspace --target / --dryrun
+#   ./deploy-workspace.sh -s /home/user/dev/myworkspace -t / --verbose
+#   ./deploy-workspace.sh --undeploy -s /home/user/dev/myworkspace -t /
+#   Or simply:
+#   ./deploy-workspace.sh   # interactive mode
+# ===============================================================================
 set -euo pipefail
 source /home/sysadmin/dev/solidgroundux/target-root/usr/local/lib/testadura/common/td-bootstrap.sh
 
