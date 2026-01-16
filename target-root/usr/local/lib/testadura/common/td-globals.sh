@@ -1,3 +1,36 @@
+# =================================================================================
+# Testadura — td-globals.sh
+# ---------------------------------------------------------------------------------
+# Purpose    : Definition of framework-wide global variables and defaults
+# Author     : Mark Fieten
+#
+# © 2025 Mark Fieten — Testadura Consultancy
+# Licensed under the Testadura Non-Commercial License (TD-NC) v1.0.
+# ---------------------------------------------------------------------------------
+# Description:
+#   Declares the set of global variables used by the Testadura framework,
+#   including default values and global variable name lists (system/user).
+#
+#   This file defines names and defaults only; it does not load configuration
+#   files or apply runtime policy.
+#
+# Non-goals:
+#   - Loading or parsing configuration files
+#   - Runtime environment detection
+#   - UI, logging, or side effects
+# =================================================================================
+
+# --- Validate use ----------------------------------------------------------------
+    # Refuse to execute (library only)
+    [[ "${BASH_SOURCE[0]}" != "$0" ]] || {
+    echo "This is a library; source it, do not execute it: ${BASH_SOURCE[0]}" >&2
+    exit 2
+    }
+
+    # Load guard
+    [[ -n "${TD_GLOBALS_LOADED:-}" ]] && return 0
+    TD_GLOBALS_LOADED=1
+
 # --- Framwork info ---------------------------------------------------------------
     TD_PRODUCT="SolidgroundUX"
     TD_VERSION="1.1-beta"
@@ -6,7 +39,7 @@
     TD_COPYRIGHT="© 2025 Mark Fieten — Testadura Consultancy"
     TD_LICENSE="Testadura Non-Commercial License (TD-NC) v1.0"
 
-# --- Framework settings (overridden by scripts when sourced) ----------------------  
+# --- Framework settings (overridden by scripts when sourced) ---------------------  
     __define_default() {
         local name="$1"
         local value="$2"

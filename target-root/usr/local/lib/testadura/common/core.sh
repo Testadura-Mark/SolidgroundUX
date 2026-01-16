@@ -1,30 +1,43 @@
-#!/usr/bin/env bash
-# ===============================================================================
+# =================================================================================
 # Testadura Consultancy — core.sh
-# -------------------------------------------------------------------------------
-# Purpose : Common Bash helper one-liners for reusable scripts
-# Author  : Mark Fieten
-# 
+# ---------------------------------------------------------------------------------
+# Purpose    : Minimal, UI-free Bash helpers for reusable scripts
+# Author     : Mark Fieten
+#
 # © 2025 Mark Fieten — Testadura Consultancy
 # Licensed under the Testadura Non-Commercial License (TD-NC) v1.0.
-# -------------------------------------------------------------------------------
-# Description :
+# ---------------------------------------------------------------------------------
+# Description:
 #   Source this file to get small, focused utilities:
 #   - Privilege & command checks
 #   - Filesystem helpers
-#   - Network helpers
+#   - Networking convenience helpers
 #   - Arg/env validators
 #   - Process helpers
-#   - Version/OS helpers
+#   - OS/version detection helpers
 #   - Misc utilities
-# ===============================================================================
+#
+# Non-goals:
+#   - UI formatting, logging, interactive prompts
+# =================================================================================
 
-# --- Internals ---------------------------------------------------------------
+# --- Validate use ----------------------------------------------------------------
+  # Refuse to execute (library only)
+  [[ "${BASH_SOURCE[0]}" != "$0" ]] || {
+    echo "This is a library; source it, do not execute it: ${BASH_SOURCE[0]}" >&2
+    exit 2
+  }
+
+  # Load guard
+  [[ -n "${TD_CORE_LOADED:-}" ]] && return 0
+  TD_CORE_LOADED=1
+
+# --- Internals -------------------------------------------------------------------
   # _sh_err -- print an error message to stderr (internal, minimal).
   _sh_err(){ printf '%s\n' "${*:-(no message)}" >&2; }
 
 
-# --- Privilege & Command Checks ----------------------------------------------
+# --- Privilege & Command Checks --------------------------------------------------
   # have -- test if a command exists in PATH.
   have(){ command -v "$1" >/dev/null 2>&1; }
 
@@ -61,7 +74,7 @@
   # need_systemd -- require systemd (systemctl available) or exit.
   need_systemd(){ have systemctl || { _sh_err "Systemd not available."; exit 1; }; }
 
-# --- Filesystem Helpers ------------------------------------------------------
+# --- Filesystem Helpers ----------------------------------------------------------
   # ensure_dir -- create directory (including parents) if it does not exist.
   ensure_dir(){ [[ -d "$1" ]] || mkdir -p "$1"; }
 
@@ -86,12 +99,11 @@
   # mktemp_file -- create a temporary file, return its path.
   mktemp_file(){ TMPDIR=${TMPDIR:-/tmp} mktemp "${TMPDIR%/}/XXXXXX"; }
 
-# --- Systeminfo --------------------------------------------------------------
+# --- Systeminfo ------------------------------------------------------------------
   get_primary_nic() {
       ip route show default 2>/dev/null | awk 'NR==1 {print $5}'
   }
-  have(){ command -v "$1" >/dev/null 2>&1; }
-# --- Network Helpers ---------------------------------------------------------
+# --- Network Helpers -------------------------------------------------------------
   # ping_ok -- return 0 if host responds to a single ping.
   ping_ok(){ ping -c1 -W1 "$1" &>/dev/null; }
 
@@ -106,7 +118,7 @@
   # get_ip -- return first non-loopback IP address of this host.
   get_ip(){ hostname -I 2>/dev/null | awk '{print $1}'; }
 
-# --- Argument & Environment Helpers-------------------------------------------
+# --- Argument & Environment Helpers-----------------------------------------------
   # is_set -- test if a variable name is defined (set) in the environment.
   is_set(){ [[ -v "$1" ]]; }
 
@@ -125,7 +137,7 @@
   # confirm -- ask a yes/no question, return 0 on [Yy].
   confirm(){ read -rp "${1:-Are you sure?} [y/N]: " _a; [[ "$_a" =~ ^[Yy]$ ]]; }
 
-# --- Process & State Helpers -------------------------------------------------
+# --- Process & State Helpers -----------------------------------------------------
   # proc_exists -- check if a process with given name is running.
   proc_exists(){ pgrep -x "$1" &>/dev/null; }
 
@@ -136,7 +148,7 @@
   kill_if_running(){ pkill -x "$1" &>/dev/null || true; }
 
 
-# --- Version & OS Helpers ----------------------------------------------------
+# --- Version & OS Helpers --------------------------------------------------------
   # get_os -- return OS ID from /etc/os-release (e.g. ubuntu, debian).
   get_os(){ grep -E '^ID=' /etc/os-release | cut -d= -f2 | tr -d '"' ; }
 
@@ -147,13 +159,13 @@
   # usage: version_ge "1.4" "1.3"
   version_ge(){ [[ "$(printf '%s\n' "$2" "$1" | sort -V | head -n1)" == "$2" ]]; }
 
-  show_version() {
-    justsay "SolidgroundUX : $SGND_VERSION ($SGND_VERSION_DATE)"
-    justsay "Script        : ${SCRIPT_VERSION:-<none>} ${SCRIPT_VERSION_STATUS:-}"
+  show_script_version() {
+    printf '%s\n' "SolidgroundUX : $SGND_VERSION ($SGND_VERSION_DATE)"
+    printf '%s\n' "Script        : ${SCRIPT_VERSION:-<none>} ${SCRIPT_VERSION_STATUS:-}"
     [[ -n "$SCRIPT_VERSION_DATE" ]] && justsay "Script Date            : $SCRIPT_VERSION_DATE"
   }
 
-# --- Misc Utilities ----------------------------------------------------------
+# --- Misc Utilities --------------------------------------------------------------
   # join_by -- join arguments with a separator.
   join_by(){ local IFS="$1"; shift; echo "$*"; }
 
@@ -192,7 +204,7 @@
         *)            return 1 ;;
     esac
   }
-# --- Die and exit  handlers --------------------------------------------------
+# --- Die and exit  handlers ------------------------------------------------------
     die(){ local code="${2:-1}"; _sh_err "${1:-fatal error}"; exit "$code"; }
 
     # on_exit -- append command to existing EXIT trap if set.
@@ -206,7 +218,7 @@
       fi
     }
 
-# --- Argument & Environment Validators ---------------------------------------
+# --- Argument & Environment Validators -------------------------------------------
   # validate_int -- return 0 if value is an integer (optional +/- sign).
   validate_int() 
   {

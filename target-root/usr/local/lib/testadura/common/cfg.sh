@@ -1,30 +1,47 @@
-# ================================================================================
+# ==================================================================================
 # Testadura — cfg.sh
-# --------------------------------------------------------------------------------
-# Purpose : Minimal cfg/state management
-# Author  : Mark Fieten
+# ----------------------------------------------------------------------------------
+# Purpose    : Minimal KEY=VALUE config and state file management
+# Author     : Mark Fieten
+#
 # © 2025 Mark Fieten — Testadura Consultancy
 # Licensed under the Testadura Non-Commercial License (TD-NC) v1.0.
-# -------------------------------------------------------------------------------
-# Description :
-#   Simple key=value config and state file management.
-#   - Config and state files are simple KEY=VALUE text files.
-#   - Config is for user-editable settings; state is for script-managed data.
+# ----------------------------------------------------------------------------------
+# Description:
+#   Provides simple helpers for loading and maintaining configuration and
+#   state files stored as plain KEY=VALUE text.
 #
-#  Usage examples:
-#   
-#   td_cfg_load          # Load config file into shell variables
-#   td_cfg_set KEY VAL   # Set/update config key
-#   td_cfg_unset KEY     # Remove config key
-#   td_cfg_reset         # Clear entire config file
+#   - Config files are user-editable settings.
+#   - State files are script-managed runtime data.
 #
-#   td_state_load        # Load state file into shell variables
-#   td_state_set KEY VAL # Set/update state key
-#   td_state_unset KEY   # Remove state key
-#   td_state_reset       # Clear entire state file
-# ==============================================================================
+# Design rules:
+#   - Plain KEY=VALUE format only (no sections, includes, or typing).
+#   - No interpretation or validation of values.
+#   - No default value injection.
+#   - No environment or shell option changes.
+#
+# Public API (summary):
+#   td_cfg_load | td_cfg_set | td_cfg_unset | td_cfg_reset
+#   td_state_load | td_state_set | td_state_unset | td_state_reset
+#
+# Non-goals:
+#   - Structured formats (INI, YAML, JSON)
+#   - Schema or type enforcement
+#   - Merging or inheritance logic
+# ==================================================================================
 
-# --- internal: file and value manipulation ==---------------------------------
+# --- Validate use ----------------------------------------------------------------
+    # Refuse to execute (library only)
+    [[ "${BASH_SOURCE[0]}" != "$0" ]] || {
+    echo "This is a library; source it, do not execute it: ${BASH_SOURCE[0]}" >&2
+    exit 2
+    }
+
+    # Load guard
+    [[ -n "${TD_CFG_LOADED:-}" ]] && return 0
+    TD_CFG_LOADED=1
+
+# --- internal: file and value manipulation ==-------------------------------------
     # - Ignores empty lines and comments
     # - Accepts only names: [A-Za-z_][A-Za-z0-9_]*
     # - Loads by eval of sanitized assignment (value preserved as-is)
@@ -107,7 +124,7 @@
         rm -f "$file"
     }
 
-# --- public: config ----------------------------------------------------------
+# --- public: config --------------------------------------------------------------
 
     td_cfg_load() {
         local file
@@ -138,7 +155,7 @@
         __td_kv_reset_file "$file"
     }
 
-# --- public: state -----------------------------------------------------------
+# --- public: state ---------------------------------------------------------------
     td_state_load() {
         saydebug "Loading state from file ${TD_STATE_FILE}"
         __td_kv_load_file "$TD_STATE_FILE"
