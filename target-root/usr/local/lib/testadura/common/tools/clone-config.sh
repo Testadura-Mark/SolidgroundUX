@@ -34,6 +34,7 @@ source /home/sysadmin/dev/solidgroundux/target-root/usr/local/lib/testadura/comm
     TD_SCRIPT_DIR="$(cd -- "$(dirname -- "$TD_SCRIPT_FILE")" && pwd)"
     TD_SCRIPT_BASE="$(basename -- "$TD_SCRIPT_FILE")"
     TD_SCRIPT_NAME="${TD_SCRIPT_BASE%.sh}"
+    TD_SCRIPT_TITLE="Clone configurator"
     TD_SCRIPT_DESC="Canonical executable template for Testadura scripts"
     TD_SCRIPT_VERSION="1.0"
     TD_SCRIPT_BUILD="20250110"    
@@ -89,10 +90,8 @@ source /home/sysadmin/dev/solidgroundux/target-root/usr/local/lib/testadura/comm
 
         _verb=$([ "${FLAG_VERBOSE:-0}" -eq 1 ] && echo "${BOLD_YELLOW}ON${RESET}" || echo "${BOLD_YELLOW}OFF${RESET}")
         _dry=$([ "${FLAG_DRYRUN:-0}" -eq 1 ] && echo "${BOLD_YELLOW}ON${RESET}" || echo "${BOLD_YELLOW}OFF${RESET}")
-
-        __menuline "${_barcolor}====================================================="
-        __menuline "${_titlecolor}   Clone Configuration Menu                    ${RUN_MODE}"
-        __menuline "${_barcolor}====================================================="
+  
+        td_print_titlebar --text "Clone configuration menu" --textclr $_titlecolor
         __menuline "${_titlecolor}    --- Basic configuration tasks ---${_itemcolor}"
         __menuline "    1) Setup Machine ID"
         __menuline "    2) Configure Hostname and Network"
@@ -107,7 +106,7 @@ source /home/sysadmin/dev/solidgroundux/target-root/usr/local/lib/testadura/comm
         __menuline "    7) Toggle Dry-Run mode ($_dry)"
         __menuline ""
         __menuline "    8) Exit"
-        __menuline "${_barcolor}===================================================${RESET}"
+         td_print_sectionheader --borderclr $_barcolor
     }
 
     __save_settings(){
@@ -793,7 +792,7 @@ source /home/sysadmin/dev/solidgroundux/target-root/usr/local/lib/testadura/comm
         while true; do
             clear
             if [[ $FLAG_VERBOSE ]]; then
-                __td_showarguments
+                td_showarguments
             fi
             __show_mainmenu
 

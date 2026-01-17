@@ -1,23 +1,36 @@
 # =================================================================================
-# Testadura — td-globals.sh
+# Testadura Consultancy — td-globals.sh
 # ---------------------------------------------------------------------------------
-# Purpose    : Definition of framework-wide global variables and defaults
+# Purpose    : Framework-wide global variable definitions and defaults
 # Author     : Mark Fieten
 #
 # © 2025 Mark Fieten — Testadura Consultancy
 # Licensed under the Testadura Non-Commercial License (TD-NC) v1.0.
 # ---------------------------------------------------------------------------------
 # Description:
-#   Declares the set of global variables used by the Testadura framework,
-#   including default values and global variable name lists (system/user).
+#   Declares the set of global variables used by the Testadura framework, including:
+#   - Canonical variable names
+#   - Default values
+#   - Groupings of globals (e.g., system vs user variables)
 #
-#   This file defines names and defaults only; it does not load configuration
-#   files or apply runtime policy.
+#   This file defines names and defaults only. It establishes the *shape* of the
+#   framework environment but does not interpret, load, or apply configuration.
+#
+# Assumptions:
+#   - Sourced early during bootstrap.
+#   - May be referenced by multiple framework layers (ui, say, ask, args).
+#
+# Rules / Contract:
+#   - No side effects beyond variable definition.
+#   - No runtime detection, validation, or mutation.
+#   - No UI, logging, or I/O of any kind.
+#   - No policy decisions (what values mean is handled elsewhere).
 #
 # Non-goals:
 #   - Loading or parsing configuration files
+#   - Applying configuration precedence or overrides
 #   - Runtime environment detection
-#   - UI, logging, or side effects
+#   - UI output, logging, or user interaction
 # =================================================================================
 
 # --- Validate use ----------------------------------------------------------------

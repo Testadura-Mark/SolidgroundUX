@@ -1,5 +1,5 @@
 # ==================================================================================
-# Testadura — cfg.sh
+# Testadura Consultancy — cfg.sh
 # ----------------------------------------------------------------------------------
 # Purpose    : Minimal KEY=VALUE config and state file management
 # Author     : Mark Fieten
@@ -8,17 +8,25 @@
 # Licensed under the Testadura Non-Commercial License (TD-NC) v1.0.
 # ----------------------------------------------------------------------------------
 # Description:
-#   Provides simple helpers for loading and maintaining configuration and
-#   state files stored as plain KEY=VALUE text.
+#   Provides small helpers for loading and maintaining configuration and state
+#   stored as plain KEY=VALUE text files.
 #
-#   - Config files are user-editable settings.
-#   - State files are script-managed runtime data.
+#   Conceptually:
+#   - Config files are user-editable settings (persistent inputs).
+#   - State files are script-managed runtime data (persistent outputs).
 #
-# Design rules:
-#   - Plain KEY=VALUE format only (no sections, includes, or typing).
-#   - No interpretation or validation of values.
-#   - No default value injection.
+# Assumptions:
+#   - This is a FRAMEWORK library (may depend on the framework as it exists).
+#   - File paths (TD_CFG_FILE / TD_STATE_FILE or equivalents) are resolved by
+#     bootstrap or the caller; this module does not perform path detection.
+#
+# Rules / Contract:
+#   - Plain KEY=VALUE format only (no sections, includes, quoting rules, or typing).
+#   - No interpretation or validation of values (strings only).
+#   - No default injection or merge/inheritance policy (caller decides precedence).
 #   - No environment or shell option changes.
+#   - Library-only: must be sourced, never executed.
+#   - Safe to source multiple times (must be guarded).
 #
 # Public API (summary):
 #   td_cfg_load | td_cfg_set | td_cfg_unset | td_cfg_reset
@@ -27,7 +35,7 @@
 # Non-goals:
 #   - Structured formats (INI, YAML, JSON)
 #   - Schema or type enforcement
-#   - Merging or inheritance logic
+#   - Merging/inheritance logic or config precedence policy
 # ==================================================================================
 
 # --- Validate use ----------------------------------------------------------------
@@ -125,22 +133,29 @@
     }
 
 # --- public: config --------------------------------------------------------------
-
+    # --- td_cfg_load -----------------------------------------------------------------
+    # Load TD_CFG_FILE (KEY=VALUE) into the current shell.
+    # Returns 0 on success; non-zero on read/parse failure.
     td_cfg_load() {
         local file
         file="${TD_CFG_FILE}"
         __td_kv_load_file "$file"
     }
 
+    # --- td_cfg_set ----------------------------------------------------------------
+    # Persist KEY=VALUE to TD_CFG_FILE and update the current shell variable.
+    # Usage: td_cfg_set KEY VALUE
     td_cfg_set() {
         local key="$1" val="$2"
         local file
         file="${TD_CFG_FILE}"
         __td_kv_set "$file" "$key" "$val"
-        # also update current shell variable to match
         eval "$key=$(printf "%q" "$val")"
     }
 
+    # --- td_cfg_unset --------------------------------------------------------------
+    # Remove KEY from TD_CFG_FILE and unset it in the current shell.
+    # Usage: td_cfg_unset KEY
     td_cfg_unset() {
         local key="$1"
         local file
@@ -149,6 +164,8 @@
         unset "$key" || true
     }
 
+    # --- td_cfg_reset --------------------------------------------------------------
+    # Reset TD_CFG_FILE to an empty/default file (implementation-defined).
     td_cfg_reset() {
         local file
         file="${TD_CFG_FILE}"
@@ -156,19 +173,27 @@
     }
 
 # --- public: state ---------------------------------------------------------------
+    # --- td_state_load -----------------------------------------------------------
+    # Load TD_STATE_FILE (KEY=VALUE) into the current shell.
     td_state_load() {
         saydebug "Loading state from file ${TD_STATE_FILE}"
         __td_kv_load_file "$TD_STATE_FILE"
     }
 
+    # --- td_state_set ------------------------------------------------------------
+    # Persist KEY=VALUE to TD_STATE_FILE and update the current shell variable.
+    # Usage: td_state_set KEY VALUE
     td_state_set() {
         local key="$1" val="$2"
         saydebug "Setting state key '$key' to '$val' in file ${TD_STATE_FILE}"
-    
+
         __td_kv_set "$TD_STATE_FILE" "$key" "$val"
         eval "$key=$(printf "%q" "$val")"
     }
 
+    # --- td_state_unset ----------------------------------------------------------
+    # Remove KEY from TD_STATE_FILE and unset it in the current shell.
+    # Usage: td_state_unset KEY
     td_state_unset() {
         local key="$1"
         saydebug "Unsetting state key '$key' in file ${TD_STATE_FILE}"
@@ -176,6 +201,8 @@
         unset "$key" || true
     }
 
+    # --- td_state_reset ----------------------------------------------------------
+    # Reset TD_STATE_FILE to an empty/default file (implementation-defined).
     td_state_reset() {
         [[ -n "$TD_STATE_FILE" ]] || return 0
         saydebug "Deleting statefile %s" "$TD_STATE_FILE"

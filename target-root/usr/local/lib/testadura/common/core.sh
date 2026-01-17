@@ -7,6 +7,9 @@
 # © 2025 Mark Fieten — Testadura Consultancy
 # Licensed under the Testadura Non-Commercial License (TD-NC) v1.0.
 # ---------------------------------------------------------------------------------
+# Assumptions:
+#   - Core helpers (NO framework or UI dependencies)
+#
 # Description:
 #   Source this file to get small, focused utilities:
 #   - Privilege & command checks
@@ -17,8 +20,13 @@
 #   - OS/version detection helpers
 #   - Misc utilities
 #
-# Non-goals:
-#   - UI formatting, logging, interactive prompts
+# Rules / Contract:
+#   - No UI formatting or rendering
+#   - No colors, themes, or terminal assumptions
+#   - No logging, prompts, or interactive behavior
+#   - No dependency on framework state or globals
+#   - Safe to use during early bootstrap and in isolation
+#
 # =================================================================================
 
 # --- Validate use ----------------------------------------------------------------
@@ -186,9 +194,10 @@
     done
     return 1
   }
+  
   strip_ansi() {
-    # Strips ANSI CSI escape sequences
-    sed -E $'s/\x1B\\[[0-9;?]*[ -/]*[@-~]//g' <<<"$1"
+    # Strip ANSI SGR color sequences (ESC[...m)
+    sed -r 's/\x1B\[[0-9;]*m//g' <<<"$1"
   }
 
   visible_len() {
@@ -204,6 +213,19 @@
         *)            return 1 ;;
     esac
   }
+  string_repeat() {
+        local s="$1"
+        local n="$2"
+        local out=""
+        local i=0
+
+        (( n <= 0 )) && { printf '%s' ""; return 0; }
+
+        for (( i=0; i<n; i++ )); do
+            out+="$s"
+        done
+        printf '%s' "$out"
+    }
 # --- Die and exit  handlers ------------------------------------------------------
     die(){ local code="${2:-1}"; _sh_err "${1:-fatal error}"; exit "$code"; }
 
@@ -217,6 +239,7 @@
         trap "$new" EXIT
       fi
     }
+
 
 # --- Argument & Environment Validators -------------------------------------------
   # validate_int -- return 0 if value is an integer (optional +/- sign).

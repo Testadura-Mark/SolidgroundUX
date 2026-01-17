@@ -1,20 +1,38 @@
 # =================================================================================
 # Testadura Consultancy — ui-say.sh
 # ---------------------------------------------------------------------------------
-# Purpose    : Formatted output and optional logging helpers
+# Purpose    : Typed message output (say*) with optional logfile routing
 # Author     : Mark Fieten
 #
 # © 2025 Mark Fieten — Testadura Consultancy
 # Licensed under the Testadura Non-Commercial License (TD-NC) v1.0.
 # ---------------------------------------------------------------------------------
 # Description:
-#   Provides the say* family of functions for consistent, typed message output
-#   (info, warning, error, debug, success, etc.), with optional logfile routing.
+#   Provides the say() API and say* shorthands for consistent, typed console output:
+#     INFO, STRT, WARN, FAIL, CNCL, OK, END, DEBUG, EMPTY
 #
-#   Shorthand wrappers are defined near the end of this file.
+#   Features:
+#   - Prefix composition (label/icon/symbol) via style maps (LBL_*, ICO_*, SYM_*)
+#   - Optional timestamp prefix (SAY_DATE_FORMAT)
+#   - Selective colorization (label/msg/date) via CLR_* and RESET
+#   - Optional logfile output with ANSI stripping and log rotation
+#
+# Assumptions:
+#   - This is a FRAMEWORK library (may depend on the framework as it exists).
+#   - Theme/style variables exist (CLR_*, RESET, LBL_*, ICO_*, SYM_*).
+#   - Core/UI primitives are available when used (e.g., visible_len, td_repeat).
+#   - Logging globals may exist (TD_LOGFILE_ENABLED, TD_LOG_MAX_BYTES, TD_LOG_KEEP,
+#     TD_LOG_COMPRESS, TD_CONSOLE_MSGTYPES, FLAG_VERBOSE).
+#
+# Rules / Contract:
+#   - Implements message formatting and rendering for the say* family only.
+#   - No interactive prompting (confirmation/input belongs in ui-ask.sh).
+#   - Safe to source multiple times (must be guarded).
+#   - Library-only: must be sourced, never executed.
 #
 # Non-goals:
-#   - User input or interactive dialogs (see ui-ask.sh)
+#   - User input or dialogs (see ui-ask.sh)
+#   - Application-specific message policy beyond type filtering
 # =================================================================================
 
 # --- Validate use ----------------------------------------------------------------
@@ -186,380 +204,311 @@
             }
 
 # --- Public API ------------------------------------------------------------------
-    # Options supported by say():
-    #
-    #   - --type <TYPE>
-    #       Explicitly set message type.
-    #       Valid: INFO, STRT, WARN, FAIL, CNCL, OK, END, DEBUG, EMPTY
-    #
-    #   - --date
-    #       Add timestamp prefix using SAY_DATE_FORMAT.
-    #
-    #   - --show <pattern>
-    #       Control which parts of the prefix to display.
-    #       Patterns (comma or + separated):
-    #         label      → e.g. [INFO]
-    #         icon       → e.g. ℹ️
-    #         symbol     → e.g. >
-    #         all        → label + icon + symbol
-    #       Examples:
-    #         --show=label
-    #         --show=icon
-    #         --show=label,icon
-    #         --show=all
-    #
-    #   - --colorize <mode>
-    #       Control which elements receive color.
-    #       Modes:
-    #         none       → no color
-    #         label      → colorize label/icon/symbol only
-    #         msg        → colorize message text only
-    #         date       → colorize timestamp
-    #         both|all   → colorize label + message + date
-    #
-    #   - --writelog
-    #       Write the message to a logfile (plain text, no ANSI).
-    #       Uses LOG_FILE unless overridden by --logfile.
-    #
-    #   - --logfile <path>
-    #       Override the logfile for this invocation only.
-    #
-    #   - --
-    #       End option processing; treat remaining tokens as the message.
-    #
-    #   Positional type:
-    #       You may specify TYPE as the first argument instead of using --type:
-    #         say INFO "Message"
-    #         say WARN "Something happened"
-    #
-    #   Defaults (overridable via environment or style files):
-    #       SAY_DATE_DEFAULT       → 0 or 1
-    #       SAY_SHOW_DEFAULT       → label|icon|symbol|all|label,icon|…
-    #       SAY_COLORIZE_DEFAULT   → none|label|msg|both|all|date
-    #       SAY_WRITELOG_DEFAULT   → 0 or 1
-    #       SAY_DATE_FORMAT        → strftime pattern
-    # Usage examples:
-    #   - Simplest usage: INFO with label only
-    #     say INFO "Starting deployment"
-    #
-    #   - Let say() infer the type from first argument (same effect)
-    #     say STRT "Initializing workspace"
-    #
-    #   - Explicit type using --type
-    #     say --type warn "Low disk space on /data"
-    #
-    #   - Show date + label (colorization uses defaults)
-    #     say --date INFO "Backup completed"
-    #
-    #   - Show label + icon + symbol (style maps: LBL_*, ICO_*, SYM_*)
-    #     say --show=all WARN "Configuration file missing; using defaults"
-    #
-    #   - Only show icon + message, no label
-    #     say --show=icon --colorize=msg OK "All services are up"
-    #
-    #   - Colorize only the label (default behavior)
-    #     say --colorize=label FAIL "Deployment failed; see log for details"
-    #
-    #   - Colorize date + label + message
-    #     say --date --colorize=all INFO "System update finished"
-    #
-    #   - Log to default logfile (LOG_FILE)
-    #     say --writelog INFO "Scheduled job executed successfully"
-    #
-    #   - Log to an explicit logfile (overrides LOG_FILE)
-    #     say --writelog --logfile "/var/log/testadura/custom.log" \
-    #         WARN "Manual override applied"
-    #
-    #   - DEBUG messages (when DEBUG style is defined)
-    #     say DEBUG "Checking configuration before deploy"
-    #
-    #   - Plain message without prefix (EMPTY type)
-    #     say EMPTY "----------------------------------------"
-    #
-    #   - Change defaults for the entire script
-    #       export SAY_DATE_DEFAULT=1
-    #       export SAY_SHOW_DEFAULT="label,icon"
-    #       export SAY_COLORIZE_DEFAULT="both"
-    #       say INFO "These settings apply to all subsequent calls"
-    #
-    #   - Colorize only the date, leave label/msg plain
-    #     say --date --colorize=date INFO "Daily maintenance window started"
-    # ---------------------------------------------------------------------------
+    # --- say ---------------------------------------------------------------------
+        # Typed message output with optional timestamp, selective prefix parts, and logging.
+        #
+        # Usage:
+        #   say [TYPE] [message...]
+        #   say [opts] [TYPE] [message...]
+        #
+        # Types:
+        #   INFO STRT WARN FAIL CNCL OK END DEBUG EMPTY
+        #
+        # Options:
+        #   --type TYPE           Explicit message type (else: first positional TYPE)
+        #   --date                Prefix timestamp (SAY_DATE_FORMAT)
+        #   --show PATTERN        Prefix parts: label|icon|symbol|all (comma/+ separated)
+        #   --colorize MODE       none|label|msg|date|both|all
+        #   --writelog            Append plain text to logfile (no ANSI)
+        #   --logfile PATH        Override logfile for this call (if supported in impl)
+        #   --                    End options; rest is message
+        #
+        # Defaults (env/style):
+        #   SAY_DATE_DEFAULT, SAY_SHOW_DEFAULT, SAY_COLORIZE_DEFAULT, SAY_WRITELOG_DEFAULT,
+        #   SAY_DATE_FORMAT
+        #
+        # Examples:
+        #   say INFO "Starting"
+        #   say --date WARN "Low disk space"
+        #   say --show=all --colorize=both OK "All good"
+        #   say --writelog FAIL "Deployment failed"
+        # -----------------------------------------------------------------------------
     say() {
-        local type="EMPTY"
-        local add_date="${SAY_DATE_DEFAULT:-0}"
-        local show="${SAY_SHOW_DEFAULT:-label}"
-        local colorize="${SAY_COLORIZE_DEFAULT:-label}"
-        local writelog="${SAY_WRITELOG_DEFAULT:-0}"
-        local logfile="${LOG_FILE:-}"
+    local type="EMPTY"
+    local add_date="${SAY_DATE_DEFAULT:-0}"
+    local show="${SAY_SHOW_DEFAULT:-label}"
+    local colorize="${SAY_COLORIZE_DEFAULT:-label}"
+    local writelog="${SAY_WRITELOG_DEFAULT:-0}"
+    local logfile="${LOG_FILE:-}"
 
-        local explicit_type=0
-        local msg
-        local s_label=0 s_icon=0 s_symbol=0 prefixlength=0
+    local explicit_type=0
+    local msg
+    local s_label=0 s_icon=0 s_symbol=0 prefixlength=0
 
-        # --- Parse options
-        while [[ $# -gt 0 ]]; do
-            case "$1" in
-            --type)
-                type="${2^^}"
-                explicit_type=1
-                shift 2
-                ;;
-            --date)
-                add_date=1
-                prefixlength=$((prefixlength + 19))
-                shift
-                ;;
-            --show)
-                show="$2"
-                shift 2
-                ;;
-            --colorize)
-                colorize="$2"
-                shift 2
-                ;;
-            --)
-                shift
-                break
-                ;;
-            *)
-            # Positional TYPE: say STRT "message"
-            if (( ! explicit_type )); then
-            local maybe="${1^^}"
-            case "$maybe" in
-                INFO|STRT|WARN|FAIL|CNCL|OK|END|DEBUG|EMPTY)
-                type="$maybe"
-                explicit_type=1
-                shift
-                continue
-                ;;
-            esac
-            fi
-            # First non-option, non-type token -> start of message
+    # --- Parse options
+    while [[ $# -gt 0 ]]; do
+        case "$1" in
+        --type)
+            type="${2^^}"
+            explicit_type=1
+            shift 2
+            ;;
+        --date)
+            add_date=1
+            prefixlength=$((prefixlength + 19))
+            shift
+            ;;
+        --show)
+            show="$2"
+            shift 2
+            ;;
+        --colorize)
+            colorize="$2"
+            shift 2
+            ;;
+        --)
+            shift
             break
             ;;
-            esac
+        *)
+        # Positional TYPE: say STRT "message"
+        if (( ! explicit_type )); then
+        local maybe="${1^^}"
+        case "$maybe" in
+            INFO|STRT|WARN|FAIL|CNCL|OK|END|DEBUG|EMPTY)
+            type="$maybe"
+            explicit_type=1
+            shift
+            continue
+            ;;
+        esac
+        fi
+        # First non-option, non-type token -> start of message
+        break
+        ;;
+        esac
+    done
+
+    msg="${*:-}"
+
+    # Normalize TYPE
+    type="${type^^}"
+    case "$type" in
+        INFO|STRT|WARN|FAIL|CNCL|OK|END|DEBUG|EMPTY) ;;
+        "") type="EMPTY" ;;
+        *) type="EMPTY" ;;
+    esac
+    
+    if [[ "$type" != "EMPTY" ]]; then
+        
+        # Resolve maps via namerefs
+        #   Expects LBL_<TYPE>, ICO_<TYPE>, SYM_<TYPE>, CLR_<TYPE>
+        wrk="LBL_${type}"
+        declare -n lbl="$wrk"
+        wrk="ICO_${type}"
+        declare -n icn="$wrk"
+        wrk="SYM_${type}"
+        declare -n smb="$wrk"
+        wrk="CLR_${type}"
+    
+        declare -n clr="$wrk"
+    
+        # Decode --show (supports "label,icon", "label+symbol", "all")
+        local sel p
+        IFS=',+' read -r -a sel <<<"$show"
+        if [[ "${#sel[@]}" -eq 0 ]]; then sel=(label); fi
+
+        for p in "${sel[@]}"; do
+        case "${p,,}" in
+            label)  s_label=1
+                    prefixlength=$((prefixlength + 8));;
+            icon)   s_icon=1  
+                    prefixlength=$((prefixlength + 1));;
+            symbol) s_symbol=1 
+                    prefixlength=$((prefixlength + 3))
+            ;;
+            all)
+            s_label=1
+            s_icon=1
+            s_symbol=1
+            prefixlength=$((prefixlength + 16))
+            ;;
+        esac
         done
 
-        msg="${*:-}"
-
-        # Normalize TYPE
-        type="${type^^}"
-        case "$type" in
-            INFO|STRT|WARN|FAIL|CNCL|OK|END|DEBUG|EMPTY) ;;
-            "") type="EMPTY" ;;
-            *) type="EMPTY" ;;
-        esac
-        
-        if [[ "$type" != "EMPTY" ]]; then
-            
-            # Resolve maps via namerefs
-            #   Expects LBL_<TYPE>, ICO_<TYPE>, SYM_<TYPE>, CLR_<TYPE>
-            wrk="LBL_${type}"
-            declare -n lbl="$wrk"
-            wrk="ICO_${type}"
-            declare -n icn="$wrk"
-            wrk="SYM_${type}"
-            declare -n smb="$wrk"
-            wrk="CLR_${type}"
-        
-            declare -n clr="$wrk"
-        
-            # Decode --show (supports "label,icon", "label+symbol", "all")
-            local sel p
-            IFS=',+' read -r -a sel <<<"$show"
-            if [[ "${#sel[@]}" -eq 0 ]]; then sel=(label); fi
-
-            for p in "${sel[@]}"; do
-            case "${p,,}" in
-                label)  s_label=1
-                        prefixlength=$((prefixlength + 8));;
-                icon)   s_icon=1  
-                        prefixlength=$((prefixlength + 1));;
-                symbol) s_symbol=1 
-                        prefixlength=$((prefixlength + 3))
-                ;;
-                all)
-                s_label=1
-                s_icon=1
-                s_symbol=1
-                prefixlength=$((prefixlength + 16))
-                ;;
-            esac
-            done
-
-            # default: at least label
-            if (( s_label + s_icon + s_symbol == 0 )); then
-            s_label=1
-            prefixlength=$((prefixlength + 8))
-            fi
-
-            # Decode colorize: none|label|msg|date|both|all
-            local c_label=0 c_msg=0 c_date=0
-
-            case "${colorize,,}" in
-            none)
-                # all stay 0
-                ;;
-            label)
-                c_label=1
-                ;;
-            msg)
-                c_msg=1
-                ;;
-            date)
-                c_date=1
-                ;;
-            both|all)
-                c_label=1
-                c_msg=1
-                c_date=1
-                ;;
-            *)
-                # default to 'label'
-                c_label=1
-                ;;
-            esac
-
-            # Build final line
-            local fnl=""
-            local date_str=""
-            local prefix_parts=()
-            local rst="${RESET:-}"
-
-
-            # timestamp
-            if (( add_date )); then
-            date_str="$(date "+${SAY_DATE_FORMAT}")"
-            if (( c_date )); then
-                prefix_parts+=("${clr}${date_str}${rst}")
-            else
-                prefix_parts+=("$date_str")
-            fi
-            fi
-
-            l_len=$(visible_len "$lbl")
-            pad=""
-
-            if (( l_len < 8 )); then
-                printf -v pad '%*s' $((8 - l_len)) ''
-            fi
-
-            lbl="${lbl}${pad}"
-        
-            # label / icon / symbol
-            if (( s_label )); then
-            if (( c_label )); then
-                prefix_parts+=("${clr}${lbl}${rst}")
-            else
-                prefix_parts+=("$lbl")
-            fi
-            fi
-
-            if (( s_icon )); then
-            if (( c_label )); then
-                prefix_parts+=("${clr}${icn}${rst}")
-            else
-                prefix_parts+=("$icn")
-            fi
-            fi
-
-            if (( s_symbol )); then
-            if (( c_label )); then
-                prefix_parts+=("${clr}${smb}${rst}")
-            else
-                prefix_parts+=("$smb")
-            fi
-            fi
-
-            # join prefix with spaces
-            if ((${#prefix_parts[@]} > 0)); then
-            fnl+="${prefix_parts[*]} "
-            prefixlength=$((prefixlength + 1))  # space after prefix
-            fi
-
-            # compute visible prefix length (ANSI-stripped)
-            local v_len
-            v_len=$(visible_len "$fnl")
-
-            # pad to desired message column (prefixlength)
-            local pad=""
-            if (( v_len < prefixlength )); then
-                printf -v pad '%*s' $((prefixlength - v_len)) ''
-            else
-                pad=" "
-            fi
-            fnl+="$pad"
-
-            # message text
-            if (( c_msg )); then
-            fnl+="${clr}${msg}${rst}"
-            else
-            fnl+="$msg"
-            fi
-
-            if __say_should_print_console "$type"; then
-                printf '%s\n' "$fnl $RESET"
-            fi
-        else
-            if __say_should_print_console "EMPTY"; then
-                printf '%s\n' "$msg"
-            fi
+        # default: at least label
+        if (( s_label + s_icon + s_symbol == 0 )); then
+        s_label=1
+        prefixlength=$((prefixlength + 8))
         fi
 
-        __say_write_log "$type" "$msg" "$date_str"
-        
-        
+        # Decode colorize: none|label|msg|date|both|all
+        local c_label=0 c_msg=0 c_date=0
+
+        case "${colorize,,}" in
+        none)
+            # all stay 0
+            ;;
+        label)
+            c_label=1
+            ;;
+        msg)
+            c_msg=1
+            ;;
+        date)
+            c_date=1
+            ;;
+        both|all)
+            c_label=1
+            c_msg=1
+            c_date=1
+            ;;
+        *)
+            # default to 'label'
+            c_label=1
+            ;;
+        esac
+
+        # Build final line
+        local fnl=""
+        local date_str=""
+        local prefix_parts=()
+        local rst="${RESET:-}"
+
+
+        # timestamp
+        if (( add_date )); then
+        date_str="$(date "+${SAY_DATE_FORMAT}")"
+        if (( c_date )); then
+            prefix_parts+=("${clr}${date_str}${rst}")
+        else
+            prefix_parts+=("$date_str")
+        fi
+        fi
+
+        l_len=$(visible_len "$lbl")
+        pad=""
+
+        if (( l_len < 8 )); then
+            printf -v pad '%*s' $((8 - l_len)) ''
+        fi
+
+        lbl="${lbl}${pad}"
+    
+        # label / icon / symbol
+        if (( s_label )); then
+        if (( c_label )); then
+            prefix_parts+=("${clr}${lbl}${rst}")
+        else
+            prefix_parts+=("$lbl")
+        fi
+        fi
+
+        if (( s_icon )); then
+        if (( c_label )); then
+            prefix_parts+=("${clr}${icn}${rst}")
+        else
+            prefix_parts+=("$icn")
+        fi
+        fi
+
+        if (( s_symbol )); then
+        if (( c_label )); then
+            prefix_parts+=("${clr}${smb}${rst}")
+        else
+            prefix_parts+=("$smb")
+        fi
+        fi
+
+        # join prefix with spaces
+        if ((${#prefix_parts[@]} > 0)); then
+        fnl+="${prefix_parts[*]} "
+        prefixlength=$((prefixlength + 1))  # space after prefix
+        fi
+
+        # compute visible prefix length (ANSI-stripped)
+        local v_len
+        v_len=$(visible_len "$fnl")
+
+        # pad to desired message column (prefixlength)
+        local pad=""
+        if (( v_len < prefixlength )); then
+            printf -v pad '%*s' $((prefixlength - v_len)) ''
+        else
+            pad=" "
+        fi
+        fnl+="$pad"
+
+        # message text
+        if (( c_msg )); then
+        fnl+="${clr}${msg}${rst}"
+        else
+        fnl+="$msg"
+        fi
+
+        if __say_should_print_console "$type"; then
+            printf '%s\n' "$fnl $RESET"
+        fi
+    else
+        if __say_should_print_console "EMPTY"; then
+            printf '%s\n' "$msg"
+        fi
+    fi
+
+    __say_write_log "$type" "$msg" "$date_str"
+    
+    
+}
+
+# -- say shorthand ----------------------------------------------------------------
+    # Convenience wrappers for say()
+    sayinfo() {
+        say INFO "$@"
     }
 
-    # -- say shorthand -----------------------------------------------------------
-            sayinfo() {
-                say INFO "$@"
-            }
+    saystart() {
+        say STRT "$@"
+    }
 
-            saystart() {
-                say STRT "$@"
-            }
+    saywarning() {
+        say WARN "$@"
+    }
 
-            saywarning() {
-                say WARN "$@"
-            }
+    sayfail() {
+        say FAIL "$@"
+    }
 
-            sayfail() {
-                say FAIL "$@"
-            }
+    saycancel() {
+        say CNCL "$@"
+    }
 
-            saycancel() {
-                say CNCL "$@"
-            }
+    sayok() {
+        say OK "$@"
+    }
 
-            sayok() {
-                say OK "$@"
-            }
+    sayend() {
+        say END "$@"
+    }
 
-            sayend() {
-                say END "$@"
-            }
+    justsay() {
+        printf '%s\n' "$@"
+    }
 
-            justsay() {
-                printf '%s\n' "$@"
-            }
+    saydebug() {
+        if [[ ${FLAG_VERBOSE:-0} -eq 1 ]]; then
+            say DEBUG "$@"
+        fi
+    }
 
-            saydebug() {
-                if [[ ${FLAG_VERBOSE:-0} -eq 1 ]]; then
-                    say DEBUG "$@"
-                fi
-            }
-
-            say_test()
-            {
-            sayinfo "Info message"
-            saystart "Start message"
-            saywarning "Warning message"
-            sayfail "Failure message"
-            saycancel "Cancellation message"
-            sayok "All is well"
-            sayend "Ended gracefully"
-            saydebug "Debug message"
-            justsay "Just saying"
-            }
+    say_test()
+    {
+    sayinfo "Info message"
+    saystart "Start message"
+    saywarning "Warning message"
+    sayfail "Failure message"
+    saycancel "Cancellation message"
+    sayok "All is well"
+    sayend "Ended gracefully"
+    saydebug "Debug message"
+    justsay "Just saying"
+    }

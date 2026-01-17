@@ -8,22 +8,28 @@
 # Licensed under the Testadura Non-Commercial License (TD-NC) v1.0.
 # ---------------------------------------------------------------------------------
 # Description:
-#   Initializes the Testadura framework environment by resolving base paths,
-#   sourcing required libraries in a defined order, and establishing core
-#   framework invariants.
+#   Initializes the Testadura framework environment by:
+#   - Resolving base paths (framework root / application root)
+#   - Establishing core framework invariants (env vars, directories, defaults)
+#   - Sourcing required libraries in a defined, layered order
 #
 #   This file defines what it means to run inside a "framework context".
 #
-# Design rules:
+# Assumptions:
+#   - None. Bootstrap is the starting point and must tolerate a minimal shell.
+#
+# Design rules / Contract:
 #   - Owns all path resolution and library load order.
-#   - Performs environment sanity checks only.
-#   - Does not implement application logic.
-#   - Does not provide UI or user interaction.
+#   - Sources libraries in layers (core → theme → ui → say/ask/dlg → args → etc.).
+#   - Performs environment sanity checks only (existence, permissions, commands).
+#   - Must remain thin: no reusable helpers live here (libraries own helpers).
+#   - No application logic or policy decisions.
+#   - No user interaction (no ask/confirm/dialogs); output should be minimal.
 #
 # Non-goals:
-#   - Argument parsing
-#   - Configuration loading
-#   - Script execution or control flow
+#   - Argument parsing (handled by args layer)
+#   - Configuration loading (handled by cfg/state layer)
+#   - Script execution or control flow (entry scripts/applications own this)
 # =================================================================================
 
 # --- Validate use ----------------------------------------------------------------
@@ -82,7 +88,8 @@ TD_BOOTSTRAP_LOADED=1
 
 # --- Framwork metadata ------------------------------------------------------
         TD_SYS_GLOBALS=(
-            TD_STATE_DIR
+            TD_SYSCFG_DIR
+            TD_SYSCFG_FILE
             TD_LOGFILE_ENABLED
             TD_CONSOLE_MSGTYPES
             TD_LOG_PATH
@@ -90,15 +97,12 @@ TD_BOOTSTRAP_LOADED=1
             TD_LOG_MAX_BYTES
             TD_LOG_KEEP
             TD_LOG_COMPRESS
-            SAY_COLORIZE_DEFAULT
-            SAY_DATE_DEFAULT
-            SAY_SHOW_DEFAULT
-            SAY_DATE_FORMAT
         )
         TD_USR_GLOBALS=(
             TD_STATE_DIR
+            TD_USRCFG_DIR
+            TD_USRCFG_FILE
             TD_CONSOLE_MSGTYPES
-
             SAY_COLORIZE_DEFAULT
             SAY_DATE_DEFAULT
             SAY_SHOW_DEFAULT
@@ -111,6 +115,7 @@ TD_BOOTSTRAP_LOADED=1
             ui.sh
             ui-say.sh
             ui-ask.sh
+            ui-dlg.sh
             default-colors.sh
             default-styles.sh
         )
@@ -327,7 +332,7 @@ TD_BOOTSTRAP_LOADED=1
 
     __finalize_bootstrap() {       
         FLAG_DRYRUN="${FLAG_DRYRUN:-0}"   
-        FLAG_VERBOSE="${FLAG_VERBOSE:-0}"
+        #FLAG_VERBOSE="${FLAG_VERBOSE:-0}"
         FLAG_STATERESET="${FLAG_STATERESET:-0}"
         if [[ "${FLAG_STATERESET:-0}" -eq 1 ]]; then
             td_state_reset
@@ -339,21 +344,103 @@ TD_BOOTSTRAP_LOADED=1
         TD_USER_HOME="$(getent passwd "${SUDO_USER:-$USER}" | cut -d: -f6)" # User home directory
         
         if [[ "${FLAG_DRYRUN:-0}" -eq 1 ]]; then
-            sayinfo "Running in Dry-Run mode (no changes will be made)."
+            sayinfo "Running in $RUN_MODE mode (no changes will be made)."
         else
-            saywarning "Running in Normal mode (changes will be applied)."
+            saywarning "Running in $RUN_MODE mode (changes will be applied)."
         fi
 
-        if [[ "${FLAG_VERBOSE:-0}" -eq 1 ]]; then
-            td_showarguments
-        fi
     }    
 # --- Public API -------------------------------------------------------------
-    # Initialize framework
-    # Arguments
-    #   --ui    Initialize 
-    #   --state Load previously saved state
-    #   --
+    # -- td_bootstrap ---------------------------------------------------------------
+        # Initialize (or re-enter) a Testadura "framework context" for the current script.
+        #
+        # Summary:
+        #   td_bootstrap is the single entry point that:
+        #   - Parses bootstrap-only switches (what to initialize, root constraints, etc.)
+        #   - Loads framework globals (td-globals.sh + optional td-globals.cfg)
+        #   - Loads core framework libraries (core/ui/say/ask/dlg/args/cfg/state, styles)
+        #   - Optionally initializes the UI layer
+        #   - Optionally loads cfg/state files
+        #   - Parses the *script's* arguments (via TD_ARGS_SPEC) after bootstrap switches
+        #   - Finalizes runtime flags and derived values (RUN_MODE, TD_USER_HOME, etc.)
+        #
+        # Important distinction:
+        #   - Bootstrap arguments control framework initialization.
+        #   - Script arguments are parsed *after* bootstrap and are passed through in
+        #     TD_BOOTSTRAP_REST, then parsed by td_parse_args().
+        #
+        # Usage:
+        #   td_bootstrap [bootstrap options] [--] [script args...]
+        #
+        # Bootstrap options:
+            #   --ui
+            #       Initialize the UI layer (calls ui_init after libraries are sourced).
+            #
+            #   --state
+            #       Load state (calls td_state_load).
+            #
+            #   --cfg
+            #       Load config (calls td_cfg_load).
+            #
+            #   --needroot
+            #       Enforce running as root (calls need_root with remaining script args).
+            #       Typical use: scripts that must write /etc, manage services, etc.
+            #
+            #   --cannotroot
+            #       Enforce NOT running as root (calls cannot_root with remaining script args).
+            #       Typical use: user-scoped scripts where root would be unsafe/unwanted.
+            #
+            #   --args
+            #       Enable parsing of script arguments (default: on). Included for symmetry
+            #       with other selectors; usually not needed unless you add "libs-only" modes.
+            #
+            #   --initcfg
+            #       Allow creating missing config templates during bootstrap (framework-level
+            #       switch used by __create_cfg_template / __source_systemoruser).
+            #
+            #   --
+            #       End bootstrap option parsing. Everything after "--" is treated as script
+            #       arguments and passed to td_parse_args().
+        #
+        # Inputs (environment, optional):
+            #   TD_FRAMEWORK_ROOT, TD_APPLICATION_ROOT
+            #       Anchor roots used to derive TD_COMMON_LIB and config/state paths. May be
+            #       pre-set by the caller (e.g., dev workspace) or provided via bootstrap cfg.
+            #
+            #   FLAG_DRYRUN, FLAG_VERBOSE, FLAG_STATERESET, FLAG_INIT_CONFIG
+            #       May be pre-set by environment; bootstrap normalizes/uses them.
+            #
+        # Outputs (side effects / globals):
+            #   TD_BOOTSTRAP_REST   : array of script args (post-bootstrap) passed to td_parse_args()
+            #   HELP_REQUESTED      : 0|1 (set by td_parse_args)
+            #   TD_POSITIONAL       : array (set by td_parse_args)
+            #   Option vars from TD_ARGS_SPEC (created/initialized by td_parse_args)
+            #   Derived framework globals (paths/defaults via init_* functions)
+            #   RUN_MODE            : display string (DRYRUN/COMMIT) used for UI messaging
+            #
+        # Return codes:
+            #   0  Success
+            #   1  Script arg parsing / validation failure (from td_parse_args) or cfg/state load failure
+            #   2  Fatal framework failure (e.g., missing required libraries/globals)
+        #
+        # Examples:
+            #   # Typical script entry: UI + cfg + state + parse script args
+            #   td_bootstrap --ui --cfg --state -- "$@"
+            #
+            #   # Force root (e.g., provisioning script). Script args start after "--".
+            #   td_bootstrap --ui --cfg --needroot -- "$@"
+            #
+            #   # User-only tool; refuse sudo/root execution
+            #   td_bootstrap --ui --cannotroot -- "$@"
+            #
+            #   # Debug bootstrap and parsed values (assuming you show td_showarguments on verbose)
+            #   FLAG_VERBOSE=1 td_bootstrap --ui --cfg --state -- "$@"
+            #
+        # Notes:
+        #   - Keep td_bootstrap thin: it orchestrates load order and invariants but does
+        #     not implement application logic.
+        #   - If RUN_MODE is used in headers, ensure it does not contain newlines.
+    # ------------------------------------------------------------------------------
     td_bootstrap() {
         FLAG_INIT_CONFIG="${FLAG_INIT_CONFIG:-0}"
         FLAG_DRYRUN="${FLAG_DRYRUN:-0}"
@@ -380,26 +467,16 @@ TD_BOOTSTRAP_LOADED=1
         (( exe_state )) && td_state_load
         (( exe_cfg ))   && td_cfg_load
 
-        td_parse_args "${TD_BOOTSTRAP_REST[@]}"
-
+        td_parse_args "${TD_BOOTSTRAP_REST[@]}"     
+   
         __finalize_bootstrap
 
+        if [[ "${FLAG_VERBOSE:-0}" -eq 1 ]]; then
+            td_showarguments
+        fi
         return 0
     }
-    td_show_globals() {
-        # Usage: td_show_globals sys|usr|both
-        local which="${1:-both}"
-        local name val
 
-        while IFS= read -r name; do
-            [[ -z "$name" ]] && continue
-
-            # Indirect expansion: get value of variable whose name is in $name
-            val="${!name-<unset>}"
-
-            printf '%-24s = %s\n' "$name" "$val"
-        done < <(td_globals_list "$which")
-    }
 
 
 

@@ -29,6 +29,7 @@ source /home/sysadmin/dev/solidgroundux/target-root/usr/local/lib/testadura/comm
     TD_SCRIPT_DIR="$(cd -- "$(dirname -- "$TD_SCRIPT_FILE")" && pwd)"
     TD_SCRIPT_BASE="$(basename -- "$TD_SCRIPT_FILE")"
     TD_SCRIPT_NAME="${TD_SCRIPT_BASE%.sh}"
+    TD_SCRIPT_TITLE="Prepare release"
     TD_SCRIPT_DESC=" Creates a clean tar.gz release archive of a workspace"
     TD_SCRIPT_VERSION="1.0"
     TD_SCRIPT_BUILD="20250110"    
@@ -101,9 +102,7 @@ source /home/sysadmin/dev/solidgroundux/target-root/usr/local/lib/testadura/comm
         fi
 
         while true; do
-            printf "\n${CLI_BORDER}================================================================\n"
-            printf "${CLI_TEXT}   Prepare Release                                        ${RUN_MODE}\n"                        
-            printf "${CLI_BORDER}================================================================\n"
+            td_print_titlebar "Prepare Release"
             ask --label "Release" --var RELEASE --default "$RELEASE" --colorize both 
             ask --label "Source directory" --var SOURCE_DIR --default "$SOURCE_DIR" --validate_fn validate_dir_exists --colorize both
             ask --label "Staging directory" --var STAGING_ROOT --default "$STAGING_ROOT" --validate_fn validate_dir_exists--colorize both
@@ -131,10 +130,10 @@ source /home/sysadmin/dev/solidgroundux/target-root/usr/local/lib/testadura/comm
             else
                 FLAG_USEEXISTING=0
             fi
-            printf "${CLI_BORDER}===============================================================\n"
+            td_print_sectionheader --border "="
             printf "\n"
             
-            if dlg_autocontinue 10 "Create a release using these settings?" "APRC"; then
+            if td_dlg_autocontinue 10 "Create a release using these settings?" "APRC"; then
                 rc=0
             else
                 rc=$?

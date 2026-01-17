@@ -1,28 +1,36 @@
 # =================================================================================
 # Testadura Consultancy — ui.sh
 # ---------------------------------------------------------------------------------
-# Purpose    : UI base layer and shared primitives
+# Purpose    : Framework UI base layer (shared, low-level output primitives)
 # Author     : Mark Fieten
 #
 # © 2025 Mark Fieten — Testadura Consultancy
 # Licensed under the Testadura Non-Commercial License (TD-NC) v1.0.
 # ---------------------------------------------------------------------------------
 # Description:
-#   Provides low-level UI infrastructure and shared helpers used by higher-level
-#   UI modules (ui-say.sh, ui-ask.sh).
+#   Source this file to get the framework's low-level UI primitives that other
+#   UI modules build on (e.g., ui-say.sh, ui-ask.sh). This layer provides:
+#   - Output routing and terminal-safe printing helpers
+#   - Small rendering utilities (aligned label/value, subheaders, rules)
+#   - Compatibility overrides for common helpers (e.g., _sh_err, confirm)
 #
-#   This file contains common primitives such as output routing, terminal helpers,
-#   and compatibility overrides, but does not implement interaction or formatting
-#   logic directly.
+# Assumptions:
+#   - This is a FRAMEWORK library (may depend on the framework as it exists).
+#   - Theme variables and RESET are available (e.g., CLR_LABEL, CLR_INPUT, RESET).
+#   - core.sh utilities may be used (e.g., td_repeat).
 #
-# Design rules:
-#   - No high-level UI behavior (interaction or message formatting).
-#   - No logging or policy decisions.
-#   - Safe to source multiple times.
+# Rules / Contract:
+#   - No high-level UI policy or behavior (no prompts, dialogs, workflows).
+#   - No message semantics/formatting decisions beyond simple rendering helpers.
+#   - No logging policy decisions (where/how to log is handled elsewhere).
+#   - Safe to source multiple times (must be guarded).
+#   - Library-only: must be sourced, never executed.
 #
 # Non-goals:
-#   - User prompts or dialogs (see ui-ask.sh)
-#   - Formatted message output (see ui-say.sh)
+#   - User interaction and prompts (see ui-ask.sh)
+#   - Dialogs (see ui-dlg.sh)
+#   - Message formatting and typing rules (see ui-say.sh)
+#   - Application-specific UI behavior or policy
 # =================================================================================
 
 # --- Validate use ----------------------------------------------------------------
@@ -69,156 +77,352 @@
       fi
   }
 
-# --- Dialog helpers --------------------------------------------------------------
-    __dlg_keymap(){
-        local choices="$1"
-        local keymap=""
 
-        [[ "$choices" == *"E"* ]] && keymap+="Enter=continue; "
-        [[ "$choices" == *"R"* ]] && keymap+="R=redo; "
-        [[ "$choices" == *"C"* ]] && keymap+="C/Esc=cancel; "
 
-        [[ "$choices" == *"Q"* ]] && keymap+="Q=quit; "
-        [[ "$choices" == *"A"* ]] && keymap+="Press any key to continue; "
-        
-        if [[ "$choices" == *"P"* ]]; then
-            if (( paused )); then
-                keymap+="P/Space=resume; "
-            else
-                keymap+="P/Space=pause; "
-            fi
-        fi
-            # Trim trailing "; "
-            keymap="${keymap%; }"
+# --- Public API ------------------------------------------------------------------   
+    # --- td_print_globals -----------------------------------------------------------
+    # Print framework globals (system/user/both) using TD_SYS_GLOBALS / TD_USR_GLOBALS.
+    # Usage: td_print_globals [sys|usr|both]
+     td_print_globals() {
+        # Usage: td_show_globals sys|usr|both
+        local which="${1:-both}"
+        local name value
+        local -A usr_seen=()
 
-            printf '%s' "$keymap"
+        case "$which" in
+            sys)
+                for name in "${TD_SYS_GLOBALS[@]:-}"; do
+                    __td_print_global "$name"
+                done
+                ;;
+            usr)
+                for name in "${TD_USR_GLOBALS[@]:-}"; do
+                    __td_print_global "$name"
+                done
+                ;;
+            both)
+                # Mark user globals
+                for name in "${TD_USR_GLOBALS[@]:-}"; do
+                    usr_seen["$name"]=1
+                done
+
+                # Print system globals EXCEPT those overridden by user
+                for name in "${TD_SYS_GLOBALS[@]:-}"; do
+                    [[ -n "${usr_seen[$name]:-}" ]] && continue
+                    __td_print_global "$name"
+                done
+
+                # Then print user globals
+                for name in "${TD_USR_GLOBALS[@]:-}"; do
+                    __td_print_global "$name"
+                done
+                ;;
+            *)
+                printf 'td_show_globals: invalid selector: %s\n' "$which" >&2
+                return 2
+                ;;
+        esac
     }
 
-# --- Dialogs ---------------------------------------------------------------------
-    # Arguments:
-    #   $1 = seconds to wait before auto-continue (default: 5)
-    #   $2 = message to display above prompt (default: none)
-    #   $3 = allowed choices (string containing any of A,E,R,C,P,Q)
-    #         A = any key to continue
-    #         E = Enter to continue
-    #         R = R to redo
-    #         C = C or Esc to cancel
-    #         P = P or Space to pause/resume countdown
-    #         Q = Q to quit
-    #         H = show keymap
-    dlg_autocontinue() {
-        local seconds="${1:-5}"
-        local msg="${2:-}"
-        local dlgchoices="${3:-AERCPQ}"
+    # --- td_print_labeledvalue ------------------------------------------------------
+    # Print a single "label : value" line with optional width/sep/colors.
+    # Usage:
+    #   td_print_labeledvalue "Label" "Value"
+    #   td_print_labeledvalue --label "Label" --value "Value" --sep ":" --width 22
+    td_print_labeledvalue() {
+        local label=""
+        local value=""
 
-        local tty="/dev/tty"
-        [[ -e "$tty" ]] || return 0
-        if [[ ! -t 0 && ! -t 1 ]]; then
+        local sep=":"
+        local width=22
+        local labelclr="${CLI_TEXT}"
+        local valueclr="${CLI_ITALIC}"
+
+        # --- Parse options
+        while [[ $# -gt 0 ]]; do
+            case "$1" in
+                --label)
+                    label="$2"
+                    shift 2
+                    ;;
+                --value)
+                    value="$2"
+                    shift 2
+                    ;;
+                --sep)
+                    sep="$2"
+                    shift 2
+                    ;;
+                --width)
+                    width="$2"
+                    shift 2
+                    ;;
+                --labelclr)
+                    labelclr="$2"
+                    shift 2
+                    ;;
+                --valueclr)
+                    valueclr="$2"
+                    shift 2
+                    ;;
+                --)
+                    shift
+                    break
+                    ;;
+                *)
+                    # Allow positional fallback: label value
+                    if [[ -z "$label" ]]; then
+                        label="$1"
+                    elif [[ -z "$value" ]]; then
+                        value="$1"
+                    fi
+                    shift
+                    ;;
+            esac
+        done
+
+        [[ -z "$label" ]] && return 0
+
+        # Width safety
+        if [[ ! "$width" =~ ^[0-9]+$ ]]; then
+            width=22
+        fi
+
+        printf ' %s %s %s\n' \
+            "${labelclr}$(printf "%-*.*s" "$width" "$width" "$label")${RESET}" \
+            "$sep" \
+            "${valueclr}${value}${RESET}"
+    }
+
+    # --- td_print_fill
+    # Print one line with left/right content separated by a fill region.
+    # Fill width is computed using visible (ANSI-stripped) lengths.
+    #
+    # Usage:
+    #   td_print_fill "Left" "Right"
+    #   td_print_fill --left "Menu" --right "$RUN_MODE" --rightclr "$CLI_HIGHLIGHT"
+    #   td_print_fill --fillchar "." --maxwidth 100
+    td_print_fill() {
+        local left="" right=""
+        local padleft=2 padright=1 maxwidth=80
+        local fillchar=" "
+        local leftclr="${CLI_TEXT}"
+        local rightclr=""
+
+        # --- Parse options (with positional fallback)
+        while [[ $# -gt 0 ]]; do
+            case "$1" in
+                --left)     left="$2"; shift 2 ;;
+                --right)    right="$2"; shift 2 ;;
+                --padleft)  padleft="$2"; shift 2 ;;
+                --padright) padright="$2"; shift 2 ;;
+                --maxwidth) maxwidth="$2"; shift 2 ;;
+                --fillchar) fillchar="$2"; shift 2 ;;
+                --leftclr)  leftclr="$2"; shift 2 ;;
+                --rightclr) rightclr="$2"; shift 2 ;;
+                --) shift; break ;;
+                *)
+                    if [[ -z "$left" ]]; then
+                        left="$1"
+                    elif [[ -z "$right" ]]; then
+                        right="$1"
+                    fi
+                    shift
+                    ;;
+            esac
+        done
+
+        # --- Defaults / safety
+        [[ "$padleft"  =~ ^[0-9]+$ ]] || padleft=2
+        [[ "$padright" =~ ^[0-9]+$ ]] || padright=1
+        [[ "$maxwidth" =~ ^[0-9]+$ ]] || maxwidth=80
+        (( maxwidth < 10 )) && maxwidth=10
+
+        # right color inherits left color
+        [[ -z "$rightclr" ]] && rightclr="$leftclr"
+
+        # fillchar: single visible char only
+        [[ -n "$fillchar" ]] || fillchar=" "
+        fillchar="${fillchar:0:1}"
+
+        local fnl="" fill=0
+
+        # --- Build plain layout
+        fnl+="$(string_repeat "$fillchar" "$padleft")"
+
+        fill=$(( maxwidth
+                - padleft
+                - $(visible_len "$left")
+                - $(visible_len "$right")
+                - padright ))
+
+        (( fill < 0 )) && fill=0
+
+        # --- Render (colors applied last)
+        printf '%s%s%s%s%s%s\n' \
+            "$(string_repeat "$fillchar" "$padleft")" \
+            "${leftclr}${left}${RESET}" \
+            "$(string_repeat "$fillchar" "$fill")" \
+            "$(string_repeat "$fillchar" "$padright")" \
+            "${rightclr}${right}${RESET}" \
+            ""
+    }
+
+    # --- td_print_titlebar ---------------------------------------------------------
+    # Print a framed title bar with optional right-aligned status text.
+    #
+    # By default:
+    #   - Left text  = script base name
+    #   - Right text = RUN_MODE
+    #   - Width      = 80 columns
+    #
+    # Layout and fill behavior are delegated to td_print_sectionheader()
+    # and td_print_fill(); this function only wires options together.
+    td_print_titlebar() {
+
+        local text="${TD_SCRIPT_TITLE:-$TD_SCRIPT_BASE}"
+        local right="${RUN_MODE:-}"
+        local textclr="${CLI_HIGHLIGHT}"
+        local rightclr=""                 # let td_print_fill inherit
+        local border="="
+        local borderclr="${CLI_BORDER}"
+        local padleft=4
+        local maxwidth=80
+
+        # -- Parse options
+        while [[ $# -gt 0 ]]; do
+            case "$1" in
+                --text)      text="$2"; shift 2 ;;
+                --right)     right="$2"; shift 2 ;;
+                --textclr)   textclr="$2"; shift 2 ;;
+                --rightclr)  rightclr="$2"; shift 2 ;;
+                --border)    border="$2"; shift 2 ;;
+                --borderclr) borderclr="$2"; shift 2 ;;
+                --padleft)   padleft="$2"; shift 2 ;;
+                --maxwidth)  maxwidth="$2"; shift 2 ;;
+                --) shift; break ;;
+                *)
+                    [[ -z "$text" ]] && text="$1"
+                    shift
+                    ;;
+            esac
+        done
+
+        # -- Numeric safety
+        [[ "$padleft"  =~ ^[0-9]+$ ]] || padleft=4
+        [[ "$maxwidth" =~ ^[0-9]+$ ]] || maxwidth=80
+        (( maxwidth < 10 )) && maxwidth=10
+        (( padleft < 0 )) && padleft=0
+
+        td_print_sectionheader \
+            --border "$border" \
+            --borderclr "$borderclr" \
+            --maxwidth "$maxwidth"
+
+        td_print_fill \
+            --left "$text" \
+            --right "$right" \
+            --padleft "$padleft" \
+            --maxwidth "$maxwidth" \
+            --leftclr "$textclr" \
+            ${rightclr:+--rightclr "$rightclr"}
+
+        td_print_sectionheader \
+            --border "$border" \
+            --borderclr "$borderclr" \
+            --maxwidth "$maxwidth"
+    }
+
+
+    # --- td_print_sectionheader
+    # Print a full-width section header line.
+    # Renders optional text with left padding and border fill up to max width.
+    # ANSI-safe: visual width is computed after stripping color codes.
+    #
+    # Usage:
+    #   td_print_sectionheader "Title"
+    #   td_print_sectionheader --text "Framework info" --maxwidth 80
+    td_print_sectionheader() {
+        local text=""
+        local textclr="${CLI_HIGHLIGHT}"
+        local border="-"
+        local borderclr="${CLI_BORDER}"
+        local padleft=4
+        local padend=1
+        local maxwidth=80
+
+        # -- Parse options
+        while [[ $# -gt 0 ]]; do
+            case "$1" in
+                --text)      text="$2"; shift 2 ;;
+                --textclr)   textclr="$2"; shift 2 ;;
+                --border)    border="$2"; shift 2 ;;
+                --borderclr) borderclr="$2"; shift 2 ;;
+                --padleft)   padleft="$2"; shift 2 ;;
+                --padend)    padend="$2"; shift 2 ;;
+                --maxwidth)  maxwidth="$2"; shift 2 ;;
+                --) shift; break ;;
+                *)
+                    # positional fallback
+                    [[ -z "$text" ]] && text="$1"
+                    shift
+                    ;;
+            esac
+        done
+
+        # -- Numeric safety
+        [[ "$padleft"  =~ ^[0-9]+$ ]] || padleft=4
+        [[ "$padend"   =~ ^(0|1)$   ]] || padend=1
+        [[ "$maxwidth" =~ ^[0-9]+$ ]] || maxwidth=80
+        (( maxwidth < 10 )) && maxwidth=10
+        (( padleft < 0 )) && padleft=0
+
+        # -- Assemble line (PLAIN parts first; add color last)
+        local left_plain="" mid_plain="" right_plain="" fnl=""
+        local remaining=0
+
+        # If no text: full-width border line
+        if [[ -z "$text" ]]; then
+            fnl="${borderclr}$(string_repeat "$border" "$maxwidth")${RESET}"
+            printf '%s\n' "$fnl"
             return 0
         fi
 
-        local paused=0
-        local key=""
-        local got=0
+        # Left: "---- " (padleft times border + a space)
+        if [[ -n "$border" && $padleft -gt 0 ]]; then
+            left_plain="$(string_repeat "$border" "$padleft") "
+        fi
 
-        local lines=1
-        local hide_keymap=0
-        if [[ "$dlgchoices" == *"H"* ]]; then
-            hide_keymap=1
+        # Middle: "Text"
+        mid_plain="$(strip_ansi "$text")"
+
+        if (( padend )); then
+            # We will output: left_plain + mid_plain + space + right_plain
+            # So count exactly those visible chars.
+            local spent=0
+            spent=$(( spent + ${#left_plain} ))
+            spent=$(( spent + ${#mid_plain} ))
+            spent=$(( spent + 1 ))   # space before right fill
+
+            remaining=$(( maxwidth - spent ))
+            (( remaining < 0 )) && remaining=0
+
+            if [[ -n "$border" && $remaining -gt 0 ]]; then
+                right_plain="$(string_repeat "$border" "$remaining")"
+            fi
+
+            if [[ -n "$right_plain" ]]; then
+                fnl="${borderclr}${left_plain}${RESET}${textclr}${text}${RESET} ${borderclr}${right_plain}${RESET}"
+            else
+                fnl="${borderclr}${left_plain}${RESET}${textclr}${text}${RESET}"
+            fi
         else
-            hide_keymap=0
-            ((lines++))
+            fnl="${borderclr}${left_plain}${textclr}${text}${RESET}"
         fi
 
-        if [[ -n "$msg" ]]; then
-            ((lines++))
-        fi
-
-        while true; do
-            local line_keymap
-            line_keymap="$(__dlg_keymap "$dlgchoices" "$paused")"
-
-            # Message line (optional)
-            if [[ -n "$msg" ]]; then
-                printf '\r\e[K%s\n' "${CLR_TEXT}${msg}${RESET}" >"$tty"
-            fi
-
-            # Keymap line
-            if (( ! hide_keymap )); then
-                printf '\r\e[K%s\n' "${CLR_TEXT}${line_keymap}${RESET}" >"$tty"
-            fi
-
-            # Status line (no newline; we keep cursor on this line)
-            if (( paused )); then
-                printf '\r\e[K%s' "${CLR_TEXT}Paused... Press P or Space to resume countdown${RESET}" >"$tty"
-            else
-                printf '\r\e[K%s' "${CLR_TEXT}Continuing in ${seconds}s...${RESET}" >"$tty"
-            fi
-
-            # Read key
-            got=0
-            key=""
-            if (( paused )); then
-                if IFS= read -r -n 1 -s key <"$tty"; then got=1; fi
-            else
-                if IFS= read -r -n 1 -s -t 1 key <"$tty"; then got=1; fi
-            fi
-
-            # Move cursor back up to redraw block next iteration (IMPORTANT: to tty)
-            printf '\r' >"$tty"
-            if (( lines == 3 )); then
-                printf '\e[2A' >"$tty"
-            else
-                printf '\e[1A' >"$tty"
-            fi
-
-            if (( got )); then
-                [[ -z "$key" ]] && key=$'\n'
-
-                case "$key" in
-                    p|P|" ")
-                        [[ "$dlgchoices" == *"P"* ]] || continue
-                        (( paused )) && paused=0 || paused=1
-                        continue
-                        ;;
-                    r|R)
-                        [[ "$dlgchoices" == *"R"* || "$dlgchoices" == *"A"* ]] || continue
-                        printf '\n' >"$tty"
-                        return 3
-                        ;;
-                    c|C|$'\e')
-                        [[ "$dlgchoices" == *"C"* || "$dlgchoices" == *"A"* ]] || continue
-                        printf '\r\e[%dB\n' "$((lines-1))" >"$tty"
-                        return 2
-                        ;;
-                    q|Q)
-                        [[ "$dlgchoices" == *"Q"* || "$dlgchoices" == *"A"* ]] || continue
-                        printf '\n' >"$tty"
-                        return 4
-                        ;;
-                    $'\n'|$'\r')
-                        [[ "$dlgchoices" == *"E"* || "$dlgchoices" == *"A"* ]] || continue
-                        printf '\r\e[%dB\n' "$((lines-1))" >"$tty"
-                        return 0
-                        ;;
-                    *)
-                        [[ "$dlgchoices" == *"A"* ]] || continue
-                        printf '\r\e[%dB\n' "$((lines-1))" >"$tty"
-                        return 0
-                        ;;
-                esac
-            fi
-
-            if (( ! paused )); then
-                ((seconds--))
-                if (( seconds <= 0 )); then
-                    printf '\n' >"$tty"
-                    return 1
-                fi
-            fi
-        done
+        printf '%s\n' "$fnl"
     }
 
 
-  
+
 

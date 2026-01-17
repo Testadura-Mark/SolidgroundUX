@@ -1,22 +1,36 @@
-Polished version (minimal change, same spirit)
 # =================================================================================
-# Testadura — <libname>.sh
+# Testadura Consultancy — kib-template.sh
 # ---------------------------------------------------------------------------------
-# Purpose : <short description of what this library provides>
-# Author  : Mark Fieten
+# Purpose    : Template for Testadura Bash libraries (header + guards + structure)
+# Author     : Mark Fieten
+#
+# © 2025 Mark Fieten — Testadura Consultancy
+# Licensed under the Testadura Non-Commercial License (TD-NC) v1.0.
+# ---------------------------------------------------------------------------------
+# Description:
+#   Provides a standard skeleton for Testadura framework libraries, including:
+#   - Canonical header sections (purpose/description/contracts)
+#   - "library only" execution guard (must be sourced, never executed)
+#   - Load guard for idempotent sourcing
+#   - Suggested naming conventions for internal/public functions
+#
+# Assumptions:
+#   - None by default. Each library should explicitly document:
+#       - Whether it is a CORE lib (no framework deps), or
+#       - A FRAMEWORK lib (may assume framework/theme primitives exist).
 #
 # Design rules:
-#   - Library files define functions and constants only.
-#   - No auto-execution.
-#   - No set -euo pipefail.
-#   - No path detection (bootstrap owns all path resolution).
-#   - No global behavior changes (UI, logging, shell options).
-#   - Safe to source multiple times.
+#   - Libraries define functions and constants only.
+#   - No auto-execution (must be sourced).
+#   - No `set -euo pipefail` or persistent shell-option changes.
+#   - No path detection or root resolution (bootstrap owns path resolution).
+#   - No global behavior changes (UI routing, logging policy, shell options).
+#   - Safe to source multiple times (idempotent load guard).
 #
 # Non-goals:
-#   - Executable scripts
-#   - User interaction
-#   - Policy decisions
+#   - Executable scripts (use /bin tools or applets for entry points)
+#   - User interaction unless explicitly part of a UI module
+#   - Policy decisions (libraries provide mechanisms; callers decide policy)
 # =================================================================================
 
 # --- Validate use ----------------------------------------------------------------

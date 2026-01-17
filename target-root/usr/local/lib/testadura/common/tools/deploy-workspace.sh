@@ -40,6 +40,7 @@ source /home/sysadmin/dev/solidgroundux/target-root/usr/local/lib/testadura/comm
     TD_SCRIPT_DIR="$(cd -- "$(dirname -- "$TD_SCRIPT_FILE")" && pwd)"
     TD_SCRIPT_BASE="$(basename -- "$TD_SCRIPT_FILE")"
     TD_SCRIPT_NAME="${TD_SCRIPT_BASE%.sh}"
+    TD_SCRIPT_TITLE="Deploy workspace"
     TD_SCRIPT_DESC="Deploy a development workspace to a target root filesystem."
     TD_SCRIPT_VERSION="1.0"
     TD_SCRIPT_BUILD="20250110"
@@ -155,7 +156,8 @@ source /home/sysadmin/dev/solidgroundux/target-root/usr/local/lib/testadura/comm
                 saywarning "Auto mode requested, but no previous deployment settings found."
             fi
         fi
-
+        
+        td_print_titlebar 
         while true; do
             # --- Source root -----------------------------------------------------
             if [[ -z "${SRC_ROOT:-}" ]]; then
@@ -418,7 +420,6 @@ source /home/sysadmin/dev/solidgroundux/target-root/usr/local/lib/testadura/comm
                 td_state_reset
                 sayinfo "State file reset as requested."
             fi
-
     # --- Main script logic here ---------------------------------------------
         __getparameters
 

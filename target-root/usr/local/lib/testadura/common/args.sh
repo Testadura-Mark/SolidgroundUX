@@ -1,45 +1,58 @@
 # ==================================================================================
-# Testadura — args.sh
+# Testadura Consultancy — args.sh
 # ----------------------------------------------------------------------------------
-# Purpose    : Minimal argument parsing based on a declarative ARGS_SPEC array.
+# Purpose    : Declarative CLI argument parsing based on TD_ARGS_SPEC
 # Author     : Mark Fieten
 #
 # © 2025 Mark Fieten — Testadura Consultancy
 # Licensed under the Testadura Non-Commercial License (TD-NC) v1.0.
 # ----------------------------------------------------------------------------------
-# Design rules:
-#   - Library only; no execution on source.
-#   - No global behavior changes (no set -euo pipefail).
-#   - Deterministic, explicit outputs:
-#       HELP_REQUESTED  : 0|1
-#       TD_POSITIONAL   : array of remaining (non-option) arguments
-#   - Option variables are created and initialized strictly from ARGS_SPEC.
-#
-# ARGS_SPEC format (array of strings, one per option):
+# Description:
+    #   Provides a minimal, deterministic argument parser driven by TD_ARGS_SPEC.
+    #   The parser initializes option variables strictly from the spec and returns:
+    #     HELP_REQUESTED  : 0|1
+    #     TD_POSITIONAL   : array of remaining (non-option) arguments
+    #
+    #   Includes a basic help generator (td_show_help) based on TD_ARGS_SPEC.
+    #
+# Assumptions:
+    #   - This is a FRAMEWORK library (may depend on the framework as it exists).
+    #   - TD_ARGS_SPEC is defined by the caller before td_parse_args is invoked.
+    #   - Option variables are created/initialized strictly from TD_ARGS_SPEC.
+    #
+# Rules / Contract:
+    #   - Library-only: must be sourced, never executed.
+    #   - No global shell-option changes (no set -euo pipefail).
+    #   - Parsing is deterministic and explicit: only the outputs listed above plus
+    #     spec-defined option variables are produced.
+    #   - No UI behavior beyond basic help text (formatting belongs in ui layer).
+    #   - No config loading, runtime detection, or application policy decisions.
+    #
+# TD_ARGS_SPEC format (array of strings, one per option):
 #   "name|short|type|var|help|choices"
-#
-# Fields:
-#   name    : long option name WITHOUT leading "--" (e.g. "config")
-#   short   : short option WITHOUT leading "-" (e.g. "c") or empty
-#   type    : flag | value | enum
-#   var     : variable name to set (e.g. "CFG_FILE")
-#   help    : help text for td_show_help()
-#   choices : enum only: comma-separated allowed values (e.g. "dev,prd")
-#             for flag/value: leave empty (keep trailing '|')
-#
+    #
+    # Fields:
+    #   name    : long option name WITHOUT leading "--" (e.g. "config")
+    #   short   : short option WITHOUT leading "-" (e.g. "c") or empty
+    #   type    : flag | value | enum
+    #   var     : variable name to set (e.g. "CFG_FILE")
+    #   help    : help text for td_show_help()
+    #   choices : enum only: comma-separated allowed values (e.g. "dev,prd")
+    #             for flag/value: leave empty (keep trailing '|')
+    #
 # Conventions:
-#   - flag  -> default 0, set to 1 if present
-#   - value -> consumes next token
-#   - enum  -> consumes next token and validates against choices
-#
+    #   - flag  -> default 0, set to 1 if present
+    #   - value -> consumes next token
+    #   - enum  -> consumes next token and validates against choices
+    #
 # Public API:
-#   td_parse_args "$@"
-#   td_show_help
-#
+    #   td_parse_args "$@"
+    #   td_show_help
+    #
 # Non-goals:
-#   - Subcommands or nested argument trees
-#   - Conditional or computed defaults
-#   - UI formatting beyond basic help text
+    #   - Subcommands or nested argument trees
+    #   - Conditional/computed defaults (beyond spec initialization)
+    #   - UI formatting beyond basic help text
 # ==================================================================================
 
 # --- Validate use ----------------------------------------------------------------
@@ -118,10 +131,9 @@
                 enum)  printf -v "$__td_var" ''  ;;
             esac
         done
-    }
-
-    # Print a key-value pair
-    _td_print_global() {
+    }  
+        # Print a key-value pair
+    __td_print_global() {
         local name="$1"
         local value
 
@@ -129,18 +141,47 @@
 
         # Optional safety check
         if [[ ! "$name" =~ ^[a-zA-Z_][a-zA-Z0-9_]*$ ]]; then
-            printf '%-22s : %s\n' "$name" "<invalid name>"
+            td_print_labeledvalue "$name" "<invalid name>"
             return 0
         fi
 
         # Safe under set -u
         value="${!name-<unset>}"
-        printf '%-22s : %s\n' "$name" "$value"
+        td_print_labeledvalue "$name" "$value"
     }
 # --- Public API ------------------------------------------------------------------
-    # Help generator
-    # Uses:
-    #   SCRIPT_NAME, SCRIPT_DESC, SCRIPT_EXAMPLES (optional)
+    # --- td_show_help ------------------------------------------------------------
+        # Generate and print command-line help text derived from TD_ARGS_SPEC.
+        #
+        # Summary:
+        #   Emits a standard "Usage / Options / Examples" help block for the current
+        #   script, using declarative metadata instead of hardcoded option handling.
+        #
+        # Inputs (globals):
+        #   TD_SCRIPT_NAME       : Optional; defaults to basename of TD_SCRIPT_FILE or $0
+        #   TD_SCRIPT_FILE       : Optional; used to derive script name
+        #   SCRIPT_DESC          : Optional; short script description
+        #   SCRIPT_EXAMPLES[]    : Optional; example usage strings
+        #   TD_ARGS_SPEC[]       : Optional; argument specification array
+        #
+        # Behavior:
+        #   - Always prints a usage line and basic help header.
+        #   - Prints "-h, --help" implicitly (handled by td_parse_args).
+        #   - Iterates TD_ARGS_SPEC to render options, types, and help text.
+        #   - Renders enum choices as "{a|b|c}".
+        #   - Prints examples section if SCRIPT_EXAMPLES is defined.
+        #
+        # Outputs:
+        #   - Writes formatted help text to stdout.
+        #
+        # Return value:
+        #   - Always returns 0.
+        #
+        # Non-goals:
+        #   - Argument parsing or validation
+        #   - UI theming or colorization
+        #   - Dynamic help generation based on runtime state
+        # ------------------------------------------------------------------------------
     td_show_help() {
         local script_name="${TD_SCRIPT_NAME:-$(basename "${TD_SCRIPT_FILE:-$0}")}"
 
@@ -188,16 +229,49 @@
         fi
     }
 
-    # Parse CLI args.
-    #
-    # Outputs:
-    #   HELP_REQUESTED=0|1
-    #   TD_POSITIONAL=(remaining args)
-    #
-    # Behavior:
-    #   - Stops option parsing at "--" and everything after becomes positional.
-    #   - Stops option parsing at first non-option token (adds it + rest to positional).
-    #     (If you prefer "continue scanning", we can change that.)
+    # --- td_parse_args -----------------------------------------------------------
+        # Parse command-line arguments according to TD_ARGS_SPEC.
+        #
+        # Summary:
+        #   Parses CLI arguments using a declarative specification and produces a
+        #   deterministic set of outputs: option variables, HELP_REQUESTED, and
+        #   TD_POSITIONAL.
+        #
+        # Usage:
+        #   td_parse_args "$@"
+        #
+        # Inputs:
+        #   "$@"                 : Script arguments (post-bootstrap)
+        #
+        # Inputs (globals):
+        #   TD_ARGS_SPEC[]       : Argument specification array
+        #
+        # Outputs (globals):
+        #   HELP_REQUESTED       : 0|1 (set when -h/--help encountered)
+        #   TD_POSITIONAL[]      : Remaining non-option arguments
+        #   <option vars>        : Variables defined by TD_ARGS_SPEC (initialized)
+        #
+        # Behavior:
+        #   - Initializes all option variables to defaults based on spec.
+        #   - Supports:
+        #       --long
+        #       -s (short)
+        #       flag | value | enum option types
+        #   - Stops parsing on:
+        #       "--"  → everything after is positional
+        #       first non-option token → token and rest become positional
+        #   - Validates enum values strictly against declared choices.
+        #
+        # Return values:
+        #   0  Success
+        #   1  Unknown option, missing value, or invalid enum value
+        #
+        # Non-goals:
+        #   - Subcommand parsing
+        #   - Option clustering (-abc)
+        #   - Implicit defaults beyond spec initialization
+        #   - UI formatting or help display
+        # ------------------------------------------------------------------------------
     td_parse_args() {
         HELP_REQUESTED=0
         TD_POSITIONAL=()
@@ -313,75 +387,104 @@
         return 0
     }
 
-   
+    # --- td_showarguments -----------------------------------------------------------
+        # Display a formatted diagnostic overview of script, framework, and arguments.
+        #
+        # Summary:
+        #   Prints a human-readable snapshot of the current execution context, including:
+        #   - Script metadata
+        #   - Framework/product metadata
+        #   - System and user framework globals
+        #   - Parsed arguments and flags
+        #   - Positional arguments
+        #
+        # Intended use:
+        #   - Debugging
+        #   - Verbose / dry-run reporting
+        #   - Support diagnostics
+        #
+        # Inputs (globals):
+        #   Script metadata:
+        #     TD_SCRIPT_FILE, TD_SCRIPT_NAME, TD_SCRIPT_DESC, TD_SCRIPT_DIR
+        #     TD_SCRIPT_VERSION, TD_SCRIPT_BUILD
+        #
+        #   Framework metadata:
+        #     TD_PRODUCT, TD_VERSION, TD_VERSION_DATE
+        #     TD_COMPANY, TD_COPYRIGHT, TD_LICENSE
+        #
+        #   Argument data:
+        #     TD_ARGS_SPEC[], TD_POSITIONAL[]
+        #
+        #   UI dependencies:
+        #     td_print_subheader
+        #     td_print_labeledvalue
+        #     td_print_globals
+        #
+        # Behavior:
+        #   - Outputs structured sections with subheaders.
+        #   - Displays option variables defined by TD_ARGS_SPEC and their current values.
+        #   - Displays positional arguments with index.
+        #
+        # Outputs:
+        #   - Writes formatted diagnostic output to stdout.
+        #
+        # Return value:
+        #   - Always returns 0.
+        #
+        # Non-goals:
+        #   - Argument parsing or validation
+        #   - Machine-readable output
+        #   - Configuration mutation
+        # ------------------------------------------------------------------------------
     td_showarguments() {
-            printf '%s\n' "--- Script info"
-            printf "File                : %s\n" "$TD_SCRIPT_FILE"
-            printf "Script              : %s\n" "$TD_SCRIPT_NAME"
-            printf "Script description  : %s\n" "$TD_SCRIPT_DESC"
-            printf "Script dir          : %s\n" "$TD_SCRIPT_DIR"
-            printf "Script version      : %s (build %s)\n" "$TD_SCRIPT_VERSION" "$TD_SCRIPT_BUILD"
+            
+            _borderclr=${CLI_BORDER}
+            td_print_sectionheader --text "Configuration data" --border "=" 
+            td_print_sectionheader --text "Script info ($RUN_MODE)"
+            td_print_labeledvalue "File" "$TD_SCRIPT_FILE"
+            td_print_labeledvalue "Script" "$TD_SCRIPT_NAME"
+            td_print_labeledvalue "Script description" "$TD_SCRIPT_DESC"
+            td_print_labeledvalue "Script dir" "$TD_SCRIPT_DIR"
+            td_print_labeledvalue "Script version" "$TD_SCRIPT_VERSION (build $TD_SCRIPT_BUILD)"
             printf "\n"
             
-            printf '%s\n' "--- System framework settings"
-            td_show_globals sys
+            td_print_sectionheader --text "Framework info"
+            td_print_labeledvalue "Product"      "$TD_PRODUCT"
+            td_print_labeledvalue "Version"      "$TD_VERSION"
+            td_print_labeledvalue "Release date" "$TD_VERSION_DATE"
+            td_print_labeledvalue "Company"      "$TD_COMPANY"
+            td_print_labeledvalue "Copyright"    "$TD_COPYRIGHT"
+            td_print_labeledvalue "License"      "$TD_LICENSE"
             printf "\n"
 
-            printf '%s\n' "--- User framework settings"
-            td_show_globals usr
+            td_print_sectionheader --text "System framework settings"
+            td_print_globals sys
+            printf "\n"
+
+            td_print_sectionheader --text "User framework settings"
+            td_print_globals usr
             printf "\n"
             
-            printf '%s\n' "--- Arguments / Flags:\n"
+            td_print_sectionheader --text "Arguments / Flags:"
 
             local entry varname
             for entry in "${TD_ARGS_SPEC[@]:-}"; do
                 IFS='|' read -r name short type var help choices <<< "$entry"
                 varname="${var}"
-                printf "  --%s (-%s) : %s = %s\n" "$name" "$short" "$varname" "${!varname:-<unset>}"
+                local label="--$name (-$short)"
+                local value="$varname = ${!varname}"
+                #td_print_labeledvalue "  --%s (-%s) " " %s = %s\n" "$name" "$short" "$varname" "${!varname:-<unset>}"
+                td_print_labeledvalue "$label" "$value"
+            done
+            if (( ${#TD_POSITIONAL[@]} > 0 )); then
+                td_print_sectionheader --label  "Positional arguments:"
+            fi
+            
+            for i in "${!TD_POSITIONAL[@]}"; do
+                td_print_labeledvalue "Arg[$i]" "${TD_POSITIONAL[i]}"
             done
 
-            printf -- "Positional args:\n"
-            for arg in "${TD_POSITIONAL[@]:-}"; do
-                printf "  %s\n" "$arg"
-            done
+            td_print_sectionheader --border "=" 
+            printf '\n'
     }
-    td_show_globals() {
-        # Usage: td_show_globals sys|usr|both
-        local which="${1:-both}"
-        local name value
-        local -A usr_seen=()
-
-        case "$which" in
-            sys)
-                for name in "${TD_SYS_GLOBALS[@]:-}"; do
-                    _td_print_global "$name"
-                done
-                ;;
-            usr)
-                for name in "${TD_USR_GLOBALS[@]:-}"; do
-                    _td_print_global "$name"
-                done
-                ;;
-            both)
-                # Mark user globals
-                for name in "${TD_USR_GLOBALS[@]:-}"; do
-                    usr_seen["$name"]=1
-                done
-
-                # Print system globals EXCEPT those overridden by user
-                for name in "${TD_SYS_GLOBALS[@]:-}"; do
-                    [[ -n "${usr_seen[$name]:-}" ]] && continue
-                    _td_print_global "$name"
-                done
-
-                # Then print user globals
-                for name in "${TD_USR_GLOBALS[@]:-}"; do
-                    _td_print_global "$name"
-                done
-                ;;
-            *)
-                printf 'td_show_globals: invalid selector: %s\n' "$which" >&2
-                return 2
-                ;;
-        esac
-    }
+   

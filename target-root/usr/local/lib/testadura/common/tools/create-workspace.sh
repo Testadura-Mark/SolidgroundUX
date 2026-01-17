@@ -36,6 +36,7 @@ source /home/sysadmin/dev/solidgroundux/target-root/usr/local/lib/testadura/comm
     TD_SCRIPT_DIR="$(cd -- "$(dirname -- "$TD_SCRIPT_FILE")" && pwd)"
     TD_SCRIPT_BASE="$(basename -- "$TD_SCRIPT_FILE")"
     TD_SCRIPT_NAME="${TD_SCRIPT_BASE%.sh}"
+    TD_SCRIPT_TITLE="Create workspace"
     TD_SCRIPT_DESC="Create a new project workspace from templates"
     TD_SCRIPT_VERSION="1.0"
     TD_SCRIPT_BUILD="20250110"    
@@ -209,6 +210,7 @@ source /home/sysadmin/dev/solidgroundux/target-root/usr/local/lib/testadura/comm
                 sayinfo "State file reset as requested."
             fi
 
+            td_print_titlebar 
     # --- Main script logic here ---------------------------------------------
         # -- Resolve settings (0=OK, 1=abort, 2=skip template)
         if __resolve_project_settings; then
