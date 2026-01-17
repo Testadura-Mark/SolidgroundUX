@@ -81,7 +81,8 @@
         __define_default TD_LOG_COMPRESS "1" # gzip rotated logs (1/0)
 
         __define_default TD_LOGFILE_ENABLED "0"  # Enable logging to file (1=yes,0=no)
-        __define_default TD_CONSOLE_MSGTYPES "STRT|WARN|FAIL|END"  # Enable logging to file (1=yes,0=no)
+        __define_default TD_LOG_TO_CONSOLE "1" # Enable console logging (1=yes,0=no)
+        __define_default TD_CONSOLE_MSGTYPES "STRT|WARN|FAIL|INFO|END"  # Enable logging to file (1=yes,0=no)
 
         __define_default SAY_DATE_DEFAULT "0" # 0 = no date, 1 = add date
         __define_default SAY_SHOW_DEFAULT "label" # label|icon|symbol|all|label,icon|...

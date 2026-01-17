@@ -61,7 +61,13 @@
             local type="${1^^}"
             local list="${TD_CONSOLE_MSGTYPES^^}"
 
+            # Verbose always prints
             [[ "${FLAG_VERBOSE:-0}" -eq 1 ]] && return 0
+
+            # Explicit console disable
+            [[ "${TD_LOG_TO_CONSOLE:-1}" -eq 0 ]] && return 1
+
+            # Type based filtering
             [[ "|$list|" == *"|$type|"* ]]
         }
         __can_append() {
@@ -129,6 +135,7 @@
             local msg="$2"
             local date_str="$3"
 
+            # Looks backwards at first glance: logging OFF → exit successfully (=no-op)
             (( TD_LOGFILE_ENABLED )) || return 0
 
             local logfile
@@ -234,231 +241,228 @@
         #   say --writelog FAIL "Deployment failed"
         # -----------------------------------------------------------------------------
     say() {
-    local type="EMPTY"
-    local add_date="${SAY_DATE_DEFAULT:-0}"
-    local show="${SAY_SHOW_DEFAULT:-label}"
-    local colorize="${SAY_COLORIZE_DEFAULT:-label}"
-    local writelog="${SAY_WRITELOG_DEFAULT:-0}"
-    local logfile="${LOG_FILE:-}"
+        local type="EMPTY"
+        local add_date="${SAY_DATE_DEFAULT:-0}"
+        local show="${SAY_SHOW_DEFAULT:-label}"
+        local colorize="${SAY_COLORIZE_DEFAULT:-label}"
+        local writelog="${SAY_WRITELOG_DEFAULT:-0}"
+        local logfile="${LOG_FILE:-}"
 
-    local explicit_type=0
-    local msg
-    local s_label=0 s_icon=0 s_symbol=0 prefixlength=0
+        local explicit_type=0
+        local msg
+        local s_label=0 s_icon=0 s_symbol=0 prefixlength=0
 
-    # --- Parse options
-    while [[ $# -gt 0 ]]; do
-        case "$1" in
-        --type)
-            type="${2^^}"
-            explicit_type=1
-            shift 2
-            ;;
-        --date)
-            add_date=1
-            prefixlength=$((prefixlength + 19))
-            shift
-            ;;
-        --show)
-            show="$2"
-            shift 2
-            ;;
-        --colorize)
-            colorize="$2"
-            shift 2
-            ;;
-        --)
-            shift
+        # --- Parse options
+        while [[ $# -gt 0 ]]; do
+            case "$1" in
+            --type)
+                type="${2^^}"
+                explicit_type=1
+                shift 2
+                ;;
+            --date)
+                add_date=1
+                prefixlength=$((prefixlength + 19))
+                shift
+                ;;
+            --show)
+                show="$2"
+                shift 2
+                ;;
+            --colorize)
+                colorize="$2"
+                shift 2
+                ;;
+            --)
+                shift
+                break
+                ;;
+            *)
+            # Positional TYPE: say STRT "message"
+            if (( ! explicit_type )); then
+            local maybe="${1^^}"
+            case "$maybe" in
+                INFO|STRT|WARN|FAIL|CNCL|OK|END|DEBUG|EMPTY)
+                type="$maybe"
+                explicit_type=1
+                shift
+                continue
+                ;;
+            esac
+            fi
+            # First non-option, non-type token -> start of message
             break
             ;;
-        *)
-        # Positional TYPE: say STRT "message"
-        if (( ! explicit_type )); then
-        local maybe="${1^^}"
-        case "$maybe" in
-            INFO|STRT|WARN|FAIL|CNCL|OK|END|DEBUG|EMPTY)
-            type="$maybe"
-            explicit_type=1
-            shift
-            continue
-            ;;
-        esac
-        fi
-        # First non-option, non-type token -> start of message
-        break
-        ;;
-        esac
-    done
-
-    msg="${*:-}"
-
-    # Normalize TYPE
-    type="${type^^}"
-    case "$type" in
-        INFO|STRT|WARN|FAIL|CNCL|OK|END|DEBUG|EMPTY) ;;
-        "") type="EMPTY" ;;
-        *) type="EMPTY" ;;
-    esac
-    
-    if [[ "$type" != "EMPTY" ]]; then
-        
-        # Resolve maps via namerefs
-        #   Expects LBL_<TYPE>, ICO_<TYPE>, SYM_<TYPE>, CLR_<TYPE>
-        wrk="LBL_${type}"
-        declare -n lbl="$wrk"
-        wrk="ICO_${type}"
-        declare -n icn="$wrk"
-        wrk="SYM_${type}"
-        declare -n smb="$wrk"
-        wrk="CLR_${type}"
-    
-        declare -n clr="$wrk"
-    
-        # Decode --show (supports "label,icon", "label+symbol", "all")
-        local sel p
-        IFS=',+' read -r -a sel <<<"$show"
-        if [[ "${#sel[@]}" -eq 0 ]]; then sel=(label); fi
-
-        for p in "${sel[@]}"; do
-        case "${p,,}" in
-            label)  s_label=1
-                    prefixlength=$((prefixlength + 8));;
-            icon)   s_icon=1  
-                    prefixlength=$((prefixlength + 1));;
-            symbol) s_symbol=1 
-                    prefixlength=$((prefixlength + 3))
-            ;;
-            all)
-            s_label=1
-            s_icon=1
-            s_symbol=1
-            prefixlength=$((prefixlength + 16))
-            ;;
-        esac
+            esac
         done
 
-        # default: at least label
-        if (( s_label + s_icon + s_symbol == 0 )); then
-        s_label=1
-        prefixlength=$((prefixlength + 8))
-        fi
+        msg="${*:-}"
 
-        # Decode colorize: none|label|msg|date|both|all
-        local c_label=0 c_msg=0 c_date=0
-
-        case "${colorize,,}" in
-        none)
-            # all stay 0
-            ;;
-        label)
-            c_label=1
-            ;;
-        msg)
-            c_msg=1
-            ;;
-        date)
-            c_date=1
-            ;;
-        both|all)
-            c_label=1
-            c_msg=1
-            c_date=1
-            ;;
-        *)
-            # default to 'label'
-            c_label=1
-            ;;
+        # Normalize TYPE
+        type="${type^^}"
+        case "$type" in
+            INFO|STRT|WARN|FAIL|CNCL|OK|END|DEBUG|EMPTY) ;;
+            "") type="EMPTY" ;;
+            *) type="EMPTY" ;;
         esac
 
-        # Build final line
-        local fnl=""
-        local date_str=""
-        local prefix_parts=()
-        local rst="${RESET:-}"
+        if [[ "$type" != "EMPTY" ]]; then
+            # Resolve maps via namerefs
+            #   Expects LBL_<TYPE>, ICO_<TYPE>, SYM_<TYPE>, CLR_<TYPE>
+            wrk="LBL_${type}"
+            declare -n lbl="$wrk"
+            wrk="ICO_${type}"
+            declare -n icn="$wrk"
+            wrk="SYM_${type}"
+            declare -n smb="$wrk"
+            wrk="CLR_${type}"
+        
+            declare -n clr="$wrk"
+        
+            # Decode --show (supports "label,icon", "label+symbol", "all")
+            local sel p
+            IFS=',+' read -r -a sel <<<"$show"
+            if [[ "${#sel[@]}" -eq 0 ]]; then sel=(label); fi
+
+            for p in "${sel[@]}"; do
+                case "${p,,}" in
+                    label)  s_label=1
+                            prefixlength=$((prefixlength + 8));;
+                    icon)   s_icon=1  
+                            prefixlength=$((prefixlength + 1));;
+                    symbol) s_symbol=1 
+                            prefixlength=$((prefixlength + 3))
+                    ;;
+                    all)
+                    s_label=1
+                    s_icon=1
+                    s_symbol=1
+                    prefixlength=$((prefixlength + 16))
+                    ;;
+                esac
+            done
+
+            # default: at least label
+            if (( s_label + s_icon + s_symbol == 0 )); then
+            s_label=1
+            prefixlength=$((prefixlength + 8))
+            fi
+
+            # Decode colorize: none|label|msg|date|both|all
+            local c_label=0 c_msg=0 c_date=0
+
+            case "${colorize,,}" in
+                none)
+                    # all stay 0
+                    ;;
+                label)
+                    c_label=1
+                    ;;
+                msg)
+                    c_msg=1
+                    ;;
+                date)
+                    c_date=1
+                    ;;
+                both|all)
+                    c_label=1
+                    c_msg=1
+                    c_date=1
+                    ;;
+                *)
+                    # default to 'label'
+                    c_label=1
+                    ;;
+            esac
+
+            # Build final line
+            local fnl=""
+            local date_str=""
+            local prefix_parts=()
+            local rst="${RESET:-}"
 
 
-        # timestamp
-        if (( add_date )); then
-        date_str="$(date "+${SAY_DATE_FORMAT}")"
-        if (( c_date )); then
-            prefix_parts+=("${clr}${date_str}${rst}")
+            # timestamp
+            if (( add_date )); then
+                date_str="$(date "+${SAY_DATE_FORMAT}")"
+                if (( c_date )); then
+                    prefix_parts+=("${clr}${date_str}${rst}")
+                else
+                    prefix_parts+=("$date_str")
+                fi
+            fi
+
+            l_len=$(visible_len "$lbl")
+            pad=""
+
+            if (( l_len < 8 )); then
+                printf -v pad '%*s' $((8 - l_len)) ''
+            fi
+
+            lbl="${lbl}${pad}"
+        
+            # label / icon / symbol
+            if (( s_label )); then
+            if (( c_label )); then
+                    prefix_parts+=("${clr}${lbl}${rst}")
+                else
+                    prefix_parts+=("$lbl")
+                fi
+            fi
+
+            if (( s_icon )); then
+                if (( c_label )); then
+                    prefix_parts+=("${clr}${icn}${rst}")
+                else
+                    prefix_parts+=("$icn")
+                fi
+            fi
+
+            if (( s_symbol )); then
+                if (( c_label )); then
+                    prefix_parts+=("${clr}${smb}${rst}")
+                else
+                    prefix_parts+=("$smb")
+                fi
+            fi
+
+            # join prefix with spaces
+            if ((${#prefix_parts[@]} > 0)); then
+                fnl+="${prefix_parts[*]} "
+                prefixlength=$((prefixlength + 1))  # space after prefix
+            fi
+
+            # compute visible prefix length (ANSI-stripped)
+            local v_len
+            v_len=$(visible_len "$fnl")
+
+            # pad to desired message column (prefixlength)
+            local pad=""
+            if (( v_len < prefixlength )); then
+                printf -v pad '%*s' $((prefixlength - v_len)) ''
+            else
+                pad=" "
+            fi
+            fnl+="$pad"
+
+            # message text
+            if (( c_msg )); then
+                fnl+="${clr}${msg}${rst}"
+            else
+                fnl+="$msg"
+            fi
+
+            if __say_should_print_console "$type"; then
+                printf '%s\n' "$fnl $RESET"
+            fi
         else
-            prefix_parts+=("$date_str")
-        fi
-        fi
-
-        l_len=$(visible_len "$lbl")
-        pad=""
-
-        if (( l_len < 8 )); then
-            printf -v pad '%*s' $((8 - l_len)) ''
+            if __say_should_print_console "EMPTY"; then
+                printf '%s\n' "$msg"
+            fi
         fi
 
-        lbl="${lbl}${pad}"
-    
-        # label / icon / symbol
-        if (( s_label )); then
-        if (( c_label )); then
-            prefix_parts+=("${clr}${lbl}${rst}")
-        else
-            prefix_parts+=("$lbl")
-        fi
-        fi
-
-        if (( s_icon )); then
-        if (( c_label )); then
-            prefix_parts+=("${clr}${icn}${rst}")
-        else
-            prefix_parts+=("$icn")
-        fi
-        fi
-
-        if (( s_symbol )); then
-        if (( c_label )); then
-            prefix_parts+=("${clr}${smb}${rst}")
-        else
-            prefix_parts+=("$smb")
-        fi
-        fi
-
-        # join prefix with spaces
-        if ((${#prefix_parts[@]} > 0)); then
-        fnl+="${prefix_parts[*]} "
-        prefixlength=$((prefixlength + 1))  # space after prefix
-        fi
-
-        # compute visible prefix length (ANSI-stripped)
-        local v_len
-        v_len=$(visible_len "$fnl")
-
-        # pad to desired message column (prefixlength)
-        local pad=""
-        if (( v_len < prefixlength )); then
-            printf -v pad '%*s' $((prefixlength - v_len)) ''
-        else
-            pad=" "
-        fi
-        fnl+="$pad"
-
-        # message text
-        if (( c_msg )); then
-        fnl+="${clr}${msg}${rst}"
-        else
-        fnl+="$msg"
-        fi
-
-        if __say_should_print_console "$type"; then
-            printf '%s\n' "$fnl $RESET"
-        fi
-    else
-        if __say_should_print_console "EMPTY"; then
-            printf '%s\n' "$msg"
-        fi
-    fi
-
-    __say_write_log "$type" "$msg" "$date_str"
-    
-    
-}
+        __say_write_log "$type" "$msg" "$date_str"
+    }
 
 # -- say shorthand ----------------------------------------------------------------
     # Convenience wrappers for say()
@@ -500,15 +504,14 @@
         fi
     }
 
-    say_test()
-    {
-    sayinfo "Info message"
-    saystart "Start message"
-    saywarning "Warning message"
-    sayfail "Failure message"
-    saycancel "Cancellation message"
-    sayok "All is well"
-    sayend "Ended gracefully"
-    saydebug "Debug message"
-    justsay "Just saying"
+    say_test(){
+        sayinfo "Info message"
+        saystart "Start message"
+        saywarning "Warning message"
+        sayfail "Failure message"
+        saycancel "Cancellation message"
+        sayok "All is well"
+        sayend "Ended gracefully"
+        saydebug "Debug message"
+        justsay "Just saying"
     }

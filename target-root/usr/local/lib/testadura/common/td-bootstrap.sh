@@ -51,7 +51,11 @@ TD_BOOTSTRAP_LOADED=1
     saystart()   { printf 'START   \t%s\n' "$*" >&2; }
     saywarning() { printf 'WARNING \t%s\n' "$*" >&2; }
     sayfail()    { printf 'FAIL    \t%s\n' "$*" >&2; }
-    saydebug()   { printf 'DEBUG   \t%s\n' "$*" >&2; }
+    saydebug()   { 
+                   if [[ ${FLAG_VERBOSE:-0} -eq 1 ]]; then
+                        printf 'DEBUG   \t%s\n' "$*" >&2
+                    fi        
+                }
     saycancel()  { printf 'CANCEL  \t%s\n' "$*" >&2; }
     sayend()     { printf 'END     \t%s\n' "$*" >&2; }
     sayok()      { printf 'OK      \t%s\n' "$*" >&2; }

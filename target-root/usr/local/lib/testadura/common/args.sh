@@ -439,6 +439,7 @@
     td_showarguments() {
             
             _borderclr=${CLI_BORDER}
+            printf "\n"
             td_print_sectionheader --text "Configuration data" --border "=" 
             td_print_sectionheader --text "Script info ($RUN_MODE)"
             td_print_labeledvalue "File" "$TD_SCRIPT_FILE"
