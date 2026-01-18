@@ -147,7 +147,8 @@ This ensures:
 - No install-time logic
 - Easy auditing and rollback
 
-Install layout
+Install layout:
+```text
 /(root)
 ├── etc/
 |   ├── systemmd
@@ -196,11 +197,11 @@ Install layout
     |   └── sbin
     |       ├── td-clone-config  
     |       └── td-deploy-workspace
-    ├── var/
-    |   └── lib/
+    ├── var
+    |   └── lib
     |       ├── testadura               
-    |       └── _*.state-files_
-    └── log/
+    |           └── _*.state-files_
+    └── log
         └── testadura
             └── _solidgroundux.log_       
     ~/.config/testadura
@@ -208,7 +209,7 @@ Install layout
     ~/.log
         └── testadura
             └── _solidgroundux.log_      
----
+```
 
 ## Non-Goals
 

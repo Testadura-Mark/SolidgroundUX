@@ -141,7 +141,7 @@ the entire structure is copied to the target system, placing framework files und
 `/usr/local/lib/testadura` and creating executable symlinks in `/usr/local/bin`.
 
 ### 🧱 Repository layout
-
+```text
 /target-root
 ├── etc/
 |   ├── systemmd
@@ -170,7 +170,7 @@ the entire structure is copied to the target system, placing framework files und
               └── 
     ~/.log
         └── testadura                   _solidgroundux.log_    
-
+```
 ## 🧰 Included Tools
 
 SolidgroundUX ships with four tools to make your life a bit easier:

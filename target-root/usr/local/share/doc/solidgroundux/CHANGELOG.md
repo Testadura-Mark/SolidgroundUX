@@ -36,6 +36,7 @@ and this project adheres to **Semantic Versioning** where practical.
 - ArgSpec-based argument handling
 - Workspace creation, deployment, release, and clone configuration tools
 - --log and --console arguments to bootstrapper to actively enable file and/or console logging
+- /src/testadura-releases/install.sh to install a tar.gz onto a system
 
 ### Changed
 - Refined bootstrap lifecycle and environment detection
