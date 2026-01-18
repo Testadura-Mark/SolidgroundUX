@@ -199,7 +199,7 @@ Install layout:
     |       └── td-deploy-workspace
     ├── var
     |   └── lib
-    |       ├── testadura               
+    |       └── testadura               
     |           └── _*.state-files_
     └── log
         └── testadura
