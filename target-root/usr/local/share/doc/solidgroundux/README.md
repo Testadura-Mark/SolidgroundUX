@@ -80,12 +80,13 @@ Templates define *how you start*, not how you think.
 
 ## 🚀 Getting Started
 
-### Installation
+### ⚙️ Installation
 - Download latest release from (https://github.com/Testadura-Mark/SolidgroundUX/releases))
 - installer expects to be in a directory containing tar balls
 - sudo install.sh --auto to install solidground's latest version
+- sudo install.sh to chose from a list of available versions
 
-### Script development
+### 🛠️ Script development
 Once SolidgroundUX has been installed
 - Create a repository using td-create-workspace
 - Copy the executable template
