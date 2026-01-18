@@ -166,8 +166,8 @@ the entire structure is copied to the target system, placing framework files und
     |       ├── testadura               _*.state-files_
     └── log
         └── testadura                   _solidgroundux.log_       
+Alternates:
     ~/.config/testadura                 _*.cfg-files_
-              └── 
     ~/.log
         └── testadura                   _solidgroundux.log_    
 ```
