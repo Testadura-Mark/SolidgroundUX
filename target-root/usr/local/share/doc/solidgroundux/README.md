@@ -74,17 +74,18 @@ A typical executable script looks like this (see executable template):
 
 ## 🏗 Templates
 Templates define *how you start*, not how you think.
-
-### Executable Template
-Full-featured scripts with lifecycle and UI.
-
-### Library Template
-Reusable helpers, no execution.
-
-### Wrapper-template.sh
-Wrapper script to be published to bin or bins
+- exe-template.sh   Executable scripttemplate with bootstrapper locater and loader
+- lib-template.sh   Actively refuses execute, prevents double sourcing
+- wrapper-template  Nothing but a call to an executable script somehwere depper in the tree
 
 ## 🚀 Getting Started
+
+### Installation
+- Download latest release from (https://github.com/Testadura-Mark/SolidgroundUX/releases))
+- installer expects to be in a directory containing tar balls
+- sudo install.sh --auto to install solidground's latest version
+
+### Script development
 Once SolidgroundUX has been installed
 - Create a repository using td-create-workspace
 - Copy the executable template
