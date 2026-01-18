@@ -2,7 +2,7 @@
 
 Main documentation has moved.
 
-➡️ See: [docs/README.md](docs/README.md)
+➡️ See: [share/doc/solidgroundux/README.md] (share/doc/solidgroundux/README.md)
 
 This repository contains:
 - SolidgroundUX shell framework
