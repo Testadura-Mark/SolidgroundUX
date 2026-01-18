@@ -33,7 +33,42 @@
 #   ./deploy-workspace.sh   # interactive mode
 # ===============================================================================
 set -euo pipefail
-source /home/sysadmin/dev/solidgroundux/target-root/usr/local/lib/testadura/common/td-bootstrap.sh
+# -- Find bootstrapper
+    BOOTSTRAP="/usr/local/lib/testadura/common/td-bootstrap.sh"
+
+    if [[ -r "$BOOTSTRAP" ]]; then
+        # shellcheck disable=SC1091
+        source "$BOOTSTRAP"
+    else
+        # Only prompt if interactive
+        if [[ -t 0 ]]; then
+            printf "\n"
+            printf "Framework not installed in the default location."
+            printf "Are you developing the framework or using a custom install path?\n\n"
+
+            read -r -p "Enter framework root path (or leave empty to abort): " _root
+            [[ -n "$_root" ]] || exit 127
+
+            BOOTSTRAP="$_root/usr/local/lib/testadura/common/td-bootstrap.sh"
+            if [[ ! -r "$BOOTSTRAP" ]]; then
+                printf "FATAL: No td-bootstrap.sh found at provided location: $BOOTSTRAP"
+                exit 127
+            fi
+
+            # Persist for next runs
+            CFG="$HOME/.config/testadura/bootstrap.conf"
+            mkdir -p "$(dirname "$CFG")"
+            printf 'TD_FRAMEWORK_ROOT=%q\n' "$_root" > "$CFG"
+
+            # shellcheck disable=SC1091
+            source "$CFG"
+            # shellcheck disable=SC1091
+            source "$BOOTSTRAP"
+        else
+            printf "FATAL: Testadura framework not installed ($BOOTSTRAP missing)" >&2
+            exit 127
+        fi
+    fi
 
 # --- Script metadata ----------------------------------------------------------
     TD_SCRIPT_FILE="$(readlink -f "${BASH_SOURCE[0]}")"

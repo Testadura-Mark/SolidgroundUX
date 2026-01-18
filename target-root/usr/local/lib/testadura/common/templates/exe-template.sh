@@ -14,8 +14,42 @@
 # ==================================================================================
 
 set -euo pipefail
+# -- Find bootstrapper
+    BOOTSTRAP="/usr/local/lib/testadura/common/td-bootstrap.sh"
 
-source /home/sysadmin/dev/solidgroundux/target-root/usr/local/lib/testadura/common/td-bootstrap.sh
+    if [[ -r "$BOOTSTRAP" ]]; then
+        # shellcheck disable=SC1091
+        source "$BOOTSTRAP"
+    else
+        # Only prompt if interactive
+        if [[ -t 0 ]]; then
+            printf "\n"
+            printf "Framework not installed in the default location."
+            printf "Are you developing the framework or using a custom install path?\n\n"
+
+            read -r -p "Enter framework root path (or leave empty to abort): " _root
+            [[ -n "$_root" ]] || exit 127
+
+            BOOTSTRAP="$_root/usr/local/lib/testadura/common/td-bootstrap.sh"
+            if [[ ! -r "$BOOTSTRAP" ]]; then
+                printf "FATAL: No td-bootstrap.sh found at provided location: $BOOTSTRAP"
+                exit 127
+            fi
+
+            # Persist for next runs
+            CFG="$HOME/.config/testadura/bootstrap.conf"
+            mkdir -p "$(dirname "$CFG")"
+            printf 'TD_FRAMEWORK_ROOT=%q\n' "$_root" > "$CFG"
+
+            # shellcheck disable=SC1091
+            source "$CFG"
+            # shellcheck disable=SC1091
+            source "$BOOTSTRAP"
+        else
+            printf "FATAL: Testadura framework not installed ($BOOTSTRAP missing)" >&2
+            exit 127
+        fi
+    fi
 
 # --- Script metadata -------------------------------------------------------------
     TD_SCRIPT_FILE="$(readlink -f "${BASH_SOURCE[0]}")"
@@ -68,39 +102,20 @@ source /home/sysadmin/dev/solidgroundux/target-root/usr/local/lib/testadura/comm
         "  $TD_SCRIPT_NAME -v"
     ) 
 
-    __td_showarguments() {
-        printf "File                : %s\n" "$TD_SCRIPT_FILE"
-        printf "Script              : %s\n" "$TD_SCRIPT_NAME"
-        printf "Script description  : %s\n" "$TD_SCRIPT_DESC"
-        printf "Script dir          : %s\n" "$TD_SCRIPT_DIR"
-        printf "Script version      : %s (build %s)\n" "$TD_SCRIPT_VERSION" "$TD_SCRIPT_BUILD"
-        printf "TD_APPLICATION_ROOT : %s\n" "${TD_APPLICATION_ROOT:-<none>}"
-        printf "TD_FRAMEWORK_ROOT   : %s\n" "${TD_FRAMEWORK_ROOT:-<none>}"
-        printf "TD_COMMON_LIB       : %s\n" "${TD_COMMON_LIB:-<none>}"
-
-        printf "TD_STATE_FILE       : %s\n" "${TD_STATE_FILE:-<none>}"
-        printf "TD_CFG_FILE         : %s\n" "${TD_CFG_FILE:-<none>}"
-
-        printf -- "Arguments / Flags:\n"
-
-        local entry varname
-        for entry in "${TD_ARGS_SPEC[@]:-}"; do
-            IFS='|' read -r name short type var help choices <<< "$entry"
-            varname="${var}"
-            printf "  --%s (-%s) : %s = %s\n" "$name" "$short" "$varname" "${!varname:-<unset>}"
-        done
-
-        printf -- "Positional args:\n"
-        for arg in "${TD_POSITIONAL[@]:-}"; do
-            printf "  %s\n" "$arg"
-        done
-    }
-
 # --- local script functions ------------------------------------------------------
 
 # === main() must be the last function in the script ==============================
     main() {
     # --- Bootstrap ---------------------------------------------------------------
+        #   --ui            Initialize UI layer (ui_init after libs)
+        #   --state         Load persistent state (td_state_load)
+        #   --cfg           Load configuration (td_cfg_load)
+        #   --needroot      Enforce execution as root
+        #   --cannotroot    Enforce execution as non-root
+        #   --args          Enable argument parsing (default: on; included for symmetry)
+        #   --initcfg       Allow creation of missing config templates during bootstrap
+        #
+        #   --              End bootstrap options; remaining args are passed to td_parse_args
         td_bootstrap -- "$@"
         if [[ "${FLAG_STATERESET:-0}" -eq 1 ]]; then
             td_state_reset

@@ -22,7 +22,42 @@
 # ==================================================================================
 
 set -euo pipefail
-source /home/sysadmin/dev/solidgroundux/target-root/usr/local/lib/testadura/common/td-bootstrap.sh
+# -- Find bootstrapper
+    BOOTSTRAP="/usr/local/lib/testadura/common/td-bootstrap.sh"
+
+    if [[ -r "$BOOTSTRAP" ]]; then
+        # shellcheck disable=SC1091
+        source "$BOOTSTRAP"
+    else
+        # Only prompt if interactive
+        if [[ -t 0 ]]; then
+            printf "\n"
+            printf "Framework not installed in the default location."
+            printf "Are you developing the framework or using a custom install path?\n\n"
+
+            read -r -p "Enter framework root path (or leave empty to abort): " _root
+            [[ -n "$_root" ]] || exit 127
+
+            BOOTSTRAP="$_root/usr/local/lib/testadura/common/td-bootstrap.sh"
+            if [[ ! -r "$BOOTSTRAP" ]]; then
+                printf "FATAL: No td-bootstrap.sh found at provided location: $BOOTSTRAP"
+                exit 127
+            fi
+
+            # Persist for next runs
+            CFG="$HOME/.config/testadura/bootstrap.conf"
+            mkdir -p "$(dirname "$CFG")"
+            printf 'TD_FRAMEWORK_ROOT=%q\n' "$_root" > "$CFG"
+
+            # shellcheck disable=SC1091
+            source "$CFG"
+            # shellcheck disable=SC1091
+            source "$BOOTSTRAP"
+        else
+            printf "FATAL: Testadura framework not installed ($BOOTSTRAP missing)" >&2
+            exit 127
+        fi
+    fi
 
 # --- Script metadata -------------------------------------------------------------
     TD_SCRIPT_FILE="$(readlink -f "${BASH_SOURCE[0]}")"
@@ -88,7 +123,7 @@ source /home/sysadmin/dev/solidgroundux/target-root/usr/local/lib/testadura/comm
         td_state_set "FLAG_USEEXISTING" "$FLAG_USEEXISTING"
     }
     __get_parameters(){
-        RELEASE="${RELEASE:-"$SGND_PRODUCT-$SGND_VERSION"}"
+        RELEASE="${RELEASE:-"$TD_PRODUCT-$TD_VERSION"}"
         SOURCE_DIR="${SOURCE_DIR:-"$TD_APPLICATION_ROOT"}"
         TD_APPLICATION_PARENT="$(dirname "$TD_APPLICATION_ROOT")"
         STAGING_ROOT="${STAGING_ROOT:-"$TD_APPLICATION_PARENT/releases"}"
@@ -201,6 +236,9 @@ source /home/sysadmin/dev/solidgroundux/target-root/usr/local/lib/testadura/comm
         sayinfo "Would have created tar.gz archive at: $TAR_PATH"
     else
         tar -C "$STAGE_PATH" -czpf "$TAR_PATH" . || { sayfail "tar failed."; return 1; }
+
+        sha256sum "$TAR_PATH" >> SHA256SUMS
+
         sayinfo "Created $TAR_PATH"
 
         # --- Inspect archive (first few entries) --------------------------------

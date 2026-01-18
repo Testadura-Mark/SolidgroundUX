@@ -46,29 +46,27 @@ SolidgroundUX exists to enforce that respect.
 A typical executable script looks like this (see executable template):
 ```bash
 
-main() {
-    # --- Source libraries ------------------------------------------------------
-    td_source_libs
-    
-    # --- Ensure sudo or non-sudo as desired ---------------------------
-        #need_root "$@"
-        #cannot_root "$@"
-
-    # --- Load previous state and config
-        # enable if desired:
-        #td_state_load
-        #td_cfg_load
-
-    # --- Parse arguments
-        td_parse_args "$@"
-        FLAG_DRYRUN="${FLAG_DRYRUN:-0}"   
-
-        if [[ "${FLAG_VERBOSE:-0}" -eq 1 ]]; then
-            __td_showarguments
+# === main() must be the last function in the script ==============================
+    main() {
+    # --- Bootstrap ---------------------------------------------------------------
+        #   --ui            Initialize UI layer (ui_init after libs)
+        #   --state         Load persistent state (td_state_load)
+        #   --cfg           Load configuration (td_cfg_load)
+        #   --needroot      Enforce execution as root
+        #   --cannotroot    Enforce execution as non-root
+        #   --args          Enable argument parsing (default: on; included for symmetry)
+        #   --initcfg       Allow creation of missing config templates during bootstrap
+        #
+        #   --              End bootstrap options; remaining args are passed to td_parse_args
+        td_bootstrap -- "$@"
+        if [[ "${FLAG_STATERESET:-0}" -eq 1 ]]; then
+            td_state_reset
+            sayinfo "State file reset as requested."
         fi
 
-    # --- Main script logic here ---------------------------------------------
-}
+    # --- Main script logic here --------------------------------------------------
+
+    }
 
     # --- Run main with positional args only (not the options)
     main "$@"
@@ -90,7 +88,8 @@ Wrapper script to be published to bin or bins
 Once SolidgroundUX has been installed
 - Create a repository using td-create-workspace
 - Copy the executable template
-- proceed...
+- Open the generated script and implement your logic inside main()
+- Proceed...
 
 ## ✨ Features
 
@@ -141,24 +140,38 @@ the entire structure is copied to the target system, placing framework files und
 The repository layout:
 
 SolidgroundUX/
-├── LICENSE
-├── README.md
 └── target-root/
     ├── etc/
+    |   ├── systemmd/
+    |   |  └── system/
+    |   ├── testadura                       *.cfg-files
+    |   └── update-motd.d/                  message of the day
+    └── share/
+    |   └── doc/
+    |       └── solidgroundux/              Release notes, license and documentation
     └── usr/
         └── local/
+        |   ├── bin/                        non-sudo executables
+        |   ├── lib/
+        |   |    └── testadura/
+        |   |        ├── styles/            Libraries with alternate values for default styles
+        |   |        └── common/            SolidgroundUX core libraries
+        |   |            ├── templates/     Template scripts
+        |   |            └── tools/         Tool scripts for repo- and machine management
+        |   └── sbin/                       Executables requiring sudo
+        ├── var/
             └── lib/
-                └── testadura/
-                    ├── common/
-                    │   ├── templates/
-                    │   └── tools/
+                └── testadura               *.state-files
+        └── log/
+            └── testadura
+                └── solidgroundux.log       Log-files
 ```
 
 ## 🧰 Included Tools
 
-SolidgroundUX ships with two key tools that streamline scripting workflows:
+SolidgroundUX ships with four tools to make your life a bit easier:
 
-### **1. create-workspace.sh**
+### **1. td-create-workspace**
 Creates a new script workspace based on SolidgroundUX conventions.
 
 It:
@@ -170,7 +183,7 @@ It:
 
 This is the recommended way to start new scripts.
 
-### **2. deploy-workspace.sh**
+### **2. td-deploy-workspace**
 Deploys the entire `target-root` directory onto a real system.
 
 It:
@@ -182,6 +195,29 @@ It:
 - Optionally creates symlinks to executable scripts in `bin` or `bins`, as an alternative to wrapper scripts
 
 This is the mechanism used to install SolidgroundUX or update existing deployments.
+
+### **3. td-prepare-release**
+Prepares a workspace for distribution.
+
+It:
+- Assembles a clean, versioned release tree
+- Excludes state, logs, and development artifacts
+- Validates permissions and layout
+- Produces a tar-based release suitable for deployment
+
+This tool is used to create reproducible, install-ready releases.
+
+### **4. td-clone-config**
+Basic setup and configuration of a newly cloned/installed machine
+
+It:
+- Offers a menu to selectively configure 
+    - MachineID
+    - Network 
+    - Samba domain membership
+    - Prepare a machine for cloning
+
+
 
 ## 🏷 License
 

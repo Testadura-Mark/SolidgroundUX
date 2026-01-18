@@ -53,6 +53,6 @@ It provides:
 - A consistent template system for building new scripts  
 
 SolidgroundUX is built on decades of practical scripting experience, with the simple
-mission of making Bash *civilized*.{rst}"
+mission of making Bash *civilized*.{$rst}"
 printf "\n"
 printf "======================================================================================\n"

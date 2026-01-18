@@ -69,11 +69,11 @@
         __define_default TD_COMMON_LIB  "$TD_FRAMEWORK_ROOT/usr/local/lib/testadura/common"
         __define_default TD_SYSCFG_DIR  "$TD_APPLICATION_ROOT/etc/testadura"
         __define_default TD_USRCFG_DIR  "$HOME/.config/testadura" # Usr config directory path
-        __define_default TD_STATE_DIR   "$TD_APPLICATION_ROOT/var/testadura"
+        __define_default TD_STATE_DIR   "$TD_APPLICATION_ROOT/var/lib/testadura"
 
         # logs
         __define_default TD_LOG_PATH      "$TD_FRAMEWORK_ROOT/var/log/testadura/solidgroundux.log"
-        __define_default TD_ALTLOG_PATH   "$HOME/.state/testadura/solidgroundux.log"
+        __define_default TD_ALTLOG_PATH   "$HOME/.log/testadura/solidgroundux.log"
     }
     init_global_defaults() {
         __define_default TD_LOG_MAX_BYTES "$((25 * 1024 * 1024))" # 25 MiB

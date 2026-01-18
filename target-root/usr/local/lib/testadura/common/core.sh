@@ -195,14 +195,15 @@
     return 1
   }
   
+  # Strip ANSI SGR color sequences (ESC[...m)
   strip_ansi() {
-    # Strip ANSI SGR color sequences (ESC[...m)
+
     sed -r 's/\x1B\[[0-9;]*m//g' <<<"$1"
   }
-
+  # Visible length of a string (after stripping ANSI SGR codes)
+  # Usage: VisibleLen "text"
   visible_len() {
-      # Visible length of a string (after stripping ANSI SGR codes)
-      # Usage: VisibleLen "text"
+
       local plain
       plain="$(strip_ansi "$1")"
       printf '%s' "${#plain}"

@@ -284,6 +284,8 @@ TD_BOOTSTRAP_LOADED=1
                 --needroot)  exe_root=1; shift ;;
                 --cannotroot)exe_root=2; shift ;;
                 --args)      exe_args=1; shift ;;
+                --log)       TD_LOGFILE_ENABLED=1; shift ;;
+                --console)   TD_LOG_TO_CONSOLE=1; shift ;; 
                 --initcfg)
                     FLAG_INIT_CONFIG=1; shift ;;
                 --) shift; TD_BOOTSTRAP_REST=("$@"); return 0 ;;
@@ -444,7 +446,7 @@ TD_BOOTSTRAP_LOADED=1
         #   - Keep td_bootstrap thin: it orchestrates load order and invariants but does
         #     not implement application logic.
         #   - If RUN_MODE is used in headers, ensure it does not contain newlines.
-    # ------------------------------------------------------------------------------
+
     td_bootstrap() {
         FLAG_INIT_CONFIG="${FLAG_INIT_CONFIG:-0}"
         FLAG_DRYRUN="${FLAG_DRYRUN:-0}"
