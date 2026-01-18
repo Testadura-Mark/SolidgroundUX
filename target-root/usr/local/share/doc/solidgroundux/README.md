@@ -80,18 +80,20 @@ Templates define *how you start*, not how you think.
 
 ## 🚀 Getting Started
 
-### ⚙️ Installation
-- Download latest release from (https://github.com/Testadura-Mark/SolidgroundUX/releases))
-- installer expects to be in a directory containing tar balls
-- sudo install.sh --auto to install solidground's latest version
-- sudo install.sh to chose from a list of available versions
+### 📦 Installation
+- Download the latest release from  
+  https://github.com/Testadura-Mark/SolidgroundUX/releases
+- The installer expects to run in a directory containing the release tarballs
+- `sudo install.sh --auto` installs the latest available version
+- `sudo install.sh` lets you choose from available versions
 
 ### 🛠️ Script development
-Once SolidgroundUX has been installed
-- Create a repository using td-create-workspace
-- Copy the executable template
-- Open the generated script and implement your logic inside main()
-- Proceed...
+Once SolidgroundUX has been installed:
+
+- Create a new script repository using `td-create-workspace`
+- Copy or generate an executable template
+- Open the generated script and implement your logic inside `main()`
+- Proceed…
 
 ## ✨ Features
 
@@ -138,36 +140,36 @@ layout of the environment it will be installed into. Deployment is straightforwa
 the entire structure is copied to the target system, placing framework files under
 `/usr/local/lib/testadura` and creating executable symlinks in `/usr/local/bin`.
 
-```text
-The repository layout:
+### 🧱 Repository layout
 
-SolidgroundUX/
-└── target-root/
-    ├── etc/
-    |   ├── systemmd/
-    |   |  └── system/
-    |   ├── testadura                       *.cfg-files
-    |   └── update-motd.d/                  message of the day
-    └── share/
-    |   └── doc/
-    |       └── solidgroundux/              Release notes, license and documentation
-    └── usr/
-        └── local/
-        |   ├── bin/                        non-sudo executables
-        |   ├── lib/
-        |   |    └── testadura/
-        |   |        ├── styles/            Libraries with alternate values for default styles
-        |   |        └── common/            SolidgroundUX core libraries
-        |   |            ├── templates/     Template scripts
-        |   |            └── tools/         Tool scripts for repo- and machine management
-        |   └── sbin/                       Executables requiring sudo
-        ├── var/
-            └── lib/
-                └── testadura               *.state-files
-        └── log/
-            └── testadura
-                └── solidgroundux.log       Log-files
-```
+/target-root
+├── etc/
+|   ├── systemmd
+|   |  └── system
+|   ├── testadura                        _*.cfg-files_
+|   └── update-motd.d                   _Message of the day_       
+├── share
+|   └── doc
+|       └── solidgroundux               _README.md, LICENSE_
+└── usr
+    └── local
+    |   ├── bin                         _Executables not requiring root_                  
+    |   ├── lib
+    |   |    └── testadura
+    |   |        ├── styles             _Style constant overrides_     
+    |   |        └── common             _Core libraries_
+    |   |            ├── templates      _Developemnt templates_
+    |   |            └── tools          _Machine and repo management tools_
+    |   └── sbin                        _Executables requiring root_
+    ├── var
+    |   └── lib
+    |       ├── testadura               _*.state-files_
+    └── log
+        └── testadura                   _solidgroundux.log_       
+    ~/.config/testadura                 _*.cfg-files_
+              └── 
+    ~/.log
+        └── testadura                   _solidgroundux.log_    
 
 ## 🧰 Included Tools
 
