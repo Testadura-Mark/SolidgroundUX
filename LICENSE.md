@@ -1,4 +1,4 @@
-This project is licensed under the Testadura Non-Commercial License (TD-NC).
+# This project is licensed under the Testadura Non-Commercial License (TD-NC).
 
 The full license text is maintained at:
 
