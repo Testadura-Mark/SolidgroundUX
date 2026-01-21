@@ -315,7 +315,7 @@
             declare -n icn="$wrk"
             wrk="SYM_${type}"
             declare -n smb="$wrk"
-            wrk="CLR_${type}"
+            wrk="MSG_CLR_${type}"
         
             declare -n clr="$wrk"
         
