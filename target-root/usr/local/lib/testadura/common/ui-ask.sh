@@ -19,8 +19,8 @@
 # Assumptions:
 #   - This is a FRAMEWORK library (may depend on the framework as it exists).
 #   - A TTY is available for interactive input (/dev/tty or -t checks).
-#   - Theme variables and RESET are available (e.g., CLR_LABEL, CLR_INPUT, CLR_TEXT,
-#     CLR_DEFAULT, CLR_VALID, CLR_INVALID, RESET).
+#   - Theme variables and RESET are available (e.g., CLI_LABEL, CLI_INPUT, CLI_TEXT,
+#     CLI_DEFAULT, CLI_VALID, CLI_INVALID, RESET).
 #   - Optional integration with ui-say.sh may exist (e.g., saydebug/sayfail), but
 #     this module does not define message policy.
 #
@@ -46,7 +46,47 @@
     # Load guard
     [[ -n "${TD_UIASK_LOADED:-}" ]] && return 0
     TD_UIASK_LOADED=1
+# --- Helpers ---------------------------------------------------------------------
+    __expand_choices() {
+        local spec="$1"
+        local out=()
+        local part start end i
 
+        IFS=',' read -r -a parts <<< "$spec"
+
+        for part in "${parts[@]}"; do
+            # trim leading/trailing spaces
+            part="${part#"${part%%[![:space:]]*}"}"
+            part="${part%"${part##*[![:space:]]}"}"
+
+            if [[ "$part" =~ ^([[:alnum:]])-([[:alnum:]])$ ]]; then
+                start="${BASH_REMATCH[1]}"
+                end="${BASH_REMATCH[2]}"
+
+                local s e
+                s=$(printf '%d' "'$start")
+                e=$(printf '%d' "'$end")
+
+                # Reject reverse ranges (strict is better for ops tools)
+                if (( s > e )); then
+                    saywarning "Invalid range: $part"
+                    continue
+                fi
+
+                for (( i=s; i<=e; i++ )); do
+                    # Convert ASCII code to actual character
+                    out+=( "$(printf '\\%03o' "$i")" )
+                done
+            else
+                out+=( "$part" )
+            fi
+        done
+
+        # Interpret the \ooo sequences into characters
+        for part in "${out[@]}"; do
+            printf '%b\n' "$part"
+        done
+    }
 # --- ask -------------------------------------------------------------------------
     # Prompt for interactive input (reads from TTY, independent of stdin).
     #
@@ -85,20 +125,20 @@ ask(){
 
     # ---- resolve color mode -------------------------------------------------
     
-    local label_color="$CLR_LABEL"
-    local input_color="$CLR_INPUT"
-    local default_color="$CLR_DEFAULT"
+    local label_color="$CLI_LABEL"
+    local input_color="$CLI_INPUT"
+    local default_color="$CLI_DEFAULT"
 
     case "$colorize" in
         label)
-            label_color="$CLR_LABEL"
+            label_color="$CLI_LABEL"
             ;;
         input)
-            input_color="$CLR_INPUT"
+            input_color="$CLI_INPUT"
             ;;
         both)
-            label_color="$CLR_LABEL"
-            input_color="$CLR_INPUT"
+            label_color="$CLI_LABEL"
+            input_color="$CLI_INPUT"
             ;;
         none|*) ;;
     esac
@@ -139,17 +179,17 @@ ask(){
         if (( ok )); then
             printf "  %b%s%b %b✓%b\n" \
                 "$input_color" "$value" "$RESET" \
-                "$CLR_VALID" "$RESET"
+                "$CLI_VALID" "$RESET"
         else
             printf "  %b%s%b %b✗%b\n" \
-                "$CLR_INPUT" "$value" "$RESET" \
-                "$CLR_INVALID" "$RESET"
+                "$CLI_INPUT" "$value" "$RESET" \
+                "$CLI_INVALID" "$RESET"
         fi
     fi
 
     # Re-prompt on validation failure
     if (( !ok )); then
-        printf "%bInvalid value. Please try again.%b\n" "$CLR_INVALID" "$RESET"
+        printf "%bInvalid value. Please try again.%b\n" "$CLI_INVALID" "$RESET"
         ask "$@"   # recursive retry
         return
     fi
@@ -251,10 +291,10 @@ ask(){
 
         while true; do
             if (( paused )); then
-                printf "${CLR_TEXT}\nPaused. Press any key to continue, or 'c' to cancel... ${RESET}"
+                printf "${CLI_ITALIC}\nPaused. Press any key to continue, or 'c' to cancel... ${RESET}"
                 IFS= read -r -n 1 -s key
             else
-                printf "\r\033[K${CLR_TEXT}Continuing in %ds… (any key=now, p=pause, c=cancel) ${RESET}" "$seconds"
+                printf "\r\033[K${CLI_ITALIC}Continuing in %ds… (any key=now, p=pause, c=cancel) ${RESET}" "$seconds"
                 IFS= read -r -n 1 -s -t 1 key || key=""
             fi
 
@@ -285,6 +325,80 @@ ask(){
             fi
         done
     } 
+
+
+    # --- td_choose
+        # Prompt for a user choice with optional validation and retry logic.
+        # Accepts a comma-separated list of valid values.
+        #
+        # Usage:
+        #   td_choose "Enter value" --var VALUE
+        #   td_choose --label "Select option" --choices "A,B,C" --var CHOICE
+    td_choose() {
+        local label=""
+        local choices=""
+        local colorize="both"
+        local displaychoices=1
+        local keepasking=1
+        local varname="choice"
+
+        local _choice
+        local _valid
+
+        # --- Parse options --------------------------------------------------------
+        while [[ $# -gt 0 ]]; do
+            case "$1" in
+                --label)       label="$2"; shift 2 ;;
+                --var)         varname="$2"; shift 2 ;;
+                --colorize)    colorize="$2"; shift 2 ;;
+                --choices)     choices="$2"; shift 2 ;;
+                --displaychoices) displaychoices="$2"; shift 2 ;;
+                --keepasking)  keepasking="$2"; shift 2 ;;
+                --) shift; break ;;
+                *)
+                    [[ -z "$label" ]] && label="$1"
+                    shift
+                    ;;
+            esac
+        done
+
+        # --- Append choices to label (if requested) ------------------------------
+        if [[ -n "$choices" && "$displaychoices" -eq 1 ]]; then
+            label+=" [$choices]"
+        fi
+
+        # --- Ask loop -------------------------------------------------------------
+        while :; do
+            ask --label "$label" --var _choice --colorize "$colorize"
+
+            # --- No choices constraint → accept immediately -----------------------
+            if [[ -z "$choices" ]]; then
+                break
+            fi
+
+            # --- Validate choice --------------------------------------------------
+            _valid=0
+            mapfile -t _opts < <(__expand_choices "$choices")
+            saydebug $(__expand_choices "$choices")
+            for opt in "${_opts[@]}"; do
+                if [[ "${_choice^^}" == "${opt^^}" ]]; then
+                    _valid=1
+                    break
+                fi
+            done
+
+            (( _valid )) && break
+
+            # --- Invalid choice ---------------------------------------------------
+            saywarning "Invalid choice: $_choice"
+
+            (( keepasking )) || break
+        done
+
+        # --- Assign to requested variable ----------------------------------------
+        printf -v "$varname" '%s' "$_choice"
+    }
+    
 # --- File system validations -----------------------------------------------------
     validate_file_exists() {
         local path="$1"

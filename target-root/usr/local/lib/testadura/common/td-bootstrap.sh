@@ -345,7 +345,7 @@ TD_BOOTSTRAP_LOADED=1
             sayinfo "State file reset as requested."
         fi
 
-        RUN_MODE=$([ "${FLAG_DRYRUN:-0}" -eq 1 ] && echo "${BOLD_ORANGE}DRYRUN${RESET}" || echo "${BOLD_GREEN}COMMIT${RESET}")
+        td_update_runmode
 
         TD_USER_HOME="$(getent passwd "${SUDO_USER:-$USER}" | cut -d: -f6)" # User home directory
         

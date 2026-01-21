@@ -168,7 +168,7 @@ set -euo pipefail
             td_print_sectionheader --border "="
             printf "\n"
             
-            if td_dlg_autocontinue 10 "Create a release using these settings?" "APRC"; then
+            if td_dlg_autocontinue 5 "Create a release using these settings?" "APRC"; then
                 rc=0
             else
                 rc=$?

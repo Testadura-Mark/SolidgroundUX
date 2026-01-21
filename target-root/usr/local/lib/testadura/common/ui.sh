@@ -16,7 +16,7 @@
 #
 # Assumptions:
 #   - This is a FRAMEWORK library (may depend on the framework as it exists).
-#   - Theme variables and RESET are available (e.g., CLR_LABEL, CLR_INPUT, RESET).
+#   - Theme variables and RESET are available (e.g., CLI_LABEL, CLI_INPUT, RESET).
 #   - core.sh utilities may be used (e.g., td_repeat).
 #
 # Rules / Contract:
@@ -79,7 +79,18 @@
 
 
 
-# --- Public API ------------------------------------------------------------------   
+# --- Public API ------------------------------------------------------------------
+    td_update_runmode() {
+        if (( FLAG_DRYRUN )); then
+            RUN_MODE="$(td_runmode_color)DRYRUN${RESET}"
+        else
+            RUN_MODE="$(td_runmode_color)COMMIT${RESET}"
+        fi
+    }
+    td_runmode_color() {
+        (( FLAG_DRYRUN )) && printf '%s' "$CLI_DRYRUN" || printf '%s' "$CLI_COMMIT"
+    }
+
     # --- td_print_globals -----------------------------------------------------------
     # Print framework globals (system/user/both) using TD_SYS_GLOBALS / TD_USR_GLOBALS.
     # Usage: td_print_globals [sys|usr|both]
@@ -135,8 +146,8 @@
 
         local sep=":"
         local width=22
-        local labelclr="${CLI_TEXT}"
-        local valueclr="${CLI_ITALIC}"
+        local labelclr="${CLI_LABEL}"
+        local valueclr="${CLI_VALUE}"
 
         # --- Parse options
         while [[ $# -gt 0 ]]; do
@@ -333,7 +344,6 @@
             --maxwidth "$maxwidth"
     }
 
-
     # --- td_print_sectionheader
     # Print a full-width section header line.
     # Renders optional text with left padding and border fill up to max width.
@@ -421,6 +431,96 @@
         fi
 
         printf '%s\n' "$fnl"
+    }
+
+    # --- td_print
+    # Print a single formatted text line with padding and justification.
+    # Renders text within a fixed maximum width, optionally centered or right-aligned.
+    # Supports ANSI-colored input; visual width is computed after stripping color codes.
+    #
+    # Usage:
+    #   td_print "Hello world"
+    #   td_print --text "Centered text" --justify C
+    #   td_print --text "Right aligned" --justify R --pad 2
+    #   td_print --text "Colored text" --textclr "$CLI_HIGHLIGHT" --maxwidth 100
+    td_print() {
+        local text=""
+        local textclr="${CLI_TEXT:-}"
+        local pad=4
+        local justify="L"   # L = left, C = center, R = right
+        local maxwidth=80
+
+        # --- Parse options --------------------------------------------------------
+        while [[ $# -gt 0 ]]; do
+            case "$1" in
+                --text)      text="$2"; shift 2 ;;
+                --textclr)   textclr="$2"; shift 2 ;;
+                --justify)   justify="${2^^}"; shift 2 ;;
+                --pad)       pad="$2"; shift 2 ;;
+                --maxwidth)  maxwidth="$2"; shift 2 ;;
+                --) shift; break ;;
+                *)
+                    # Positional fallback
+                    [[ -z "$text" ]] && text="$1"
+                    shift
+                    ;;
+            esac
+        done
+
+        # --- Empty call: newline only ---------------------------------------------
+        if [[ -z "$text" ]]; then
+            printf "\n"
+            return 0
+        fi
+
+        # --- Safety defaults ------------------------------------------------------
+        [[ -z "$text" ]] && return 0
+        (( pad < 0 )) && pad=0
+        (( maxwidth < 1 )) && maxwidth=80
+
+        # --- Strip ANSI for length calculation -----------------------------------
+        local plain="${text//[$'\e''['0-9;]*[a-zA-Z]/}"
+        local textlen=${#plain}
+
+        local avail=$(( maxwidth - (pad * 2) ))
+        (( avail < 1 )) && avail=1
+
+        # --- Truncate if needed ---------------------------------------------------
+        if (( textlen > avail )); then
+            text="${text:0:avail}"
+            textlen=${#text}
+        fi
+
+        # --- Compute spacing ------------------------------------------------------
+        local leftspace=0 rightspace=0
+
+        case "$justify" in
+            C)
+                leftspace=$(( (avail - textlen) / 2 ))
+                rightspace=$(( avail - textlen - leftspace ))
+                ;;
+            R)
+                leftspace=$(( avail - textlen ))
+                ;;
+            *)
+                # Left justify
+                rightspace=$(( avail - textlen ))
+                ;;
+        esac
+
+        (( leftspace < 0 )) && leftspace=0
+        (( rightspace < 0 )) && rightspace=0
+
+        # --- Build line -----------------------------------------------------------
+        local line=""
+        line+="$(printf '%*s' "$pad" "")"
+        line+="$(printf '%*s' "$leftspace" "")"
+        line+="$text"
+        line+="$(printf '%*s' "$rightspace" "")"
+        line+="$(printf '%*s' "$pad" "")"
+
+        # --- Output ---------------------------------------------------------------
+        printf "%b\n" "${textclr}${line}${RESET}"
     }
 
 

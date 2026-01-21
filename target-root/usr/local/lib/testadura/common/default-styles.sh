@@ -15,7 +15,7 @@
 #   - User interaction (see ui-ask.sh)
 #
 # Usage:
-#   printf "%s%s %s%s\n" "$CLR_INFO" "$LBL_INFO" "System initialized" "$RESET"
+#   printf "%s%s %s%s\n" "$MSG_CLR_INFO" "$LBL_INFO" "System initialized" "$RESET"
 # ===============================================================================
 
 # --- Message type labels and icons ---------------------------------------------
@@ -62,33 +62,41 @@
 
   # -- Colors -------------------------------------------------------------------
     # By message type
-      CLR_INFO=$WHITE
-      CLR_STRT=$BOLD_GREEN
-      CLR_OK=$BOLD_GREEN
-      CLR_WARN=$BOLD_ORANGE
-      CLR_FAIL=$BOLD_RED
-      CLR_CNCL=$YELLOW
-      CLR_END=$BOLD_GREEN
-      CLR_EMPTY=$FAINT_SILVER
-      CLR_DEBUG=$BOLD_MAGENTA
-
-    # Text elements
-      CLR_LABEL=$CYAN
-      CLR_MSG=$SILVER
-      CLR_INPUT=$YELLOW
-      CLR_TEXT=$ITALIC_SILVER
-      CLR_INVALID=$ORANGE
-      CLR_VALID=$GREEN
-      CLR_DEFAULT=$FAINT_SILVER
+      MSG_CLR_INFO=$SILVER
+      MSG_CLR_STRT=$BOLD_GREEN
+      MSG_CLR_OK=$BOLD_GREEN
+      MSG_CLR_WARN=$BOLD_ORANGE
+      MSG_CLR_FAIL=$BOLD_RED
+      MSG_CLR_CNCL=$YELLOW
+      MSG_CLR_END=$BOLD_GREEN
+      MSG_CLR_EMPTY=$FAINT_SILVER
+      MSG_CLR_DEBUG=$BOLD_MAGENTA
     
     # CLI colors
       CLI_BORDER=$BOLD_CYAN
-      CLI_PROMPT=$BOLD_CYAN
-      CLI_TEXT=$SILVER
+
+      CLI_LABEL=$SILVER
+      CLI_VALUE=$ITALIC_SILVER
+      
+      CLI_COMMIT=$BOLD_RED
+      CLI_DRYRUN=$GREEN
+
+      CLI_ENABLED=$BOLD_WHITE
+      CLI_DISABLED=$FAINT_WHITE
+      
       CLI_INPUT=$YELLOW
-      CLI_HIGHLIGHT=$WHITE
-      CLI_ITALIC=$ITALIC_SILVER
-      CLI_FAINT=$FAINT_SILVER
+      CLI_PROMPT=$BOLD_CYAN
+
+      CLI_INVALID=$ORANGE
+      CLI_VALID=$GREEN
+
       CLI_SUCCESS=$BOLD_GREEN
       CLI_ERROR=$BOLD_RED
+
+      CLI_HIGHLIGHT=$WHITE
+      CLI_TEXT=$SILVER
+      CLI_ITALIC=$ITALIC_SILVER
+      CLI_FAINT=$FAINT_SILVER
+
+      CLI_DEFAULT=$FAINT_SILVER
 

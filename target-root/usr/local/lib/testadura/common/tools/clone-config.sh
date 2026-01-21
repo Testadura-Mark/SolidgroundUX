@@ -117,31 +117,44 @@ set -euo pipefail
     ) 
 
 # --- local script functions ------------------------------------------------------
-    __menuline() { printf "%b\n" "$*"; }
     __show_mainmenu() {
-        _barcolor="${CLI_BORDER}"
-        _titlecolor="${CLI_HIGHLIGHT}"
-        _itemcolor="${CLI_TEXT}"
+        local _barcolor="${CLI_BORDER}"
+        local _titlecolor="${CLI_HIGHLIGHT}"
+        local _itemcolor="${CLI_TEXT}"
+        local _pad=4
+        local _tpad=$((_pad + 1))
+        local _rcolor="$( (( FLAG_DRYRUN )) && printf '%s' "$CLI_DISABLED" || printf '%s' "$CLI_ENABLED" )"
 
-        _verb=$([ "${FLAG_VERBOSE:-0}" -eq 1 ] && echo "${BOLD_YELLOW}ON${RESET}" || echo "${BOLD_YELLOW}OFF${RESET}")
-        _dry=$([ "${FLAG_DRYRUN:-0}" -eq 1 ] && echo "${BOLD_YELLOW}ON${RESET}" || echo "${BOLD_YELLOW}OFF${RESET}")
-  
-        td_print_titlebar --text "Clone configuration menu" --textclr $_titlecolor
-        __menuline "${_titlecolor}    --- Basic configuration tasks ---${_itemcolor}"
-        __menuline "    1) Setup Machine ID"
-        __menuline "    2) Configure Hostname and Network"
-        __menuline "    3) Enable SSH and set authorized keys"
-        __menuline ""
-        __menuline "${_titlecolor}     --- Additional tasks ---${_itemcolor}"
-        __menuline "    4) Join Domain (optional)"
-        __menuline "    5) Prepare template for next clone"
-        __menuline ""
-        __menuline "${_titlecolor}    --- Modes ---${_itemcolor}"
-        __menuline "    6) Toggle Verbose mode ($_verb)"
-        __menuline "    7) Toggle Dry-Run mode ($_dry)"
-        __menuline ""
-        __menuline "    8) Exit"
-         td_print_sectionheader --borderclr $_barcolor
+        _verb=$([ "${FLAG_VERBOSE:-0}" -eq 1 ] && echo "${CLI_ENABLED}ON${RESET}" || echo "${CLI_DISABLED}OFF${RESET}")
+        _dry=$([ "${FLAG_DRYRUN:-0}" -eq 1 ] && echo "${CLI_ENABLED}ON${RESET}" || echo "${CLI_DISABLED}OFF${RESET}")
+    
+        td_print_titlebar --text "Clone configuration menu" --textclr "$_titlecolor"
+
+        td_print_sectionheader --text "Core setup" --padend 0 --pad "$_pad"
+        td_print --text "1) Setup Machine ID" --pad "$_tpad" 
+        td_print --text "2) Configure Hostname and Network" --pad "$_tpad"
+        td_print --text "3) Enable SSH and set authorized keys" --pad "$_tpad"
+        td_print
+
+        td_print_sectionheader --text "Operations" --textclr "$_itemcolor" --padend 0 --pad "$_pad"
+        td_print --text "4) Download and Install SolidgroundUX" --pad "$_tpad"
+        td_print --text "5) Join Domain" --pad "$_tpad"
+        td_print_fill --left "6) Prepare template for next clone" --padleft "$_tpad"\
+                      --right "State Altering" --rightclr "$_rcolor"
+        td_print
+
+        td_print_sectionheader --text "Server roles" --textclr "$_itemcolor" --padend 0 --pad "$_pad"
+        td_print --text "7) Provision Samba AD DC" --pad "$_tpad"
+        td_print --text "8) Provision Samba SMB Fileserver" --pad "$_tpad"
+        td_print
+
+        td_print_sectionheader --text "Run modes" --textclr "$_itemcolor" --padend 0 --pad "$_pad"
+        td_print --text "V) Toggle Verbose mode ($_verb)" --pad "$_tpad"
+        td_print --text "D) Toggle Dry-Run mode ($_dry)" --pad "$_tpad"
+        td_print
+
+        td_print --text "X) Exit" --pad "$_tpad"
+        td_print_sectionheader --borderclr $_barcolor
     }
 
     __save_settings(){
@@ -811,7 +824,6 @@ set -euo pipefail
             echo "        addresses:"
             echo "          - ${CLONE_DNS:-1.1.1.1}"
         }
-#
 
 # === main() must be the last function in the script ==============================
     main() {
@@ -831,61 +843,49 @@ set -euo pipefail
             fi
             __show_mainmenu
 
-            read -rp "${BOLD_SILVER}Select an option [1-8]: ${BOLD_YELLOW}" choice
+            td_choose --label "Select option" --choices "1-8,D,V,X" --var choice
 
-            printf "\n"
+            case "${choice^^}" in
+                1) wait_after=8  ; __setup_machine_id ;;
+                2) wait_after=5  ; __configure_network ;;
+                3) wait_after=5  ; __enable_ssh ;;
+                4) wait_after=10 ; __join_domain ;;
+                5) wait_after=10 ; __prepare_template ;;
 
-            case $choice in
-                1)
-                    wait_after=8
-                    __setup_machine_id  
-                    ;;
-                2)
-                    wait_after=5
-                    __configure_network
-                    ;;
-                3)
-                    wait_after=5
-                    __enable_shh
-                    ;;
-                4)
-                    wait_after=10
-                    __join_domain
-                    ;;
-                5)
-                    wait_after=10
-                    __prepare_template
-                    ;;
-                6)
-                    wait_after=0.5
-                    if [[ "${FLAG_VERBOSE:-0}" -eq 1 ]]; then
+                V)
+                    wait_after=3
+                    if (( FLAG_VERBOSE )); then
                         FLAG_VERBOSE=0
                         sayinfo "Verbose mode disabled."
                     else
                         FLAG_VERBOSE=1
                         sayinfo "Verbose mode enabled."
                     fi
-                    RUN_MODE=$([ "${FLAG_DRYRUN:-0}" -eq 1 ] && echo "${BOLD_ORANGE}DRYRUN${RESET}" || echo "${BOLD_GREEN}COMMIT${RESET}")
                     ;;
-                7)
-                    wait_after=0.5
-                    if [[ "${FLAG_DRYRUN:-0}" -eq 1 ]]; then
+
+                D)
+                    wait_after=3
+                    if (( FLAG_DRYRUN )); then
                         FLAG_DRYRUN=0
-                        saywarning "Dry-Run mode disabled."
+                        saywarning "DryRun mode disabled."
+                        td_update_runmode
                     else
                         FLAG_DRYRUN=1
-                        sayinfo "Dry-Run mode enabled."
+                        saywarning "DryRun mode enabled."
+                        td_update_runmode
                     fi
-                    RUN_MODE=$([ "${FLAG_DRYRUN:-0}" -eq 1 ] && echo "${BOLD_ORANGE}DRYRUN${RESET}" || echo "${BOLD_GREEN}COMMIT${RESET}")
                     ;;
-                8)
+
+                X)
                     sayinfo "Exiting..."
                     break
                     ;;
+
                 *)
                     saywarning "Invalid option. Please select a valid option."
                     ;;
             esac
+            
             if [[ $wait_after > 1 ]]; then
                 ask_autocontinue $wait_after 
             else
