@@ -16,7 +16,7 @@
 #
 # Assumptions:
 #   - This is a FRAMEWORK library (may depend on the framework as it exists).
-#   - Theme variables and RESET are available (e.g., CLI_LABEL, CLI_INPUT, RESET).
+#   - Theme variables and RESET are available (e.g., TUI_LABEL, TUI_INPUT, RESET).
 #   - core.sh utilities may be used (e.g., td_repeat).
 #
 # Rules / Contract:
@@ -80,6 +80,13 @@
 
 
 # --- Public API ------------------------------------------------------------------
+    # --- td_update_runmode -------------------------------------------------------
+        # Update the global RUN_MODE label based on current execution mode.
+        #
+        # Derives a colorized, user-facing run mode indicator ("DRYRUN" or "COMMIT")
+        # from FLAG_DRYRUN. Intended for UI display only; does not affect execution logic.
+        # Usage:
+        #   td_update_runmode
     td_update_runmode() {
         if (( FLAG_DRYRUN )); then
             RUN_MODE="$(td_runmode_color)DRYRUN${RESET}"
@@ -87,8 +94,16 @@
             RUN_MODE="$(td_runmode_color)COMMIT${RESET}"
         fi
     }
+    # --- td_runmode_color -------------------------------------------------------------
+        # Return the color sequence associated with the current run mode.
+        #
+        # Outputs the appropriate TUI color escape based on FLAG_DRYRUN.
+        # Designed for composition in UI strings; does not include RESET.
+        #
+        # Usage:
+        #   printf '%sRUNMODE%s\n' "$(td_runmode_color)" "$RESET"
     td_runmode_color() {
-        (( FLAG_DRYRUN )) && printf '%s' "$CLI_DRYRUN" || printf '%s' "$CLI_COMMIT"
+        (( FLAG_DRYRUN )) && printf '%s' "$TUI_DRYRUN" || printf '%s' "$TUI_COMMIT"
     }
 
     # --- td_print_globals -----------------------------------------------------------
@@ -146,8 +161,8 @@
 
         local sep=":"
         local width=22
-        local labelclr="${CLI_LABEL}"
-        local valueclr="${CLI_VALUE}"
+        local labelclr="${TUI_LABEL}"
+        local valueclr="${TUI_VALUE}"
 
         # --- Parse options
         while [[ $# -gt 0 ]]; do
@@ -211,13 +226,13 @@
     #
     # Usage:
     #   td_print_fill "Left" "Right"
-    #   td_print_fill --left "Menu" --right "$RUN_MODE" --rightclr "$CLI_HIGHLIGHT"
+    #   td_print_fill --left "Menu" --right "$RUN_MODE" --rightclr "$TUI_HIGHLIGHT"
     #   td_print_fill --fillchar "." --maxwidth 100
     td_print_fill() {
         local left="" right=""
         local padleft=2 padright=1 maxwidth=80
         local fillchar=" "
-        local leftclr="${CLI_TEXT}"
+        local leftclr="${TUI_TEXT}"
         local rightclr=""
 
         # --- Parse options (with positional fallback)
@@ -293,10 +308,10 @@
 
         local text="${TD_SCRIPT_TITLE:-$TD_SCRIPT_BASE}"
         local right="${RUN_MODE:-}"
-        local textclr="${CLI_HIGHLIGHT}"
+        local textclr="${TUI_HIGHLIGHT}"
         local rightclr=""                 # let td_print_fill inherit
         local border="="
-        local borderclr="${CLI_BORDER}"
+        local borderclr="${TUI_BORDER}"
         local padleft=4
         local maxwidth=80
 
@@ -318,7 +333,7 @@
                     ;;
             esac
         done
-
+        td_print
         # -- Numeric safety
         [[ "$padleft"  =~ ^[0-9]+$ ]] || padleft=4
         [[ "$maxwidth" =~ ^[0-9]+$ ]] || maxwidth=80
@@ -354,9 +369,9 @@
     #   td_print_sectionheader --text "Framework info" --maxwidth 80
     td_print_sectionheader() {
         local text=""
-        local textclr="${CLI_HIGHLIGHT}"
+        local textclr="${TUI_HIGHLIGHT}"
         local border="-"
-        local borderclr="${CLI_BORDER}"
+        local borderclr="${TUI_BORDER}"
         local padleft=4
         local padend=1
         local maxwidth=80
@@ -442,10 +457,10 @@
     #   td_print "Hello world"
     #   td_print --text "Centered text" --justify C
     #   td_print --text "Right aligned" --justify R --pad 2
-    #   td_print --text "Colored text" --textclr "$CLI_HIGHLIGHT" --maxwidth 100
+    #   td_print --text "Colored text" --textclr "$TUI_HIGHLIGHT" --maxwidth 100
     td_print() {
         local text=""
-        local textclr="${CLI_TEXT:-}"
+        local textclr="${TUI_TEXT:-}"
         local pad=4
         local justify="L"   # L = left, C = center, R = right
         local maxwidth=80

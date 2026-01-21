@@ -338,7 +338,7 @@ TD_BOOTSTRAP_LOADED=1
 
     __finalize_bootstrap() {       
         FLAG_DRYRUN="${FLAG_DRYRUN:-0}"   
-        #FLAG_VERBOSE="${FLAG_VERBOSE:-0}"
+        FLAG_VERBOSE="${FLAG_VERBOSE:-0}"
         FLAG_STATERESET="${FLAG_STATERESET:-0}"
         if [[ "${FLAG_STATERESET:-0}" -eq 1 ]]; then
             td_state_reset

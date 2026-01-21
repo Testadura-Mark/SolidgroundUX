@@ -21,7 +21,7 @@
 # Assumptions:
 #   - This is a FRAMEWORK library (may depend on the framework as it exists).
 #   - A TTY is available (/dev/tty present and readable/writable).
-#   - Theme variables and RESET exist (e.g., CLI_TEXT, CLI_LABEL, RESET).
+#   - Theme variables and RESET exist (e.g., TUI_TEXT, TUI_LABEL, RESET).
 #   - No full-screen mode is assumed; the caller controls broader UI flow.
 #
 # Rules / Contract:
@@ -136,19 +136,19 @@
 
             # Message line (optional)
             if [[ -n "$msg" ]]; then
-                printf '\r\e[K%s\n' "${CLI_TEXT}${msg}${RESET}" >"$tty"
+                printf '\r\e[K%s\n' "${TUI_TEXT}${msg}${RESET}" >"$tty"
             fi
 
             # Keymap line
             if (( ! hide_keymap )); then
-                printf '\r\e[K%s\n' "${CLI_TEXT}${line_keymap}${RESET}" >"$tty"
+                printf '\r\e[K%s\n' "${TUI_TEXT}${line_keymap}${RESET}" >"$tty"
             fi
 
             # Status line (no newline; we keep cursor on this line)
             if (( paused )); then
-                printf '\r\e[K%s' "${CLI_ITALIC}Paused... Press P or Space to resume countdown${RESET}" >"$tty"
+                printf '\r\e[K%s' "${TUI_ITALIC}Paused... Press P or Space to resume countdown${RESET}" >"$tty"
             else
-                printf '\r\e[K%s' "${CLI_ITALIC}Continuing in ${seconds}s...${RESET}" >"$tty"
+                printf '\r\e[K%s' "${TUI_ITALIC}Continuing in ${seconds}s...${RESET}" >"$tty"
             fi
 
             # Read key

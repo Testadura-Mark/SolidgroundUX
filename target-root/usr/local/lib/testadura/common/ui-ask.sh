@@ -19,8 +19,8 @@
 # Assumptions:
 #   - This is a FRAMEWORK library (may depend on the framework as it exists).
 #   - A TTY is available for interactive input (/dev/tty or -t checks).
-#   - Theme variables and RESET are available (e.g., CLI_LABEL, CLI_INPUT, CLI_TEXT,
-#     CLI_DEFAULT, CLI_VALID, CLI_INVALID, RESET).
+#   - Theme variables and RESET are available (e.g., TUI_LABEL, TUI_INPUT, TUI_TEXT,
+#     TUI_DEFAULT, TUI_VALID, TUI_INVALID, RESET).
 #   - Optional integration with ui-say.sh may exist (e.g., saydebug/sayfail), but
 #     this module does not define message policy.
 #
@@ -125,20 +125,20 @@ ask(){
 
     # ---- resolve color mode -------------------------------------------------
     
-    local label_color="$CLI_LABEL"
-    local input_color="$CLI_INPUT"
-    local default_color="$CLI_DEFAULT"
+    local label_color="$TUI_LABEL"
+    local input_color="$TUI_INPUT"
+    local default_color="$TUI_DEFAULT"
 
     case "$colorize" in
         label)
-            label_color="$CLI_LABEL"
+            label_color="$TUI_LABEL"
             ;;
         input)
-            input_color="$CLI_INPUT"
+            input_color="$TUI_INPUT"
             ;;
         both)
-            label_color="$CLI_LABEL"
-            input_color="$CLI_INPUT"
+            label_color="$TUI_LABEL"
+            input_color="$TUI_INPUT"
             ;;
         none|*) ;;
     esac
@@ -179,17 +179,17 @@ ask(){
         if (( ok )); then
             printf "  %b%s%b %b✓%b\n" \
                 "$input_color" "$value" "$RESET" \
-                "$CLI_VALID" "$RESET"
+                "$TUI_VALID" "$RESET"
         else
             printf "  %b%s%b %b✗%b\n" \
-                "$CLI_INPUT" "$value" "$RESET" \
-                "$CLI_INVALID" "$RESET"
+                "$TUI_INPUT" "$value" "$RESET" \
+                "$TUI_INVALID" "$RESET"
         fi
     fi
 
     # Re-prompt on validation failure
     if (( !ok )); then
-        printf "%bInvalid value. Please try again.%b\n" "$CLI_INVALID" "$RESET"
+        printf "%bInvalid value. Please try again.%b\n" "$TUI_INVALID" "$RESET"
         ask "$@"   # recursive retry
         return
     fi
@@ -291,10 +291,10 @@ ask(){
 
         while true; do
             if (( paused )); then
-                printf "${CLI_ITALIC}\nPaused. Press any key to continue, or 'c' to cancel... ${RESET}"
+                printf "${TUI_ITALIC}\nPaused. Press any key to continue, or 'c' to cancel... ${RESET}"
                 IFS= read -r -n 1 -s key
             else
-                printf "\r\033[K${CLI_ITALIC}Continuing in %ds… (any key=now, p=pause, c=cancel) ${RESET}" "$seconds"
+                printf "\r\033[K${TUI_ITALIC}Continuing in %ds… (any key=now, p=pause, c=cancel) ${RESET}" "$seconds"
                 IFS= read -r -n 1 -s -t 1 key || key=""
             fi
 

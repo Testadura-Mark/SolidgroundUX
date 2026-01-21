@@ -37,24 +37,21 @@
         SYM_STRT="⮞"
         SYM_WARN="⚠"
 
-
-
-
 # -- Colors --------------------------------------------------------------------
     # By message type
-        CLR_INFO=$BOLD_CYAN
-        CLR_STRT=$BOLD_BLUE
-        CLR_OK=$BOLD_GREEN
-        CLR_WARN=$BOLD_YELLOW
-        CLR_FAIL=$BOLD_RED
-        CLR_CNCL=$BOLD_MAGENTA
-        CLR_END=$BOLD_ORANGE
-        CLR_EMPTY=$FAINT_SILVER
+        MSG_CLR_INFO=$BOLD_CYAN
+        MSG_CLR_STRT=$BOLD_BLUE
+        MSG_CLR_OK=$BOLD_GREEN
+        MSG_CLR_WARN=$BOLD_YELLOW
+        MSG_CLR_FAIL=$BOLD_RED
+        MSG_CLR_CNCL=$BOLD_MAGENTA
+        MSG_CLR_END=$BOLD_ORANGE
+        MSG_CLR_EMPTY=$FAINT_SILVER
     # Text elements
-        CLR_LABEL=$BOLD_MAGENTA
-        CLR_MSG=$BOLD_BLUE
-        CLR_INPUT=$BOLD_ORANGE
-        CLR_TEXT=$BOLD_CYAN
-        CLR_INVALID=$BOLD_RED
-        CLR_VALID=$BOLD_GREEN
-        CLR_DEFAULT=$FAINT_SILVER
+        TUI_LABEL=$BOLD_MAGENTA
+        TUI_MSG=$BOLD_BLUE
+        TUI_INPUT=$BOLD_ORANGE
+        TUI_TEXT=$BOLD_CYAN
+        TUI_INVALID=$BOLD_RED
+        TUI_VALID=$BOLD_GREEN
+        TUI_DEFAULT=$FAINT_SILVER

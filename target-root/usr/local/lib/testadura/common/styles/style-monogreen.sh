@@ -40,19 +40,19 @@
 
 # -- Colors --------------------------------------------------------------------
     # By message type
-        CLR_INFO=$FAINT_GREEN
-        CLR_STRT=$GREEN
-        CLR_OK=$BOLD_GREEN
-        CLR_WARN=$GREEN
-        CLR_FAIL=$BOLD_GREEN
-        CLR_CNCL=$FAINT_GREEN
-        CLR_END=$FAINT_GREEN
-        CLR_EMPTY=$FAINT_SILVER
+        MSG_CLR_INFO=$FAINT_GREEN
+        MSG_CLR_STRT=$GREEN
+        MSG_CLR_OK=$BOLD_GREEN
+        MSG_CLR_WARN=$GREEN
+        MSG_CLR_FAIL=$BOLD_GREEN
+        MSG_CLR_CNCL=$FAINT_GREEN
+        MSG_CLR_END=$FAINT_GREEN
+        MSG_CLR_EMPTY=$FAINT_SILVER
     # Text elements
-        CLR_LABEL=$GREEN
-        CLR_MSG=$GREEN
-        CLR_INPUT=$BOLD_GREEN
-        CLR_TEXT=$FAINT_GREEN
-        CLR_INVALID=$BOLD_GREEN
-        CLR_VALID=$GREEN
-        CLR_DEFAULT=$FAINT_SILVER
+        TUI_LABEL=$GREEN
+        TUI_MSG=$GREEN
+        TUI_INPUT=$BOLD_GREEN
+        TUI_TEXT=$FAINT_GREEN
+        TUI_INVALID=$BOLD_GREEN
+        TUI_VALID=$GREEN
+        TUI_DEFAULT=$FAINT_SILVER

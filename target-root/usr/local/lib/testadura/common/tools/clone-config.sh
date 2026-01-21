@@ -118,19 +118,19 @@ set -euo pipefail
 
 # --- local script functions ------------------------------------------------------
     __show_mainmenu() {
-        local _barcolor="${CLI_BORDER}"
-        local _titlecolor="${CLI_HIGHLIGHT}"
-        local _itemcolor="${CLI_TEXT}"
-        local _pad=4
-        local _tpad=$((_pad + 1))
-        local _rcolor="$( (( FLAG_DRYRUN )) && printf '%s' "$CLI_DISABLED" || printf '%s' "$CLI_ENABLED" )"
+        local _barcolor="${TUI_BORDER}"
+        local _titlecolor="${TUI_HIGHLIGHT}"
+        local _itemcolor="${TUI_TEXT}"
+        local _pad=2
+        local _tpad=$((_pad + 3))
+        local _rcolor="$( (( FLAG_DRYRUN )) && printf '%s' "$TUI_DISABLED" || printf '%s' "$TUI_ENABLED" )"
 
-        _verb=$([ "${FLAG_VERBOSE:-0}" -eq 1 ] && echo "${CLI_ENABLED}ON${RESET}" || echo "${CLI_DISABLED}OFF${RESET}")
-        _dry=$([ "${FLAG_DRYRUN:-0}" -eq 1 ] && echo "${CLI_ENABLED}ON${RESET}" || echo "${CLI_DISABLED}OFF${RESET}")
+        _verb=$([ "${FLAG_VERBOSE:-0}" -eq 1 ] && echo "${TUI_ENABLED}ON${RESET}" || echo "${TUI_DISABLED}OFF${RESET}")
+        _dry=$([ "${FLAG_DRYRUN:-0}" -eq 1 ] && echo "${TUI_ENABLED}ON${RESET}" || echo "${TUI_DISABLED}OFF${RESET}")
     
         td_print_titlebar --text "Clone configuration menu" --textclr "$_titlecolor"
 
-        td_print_sectionheader --text "Core setup" --padend 0 --pad "$_pad"
+        td_print_sectionheader --text "Core setup" --padend 1 --pad "$_pad" --prefix 2
         td_print --text "1) Setup Machine ID" --pad "$_tpad" 
         td_print --text "2) Configure Hostname and Network" --pad "$_tpad"
         td_print --text "3) Enable SSH and set authorized keys" --pad "$_tpad"
@@ -318,9 +318,9 @@ set -euo pipefail
 
             # ---- prompts ----
             while true; do
-                printf "${CLI_BORDER}==================================================\n"
-                printf "${CLI_TEXT}   Host & IPv4 setup\n"
-                printf "${CLI_BORDER}==================================================\n"
+                printf "${TUI_BORDER}==================================================\n"
+                printf "${TUI_TEXT}   Host & IPv4 setup\n"
+                printf "${TUI_BORDER}==================================================\n"
                 
                 ask --label "Hostname" --var HOST --default "$HOST" --colorize both
                 SHORT="${HOST%%.*}"
@@ -335,7 +335,7 @@ set -euo pipefail
                     ask --label "Extra routes (CIDR:via, comma-separated; blank = none)" --var ROUTES --default "" --colorize=both
                     ask --label "DNS servers (comma-separated)" --var DNS --default "$DNS" --colorize=both
                 fi
-                printf "${CLI_BORDER}==================================================\n"
+                printf "${TUI_BORDER}==================================================\n"
 
                 if ask_yesno "Ok to apply?"; then
                     break
@@ -479,9 +479,9 @@ set -euo pipefail
 
             # ---- prompts ----
             while true; do
-                printf "${CLI_BORDER}==================================================\n"
-                printf "${CLI_TEXT}   Join domain                              ${RUN_MODE}\n"                        
-                printf "${CLI_BORDER}==================================================\n"
+                printf "${TUI_BORDER}==================================================\n"
+                printf "${TUI_TEXT}   Join domain                              ${RUN_MODE}\n"                        
+                printf "${TUI_BORDER}==================================================\n"
 
                 ask --label "Hostname" --var HOST --default "$HOST" --colorize both 
                 ask --label "Domain" --var DOMAIN --default "$DOMAIN" --colorize both
@@ -495,9 +495,9 @@ set -euo pipefail
 
 
                 # Show derived values (don’t let user overwrite them unless you truly want that)
-                printf "%sDerived domain   : %s\n" "${CLI_ITALIC}" "${DOMAIN_LC:-<none>}"
-                printf "%sKerberos realm   : %s\n" "${CLI_ITALIC}" "${REALM_UC:-<none>}"                      
-                printf "${CLI_BORDER}==================================================\n"
+                printf "%sDerived domain   : %s\n" "${TUI_ITALIC}" "${DOMAIN_LC:-<none>}"
+                printf "%sKerberos realm   : %s\n" "${TUI_ITALIC}" "${REALM_UC:-<none>}"                      
+                printf "${TUI_BORDER}==================================================\n"
 
                 decision=0
                 ask_ok_redo_quit "Continue with domain join?" || decision=$?
@@ -678,9 +678,9 @@ set -euo pipefail
 
 
             while true; do
-                printf "${CLI_BORDER}==================================================\n"
-                printf "${CLI_TEXT}   Prepare template for next clone settings\n"
-                printf "${CLI_BORDER}==================================================\n"
+                printf "${TUI_BORDER}==================================================\n"
+                printf "${TUI_TEXT}   Prepare template for next clone settings\n"
+                printf "${TUI_BORDER}==================================================\n"
 
                 ask --label "Hostname for template" --var CLONE_HOST --default "$CLONE_HOST" --colorize both 
                 ask --label "Network interface for template" --var CLONE_NIC --default "$CLONE_NIC" --colorize both  
@@ -690,7 +690,7 @@ set -euo pipefail
                 ask --label "DNS servers for template (comma-separated)" --var CLONE_DNS --default "$CLONE_DNS" --colorize=both 
                 ask --label "Netplan filename for template" --var CLONE_NETPLAN_FILE --default "$CLONE_NETPLAN_FILE" --colorize=both
 
-                printf "${CLI_BORDER}==================================================\n"
+                printf "${TUI_BORDER}==================================================\n"
 
                 ask_autocontinue 15 
                 rc=$?
@@ -838,7 +838,7 @@ set -euo pipefail
         wait_after=0
         while true; do
             clear
-            if [[ $FLAG_VERBOSE ]]; then
+            if [[ ${FLAG_VERBOSE:-0} -eq 1 ]]; then
                 td_showarguments
             fi
             __show_mainmenu

@@ -438,7 +438,7 @@
         # ------------------------------------------------------------------------------
     td_showarguments() {
             
-            _borderclr=${CLI_BORDER}
+            _borderclr=${TUI_BORDER}
             printf "\n"
             td_print_sectionheader --text "Configuration data" --border "=" 
             td_print_sectionheader --text "Script info ($RUN_MODE)"
