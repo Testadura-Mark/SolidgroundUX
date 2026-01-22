@@ -324,6 +324,7 @@
         local rightclr=""                 # let td_print_fill inherit
         local sub="${TD_SCRIPT_DESC:-""}"
         local subclr="${TUI_ITALIC}"
+        local subjust="C"
         local border="="
         local borderclr="${TUI_BORDER}"
         local padleft=4
@@ -336,8 +337,9 @@
                 --leftclr)   leftclr="$2"; shift 2 ;;
                 --right)     right="$2"; shift 2 ;;
                 --rightclr)  rightclr="$2"; shift 2 ;;
-                --sub)       right="$2"; shift 2 ;;
-                --subclr)    rightclr="$2"; shift 2 ;;
+                --sub)       sub="$2"; shift 2 ;;
+                --subclr)    subclr="$2"; shift 2 ;;
+                --subjust)   subjust="$2"; shift 2 ;;
                 --border)    border="$2"; shift 2 ;;
                 --borderclr) borderclr="$2"; shift 2 ;;
                 --padleft)   padleft="$2"; shift 2 ;;
@@ -371,7 +373,11 @@
             ${rightclr:+--rightclr "$rightclr"}
 
         if [[ "${sub}" != "" ]]; then
-            td_print --text "$sub" --justify "C" --textclr "$subclr"
+           td_print \
+            --text "$sub" \
+            --justify "$subjust" \
+            --textclr "$subclr" \
+            --rightmargin "$(visible_len "$right")"
         fi
 
         td_print_sectionheader \

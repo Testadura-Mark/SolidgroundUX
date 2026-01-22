@@ -343,7 +343,7 @@ set -euo pipefail
                 td_print
             fi
 
-            td_print_titlebar --text "$MNU_TITLE" --right "$RUN_MODE"
+            td_print_titlebar --text "$MNU_TITLE" --right "$RUN_MODE" 
             td_print
 
             local g
