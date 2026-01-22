@@ -254,12 +254,12 @@ set -euo pipefail
             local -a parts=()
             local auto=1
 
+            # Temporary list: "group|weight|key|label|handler|flags"
+            local -a items=()
+
             for spec in "${TD_MENU_SPECS[@]}"; do
                 td_split_pipe "$spec" parts
 
-                # Accept either:
-                #   5 parts: key|group|label|handler|flags
-                #   6 parts: src|key|group|label|handler|flags
                 if (( ${#parts[@]} == 5 )); then
                     src=""
                     key="${parts[0]}"
@@ -291,8 +291,110 @@ set -euo pipefail
                     auto=$((auto + 1))
                 fi
 
-                td_menu_register_compiled_item "$key" "$group" "$label" "$handler" "${flags:-}"
+                local weight
+                weight="$(td_menu_key_weight "$key")"
+
+                td_menu_group_seen_add "$group"
+                items+=( "$group|$weight|$key|$label|$handler|$flags" )
             done
+
+            # --- Determine group order (Run modes always last)
+            local -a ordered_groups=()
+            local g
+
+            for g in "${TD_MENU_GROUPS[@]}"; do
+                [[ "$g" == "Run modes" ]] && continue
+                ordered_groups+=( "$g" )
+            done
+            ordered_groups+=( "Run modes" )
+
+            # --- Build compiled arrays in sorted order
+            local entry grp w k l h f
+            for grp in "${ordered_groups[@]}"; do
+                for entry in "${items[@]}"; do
+                    IFS='|' read -r g w k l h f <<< "$entry"
+                    [[ "$g" == "$grp" ]] || continue
+
+                    td_menu_register_compiled_item "$k" "$g" "$l" "$h" "$f"
+                done
+            done
+        }
+
+        # -- td_menu_key_weight
+            # Returns a sortable weight for a menu key.
+            # Numeric keys sort numerically; non-numeric keys sort after numbers.
+        td_menu_key_weight() {
+            local key="$1"
+
+            if [[ "$key" =~ ^[0-9]+$ ]]; then
+                printf '%05d' "$key"
+            else
+                # Non-numeric keys go after numeric ones, keep stable order later
+                printf 'Z_%s' "$key"
+            fi
+        }
+        
+        # -- td_menu_force_group_last
+            # Ensure a specific group is the last entry in TD_MENU_GROUPS (if present).
+        td_menu_force_group_last() {
+            local target="$1"
+            local -a tmp=()
+            local g found=0
+
+            for g in "${TD_MENU_GROUPS[@]}"; do
+                [[ "$g" == "$target" ]] && { found=1; continue; }
+                tmp+=("$g")
+            done
+
+            (( found )) && tmp+=("$target")
+            TD_MENU_GROUPS=("${tmp[@]}")
+        }
+
+        # -- td_menu_apply_ordering
+            # Apply menu ordering policies:
+            #   - "Run modes" group always last
+            #   - Items sorted by group order, then by key weight (numeric order for numbers)
+        td_menu_apply_ordering() {
+            td_menu_force_group_last "Run modes"
+
+            # Map group -> order index
+            declare -A grp_idx=()
+            local gi=0
+            local g
+            for g in "${TD_MENU_GROUPS[@]}"; do
+                grp_idx["$g"]="$gi"
+                gi=$((gi + 1))
+            done
+
+            # Build sortable records: "groupIndex|keyWeight|origIndex"
+            local -a records=()
+            local i w gix
+            for i in "${!TD_MENU_KEYS[@]}"; do
+                g="${TD_MENU_GROUP[$i]}"
+                gix="${grp_idx[$g]:-9999}"
+                w="$(td_menu_key_weight "${TD_MENU_KEYS[$i]}")"
+                records+=( "${gix}|${w}|${i}" )
+            done
+
+            # Sort and rebuild arrays
+            local sorted
+            sorted="$(printf '%s\n' "${records[@]}" | sort -t'|' -k1,1n -k2,2 -k3,3n)"
+
+            local -a n_keys=() n_group=() n_label=() n_handler=() n_flags=()
+            local idx
+            while IFS='|' read -r _ _ idx; do
+                n_keys+=( "${TD_MENU_KEYS[$idx]}" )
+                n_group+=( "${TD_MENU_GROUP[$idx]}" )
+                n_label+=( "${TD_MENU_LABEL[$idx]}" )
+                n_handler+=( "${TD_MENU_HANDLER[$idx]}" )
+                n_flags+=( "${TD_MENU_FLAGS[$idx]}" )
+            done <<< "$sorted"
+
+            TD_MENU_KEYS=( "${n_keys[@]}" )
+            TD_MENU_GROUP=( "${n_group[@]}" )
+            TD_MENU_LABEL=( "${n_label[@]}" )
+            TD_MENU_HANDLER=( "${n_handler[@]}" )
+            TD_MENU_FLAGS=( "${n_flags[@]}" )
         }
 
         # -- td_menu_render -------------------------------------------------------
@@ -541,6 +643,7 @@ set -euo pipefail
             td_menu_add_builtins_specs
             td_menu_load_modules_specs
             td_menu_build_from_specs
+            td_menu_apply_ordering
 
         # --- Menu loop
             local choice=""
@@ -554,7 +657,7 @@ set -euo pipefail
                 choices="$(printf '%s,' "${TD_MENU_KEYS[@]}")"
                 choices="${choices%,}"   # trim trailing comma
 
-                td_choose --label "Select option" --choices "$choices" --var choice
+                td_choose --label "Select option" --choices "$choices" --var choice --displaychoices 0
 
                 td_menu_dispatch "$choice"
 
