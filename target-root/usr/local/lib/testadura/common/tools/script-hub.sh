@@ -123,30 +123,26 @@ set -euo pipefail
 # --- local script functions ------------------------------------------------------
     # -- Data model ---------------------------------------------------------------
         # Directory where modules are found
-            MOD_DIR="${MOD_DIR:-$TD_SCRIPT_DIR/mods}"
+        MOD_DIR="${MOD_DIR:-$TD_SCRIPT_DIR/mods}"
+        
+        # Each entry: "source|key|group|label|handler|flags"
+        declare -a TD_MENU_SPECS=()
 
         # Groups (display order is first-seen order)
-            declare -a TD_MENU_GROUPS=()
-
-        # Items (parallel arrays)
-            declare -a TD_MENU_KEYS=()
-            declare -a TD_MENU_GROUP=()
-            declare -a TD_MENU_LABEL=()
-            declare -a TD_MENU_HANDLER=()
-            declare -a TD_MENU_FLAGS=()
+        declare -a TD_MENU_GROUPS=()
 
         # Menu loop control
-            TD_MENU_EXIT=0
-    # -- Menu control -------------------------------------------------------------
-        # -- td_menu_reset --------------------------------------------------------
-            # Clear all registered groups and menu items.
-            #
-            # Usage:
-            #   td_menu_reset
-            #
-            # Notes:
-            #   - Useful when rebuilding the menu (e.g., after reloading modules).
-        td_menu_reset() {
+        TD_MENU_EXIT=0
+
+    # -- Compiled menu model (parallel arrays)
+        declare -a TD_MENU_GROUPS=()
+        declare -a TD_MENU_KEYS=()
+        declare -a TD_MENU_GROUP=()
+        declare -a TD_MENU_LABEL=()
+        declare -a TD_MENU_HANDLER=()
+        declare -a TD_MENU_FLAGS=()
+
+        td_menu_reset_compiled() {
             TD_MENU_GROUPS=()
             TD_MENU_KEYS=()
             TD_MENU_GROUP=()
@@ -154,72 +150,51 @@ set -euo pipefail
             TD_MENU_HANDLER=()
             TD_MENU_FLAGS=()
         }
-        # -- td_menu_register_group -----------------------------------------------
-            # Register a menu group (section header).
-            #
-            # Usage:
-            #   td_menu_register_group "Core setup"
-            #
-            # Notes:
-            #   - Groups are displayed in the order they are first registered.
-            #   - Re-registering an existing group is a no-op.
-        td_menu_register_group() {
+
+        td_menu_reset_specs() {
+            TD_MENU_SPECS=()
+        }
+
+        td_menu_spec_add() {
+            local spec="${1:-}"
+            [[ -n "$spec" ]] || { sayfail "td_menu_spec_add: spec required"; return 2; }
+            TD_MENU_SPECS+=("$spec")
+        }
+
+        td_menu_specs_add_many() {
+            local s
+            for s in "$@"; do
+                td_menu_spec_add "$s"
+            done
+        }
+
+        td_menu_key_exists() {
+            local key="${1:-}"
+            local i
+            for i in "${!TD_MENU_KEYS[@]}"; do
+                [[ "${TD_MENU_KEYS[$i]^^}" == "${key^^}" ]] && return 0
+            done
+            return 1
+        }
+
+        td_menu_group_seen_add() {
             local group="${1:-}"
             local g
-
-            [[ -n "$group" ]] || { sayfail "td_menu_register_group: group is required"; return 2; }
-
             for g in "${TD_MENU_GROUPS[@]}"; do
                 [[ "$g" == "$group" ]] && return 0
             done
             TD_MENU_GROUPS+=("$group")
         }
-        # -- td_menu_register_item ------------------------------------------------
-                # Register a menu item (key + group + label + handler).
-                #
-                # Usage:
-                #   td_menu_register_item --key "1" --group "Core setup" \
-                #       --label "Configure network" --handler "__configure_network" \
-                #       --flags "root,danger"
-                #
-                # Required:
-                #   --key      Selection key (e.g. "1", "D", "X")
-                #   --group    Group header this item belongs to
-                #   --label    Display text shown in the menu
-                #   --handler  Function name to call when selected
-                #
-                # Optional:
-                #   --flags    Comma-separated flags (e.g. "root", "danger", "disabled_if_dryrun")
-                #
-                # Notes:
-                #   - Keys are treated case-insensitively during selection.
-                #   - Keys must be unique. If a key already exists, the item is replaced.
-                #   - Registering an item auto-registers its group if needed.
-        td_menu_register_item() {
-            local key="" group="" label="" handler="" flags=""
 
-            while [[ $# -gt 0 ]]; do
-                case "$1" in
-                    --key)     key="$2"; shift 2 ;;
-                    --group)   group="$2"; shift 2 ;;
-                    --label)   label="$2"; shift 2 ;;
-                    --handler) handler="$2"; shift 2 ;;
-                    --flags)   flags="$2"; shift 2 ;;
-                    --) shift; break ;;
-                    *) sayfail "td_menu_register_item: Unknown option: $1"; return 2 ;;
-                esac
-            done
+        td_menu_register_compiled_item() {
+            local key="${1:-}" group="${2:-}" label="${3:-}" handler="${4:-}" flags="${5:-}"
 
-            [[ -n "$key"     ]] || { sayfail "td_menu_register_item: --key is required"; return 2; }
-            [[ -n "$group"   ]] || { sayfail "td_menu_register_item: --group is required"; return 2; }
-            [[ -n "$label"   ]] || { sayfail "td_menu_register_item: --label is required"; return 2; }
-            [[ -n "$handler" ]] || { sayfail "td_menu_register_item: --handler is required"; return 2; }
-
-            td_menu_register_group "$group"
+            td_menu_group_seen_add "$group"
 
             local i
             for i in "${!TD_MENU_KEYS[@]}"; do
                 if [[ "${TD_MENU_KEYS[$i]^^}" == "${key^^}" ]]; then
+                    # Collision policy: later wins (overwrite)
                     TD_MENU_KEYS[$i]="$key"
                     TD_MENU_GROUP[$i]="$group"
                     TD_MENU_LABEL[$i]="$label"
@@ -234,95 +209,90 @@ set -euo pipefail
             TD_MENU_LABEL+=("$label")
             TD_MENU_HANDLER+=("$handler")
             TD_MENU_FLAGS+=("$flags")
-        }       
-
-        # -- td_menu_is_disabled --------------------------------------------------
-            # Return 0 if the menu item should be shown as disabled in the current run mode.
-            #
-            # Supported flags (extend as you like):
-            #   - disabled               Always disabled
-            #   - disabled_if_dryrun      Disabled when FLAG_DRYRUN is true
-            #
-            # Usage:
-            #   if td_menu_is_disabled "$flags"; then ...
-        td_menu_is_disabled() {
-            local flags="${1:-}"
-
-            [[ ",$flags," == *",disabled,"* ]] && return 0
-            if (( FLAG_DRYRUN )) && [[ ",$flags," == *",disabled_if_dryrun,"* ]]; then
-                return 0
-            fi
-            return 1
         }
 
-        # -- td_menu_load_modules -------------------------------------------------
-            # Source all module scripts from MOD_DIR.
-            #
-            # Module contract:
-            #   - Must NOT auto-run actions on import
-            #   - May define handler functions
-            #   - Should register groups/items using td_menu_register_*
-            #
-            # Notes:
-            #   - Modules are sourced in filename order (so prefix with 10-, 20-, etc.)
-        td_menu_load_modules() {
+        td_menu_add_builtins_specs() {
+            td_menu_specs_add_many \
+                "V|Run modes|Toggle Verbose mode|td_menu_toggle_verbose|" \
+                "D|Run modes|Toggle Dry-Run mode|td_menu_toggle_dryrun|" \
+                "X|Run modes|Exit|td_menu_exit|"
+        }
+
+        td_menu_load_modules_specs() {
             if [[ ! -d "$MOD_DIR" ]]; then
                 saywarning "No module directory: $MOD_DIR"
                 return 0
             fi
 
-            local f
+            local f s
             shopt -s nullglob
+
             for f in "$MOD_DIR"/*.sh; do
+                unset TD_MOD_MENU_SPECS || true
                 # shellcheck disable=SC1090
                 source "$f"
-            done
-            shopt -u nullglob
-        }
-        # --- td_menu_set_label -----------------------------------------------------------
-            # Update the label text for an already-registered menu item by key (case-insensitive).
-            # Useful for dynamic menu text (run modes, status indicators, etc.).
-            # Usage: td_menu_set_label "V" "Toggle Verbose mode (ON)"
-        td_menu_set_label() {
-            local key="$1"
-            local label="$2"
 
-            [[ -n "${key:-}" ]]   || { sayfail "td_menu_set_label: key required"; return 2; }
-            [[ -n "${label:-}" ]] || { sayfail "td_menu_set_label: label required"; return 2; }
+                if declare -p TD_MOD_MENU_SPECS >/dev/null 2>&1; then
+                    local modbase
+                    modbase="$(basename -- "$f")"
 
-            local i
-            for i in "${!TD_MENU_KEYS[@]}"; do
-                if [[ "${TD_MENU_KEYS[$i]^^}" == "${key^^}" ]]; then
-                    TD_MENU_LABEL[$i]="$label"
-                    return 0
+                    for s in "${TD_MOD_MENU_SPECS[@]}"; do
+                        td_menu_spec_add "${modbase}|${s}"
+                    done
+                else
+                    (( FLAG_VERBOSE )) && saydebug "Module provided no TD_MOD_MENU_SPECS: $(basename -- "$f")"
                 fi
             done
 
-            sayfail "td_menu_set_label: key not registered: $key"
-            return 2
+            shopt -u nullglob
         }
 
-        # --- td_menu_refresh_runmodes ---------------------------------------------------
-            # Refresh dynamic runmode menu labels (Verbose/Dryrun) so they show ON/OFF status.
-            # Call this right before rendering the menu.
-        td_menu_refresh_runmodes() {
-            local verb_onoff
-            local dry_onoff
+       td_menu_build_from_specs() {
+            td_menu_reset_compiled
 
-            if (( FLAG_VERBOSE )); then
-                verb_onoff="${TUI_ENABLED}ON${RESET}"
-            else
-                verb_onoff="${TUI_DISABLED}OFF${RESET}"
-            fi
+            local spec src key group label handler flags
+            local -a parts=()
+            local auto=1
 
-            if (( FLAG_DRYRUN )); then
-                dry_onoff="${TUI_ENABLED}ON${RESET}"
-            else
-                dry_onoff="${TUI_DISABLED}OFF${RESET}"
-            fi
+            for spec in "${TD_MENU_SPECS[@]}"; do
+                td_split_pipe "$spec" parts
 
-            td_menu_set_label "V" "Toggle Verbose mode (${verb_onoff})"
-            td_menu_set_label "D" "Toggle Dry-Run mode (${dry_onoff})"
+                # Accept either:
+                #   5 parts: key|group|label|handler|flags
+                #   6 parts: src|key|group|label|handler|flags
+                if (( ${#parts[@]} == 5 )); then
+                    src=""
+                    key="${parts[0]}"
+                    group="${parts[1]}"
+                    label="${parts[2]}"
+                    handler="${parts[3]}"
+                    flags="${parts[4]}"
+                elif (( ${#parts[@]} == 6 )); then
+                    src="${parts[0]}"
+                    key="${parts[1]}"
+                    group="${parts[2]}"
+                    label="${parts[3]}"
+                    handler="${parts[4]}"
+                    flags="${parts[5]}"
+                else
+                    sayfail "Menu spec has invalid field count (${#parts[@]}): $spec"
+                    continue
+                fi
+
+                [[ -n "$group"   ]] || { sayfail "Menu spec missing group: $spec"; continue; }
+                [[ -n "$label"   ]] || { sayfail "Menu spec missing label: $spec"; continue; }
+                [[ -n "$handler" ]] || { sayfail "Menu spec missing handler: $spec"; continue; }
+
+                if [[ -z "$key" ]]; then
+                    while td_menu_key_exists "$auto"; do
+                        auto=$((auto + 1))
+                    done
+                    key="$auto"
+                    auto=$((auto + 1))
+                fi
+
+                td_menu_register_compiled_item "$key" "$group" "$label" "$handler" "${flags:-}"
+            done
         }
 
         # -- td_menu_render -------------------------------------------------------
@@ -409,22 +379,69 @@ set -euo pipefail
             "$handler"
         }
 
-        # -- td_menu_register_builtins --------------------------------------------
-            # Register common toolbox menu items (run modes + exit).
+        # -- td_menu_is_disabled --------------------------------------------------
+            # Return 0 if the menu item should be shown as disabled in the current run mode.
             #
-            # Notes:
-            #   - Modules can override keys later by registering the same key again.
-        td_menu_register_builtins() {
-            td_menu_register_group "Run modes"
+            # Supported flags (extend as you like):
+            #   - disabled               Always disabled
+            #   - disabled_if_dryrun      Disabled when FLAG_DRYRUN is true
+            #
+            # Usage:
+            #   if td_menu_is_disabled "$flags"; then ...
+        td_menu_is_disabled() {
+            local flags="${1:-}"
 
-            td_menu_register_item --key "V" --group "Run modes" \
-                --label "Toggle Verbose mode" --handler "td_menu_toggle_verbose" --flags ""
+            [[ ",$flags," == *",disabled,"* ]] && return 0
+            if (( FLAG_DRYRUN )) && [[ ",$flags," == *",disabled_if_dryrun,"* ]]; then
+                return 0
+            fi
+            return 1
+        }
 
-            td_menu_register_item --key "D" --group "Run modes" \
-                --label "Toggle Dry-Run mode" --handler "td_menu_toggle_dryrun" --flags ""
+        # --- td_menu_refresh_runmodes ---------------------------------------------------
+            # Refresh dynamic runmode menu labels (Verbose/Dryrun) so they show ON/OFF status.
+            # Call this right before rendering the menu.
+        td_menu_refresh_runmodes() {
+            local verb_onoff
+            local dry_onoff
 
-            td_menu_register_item --key "X" --group "Run modes" \
-                --label "Exit" --handler "td_menu_exit" --flags ""
+            if (( FLAG_VERBOSE )); then
+                verb_onoff="${TUI_ENABLED}ON${RESET}"
+            else
+                verb_onoff="${TUI_DISABLED}OFF${RESET}"
+            fi
+
+            if (( FLAG_DRYRUN )); then
+                dry_onoff="${TUI_ENABLED}ON${RESET}"
+            else
+                dry_onoff="${TUI_DISABLED}OFF${RESET}"
+            fi
+
+            td_menu_set_label "V" "Toggle Verbose mode (${verb_onoff})"
+            td_menu_set_label "D" "Toggle Dry-Run mode (${dry_onoff})"
+        }
+
+        # --- td_menu_set_label -----------------------------------------------------------
+            # Update the label text for an already-registered menu item by key (case-insensitive).
+            # Useful for dynamic menu text (run modes, status indicators, etc.).
+            # Usage: td_menu_set_label "V" "Toggle Verbose mode (ON)"
+        td_menu_set_label() {
+            local key="$1"
+            local label="$2"
+
+            [[ -n "${key:-}" ]]   || { sayfail "td_menu_set_label: key required"; return 2; }
+            [[ -n "${label:-}" ]] || { sayfail "td_menu_set_label: label required"; return 2; }
+
+            local i
+            for i in "${!TD_MENU_KEYS[@]}"; do
+                if [[ "${TD_MENU_KEYS[$i]^^}" == "${key^^}" ]]; then
+                    TD_MENU_LABEL[$i]="$label"
+                    return 0
+                fi
+            done
+
+            sayfail "td_menu_set_label: key not registered: $key"
+            return 2
         }
 
         td_menu_toggle_verbose() {
@@ -465,7 +482,28 @@ set -euo pipefail
             fi
 
             # 3) Default module directory is based on hub_id
-            MOD_DIR="$TD_SCRIPT_DIR/mods/$hub_id"
+            MOD_DIR="$TD_SCRIPT_DIR/$hub_id"
+        }
+        # --- td_split_pipe
+            # Split a pipe-delimited string into an array, preserving empty trailing fields.
+            # Usage:
+            #   local -a parts=()
+            #   td_split_pipe "$spec" parts
+        td_split_pipe() {
+            local s="${1-}"
+            local -n out="$2"
+
+            out=()
+            local rest="$s"
+
+            while :; do
+                out+=("${rest%%|*}")
+                if [[ "$rest" == *"|"* ]]; then
+                    rest="${rest#*|}"
+                else
+                    break
+                fi
+            done
         }
 
 # === main() must be the last function in the script ==============================
@@ -499,13 +537,12 @@ set -euo pipefail
 
             saydebug "Using module directory: $MOD_DIR"
         # --- Build menu
-            td_menu_reset
-            td_menu_register_builtins
+            td_menu_reset_specs
+            td_menu_add_builtins_specs
+            td_menu_load_modules_specs
+            td_menu_build_from_specs
 
-            # Modules register additional groups/items
-            td_menu_load_modules
-
-            # --- Menu loop
+        # --- Menu loop
             local choice=""
             while (( ! TD_MENU_EXIT )); do
                 td_menu_refresh_runmodes
