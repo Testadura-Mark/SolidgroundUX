@@ -125,8 +125,8 @@ set -euo pipefail
         local _tpad=$((_pad + 3))
         local _rcolor="$( (( FLAG_DRYRUN )) && printf '%s' "$TUI_DISABLED" || printf '%s' "$TUI_ENABLED" )"
 
-        _verb=$([ "${FLAG_VERBOSE:-0}" -eq 1 ] && echo "${TUI_ENABLED}ON${RESET}" || echo "${TUI_DISABLED}OFF${RESET}")
-        _dry=$([ "${FLAG_DRYRUN:-0}" -eq 1 ] && echo "${TUI_ENABLED}ON${RESET}" || echo "${TUI_DISABLED}OFF${RESET}")
+        local _verb=$([ "${FLAG_VERBOSE:-0}" -eq 1 ] && echo "${TUI_ENABLED}ON${RESET}" || echo "${TUI_DISABLED}OFF${RESET}")
+        local _dry=$([ "${FLAG_DRYRUN:-0}" -eq 1 ] && echo "${TUI_ENABLED}ON${RESET}" || echo "${TUI_DISABLED}OFF${RESET}")
     
         td_print_titlebar --text "Clone configuration menu" --textclr "$_titlecolor"
 
@@ -176,7 +176,7 @@ set -euo pipefail
             
             # 1) machine-id
             if [[ ! -s /etc/machine-id || "$(cat /etc/machine-id)" == "00000000000000000000000000000000" ]]; then
-                if [[ FLAG_DRYRUN -eq 1 ]]; then
+                if [[ ${FLAG_DRYRUN:-0} -eq 1 ]]; then
                     sayinfo "Would have generated a machine-id"
                 else
                     saydebug "Generating machine-id"
@@ -188,7 +188,7 @@ set -euo pipefail
 
             # keep D-Bus in sync
             if [[ -e /var/lib/dbus/machine-id ]]; then
-                if [[ FLAG_DRYRUN -eq 1 ]]; then
+                if [[ ${FLAG_DRYRUN:-0} -eq 1 ]]; then
                     sayinfo "Would have linked D-Bus machine-id"
                 else
                     saydebug "Linking D-Bus machine-id"
@@ -206,21 +206,22 @@ set -euo pipefail
             saystart "Configuring Network Settings"
 
             __get_network_settings
-            __set_hostname
-            __create_netplan
+            __set_hostname --host "$HOST" --use-dhcp "$USE_DHCP" --ip "${IP:-}"
+            __create_runtime_netplan
             __apply_netplan
+            
 
             sayend "Hostname and Network configuration complete."
         }
 
        # 3) Enable SSH and set authorized keys
-        __enable_shh(){
+        __enable_ssh(){
             saydebug "Enabling SSH and setting authorized keys..."
 
-            if [[ FLAG_DRYRUN -eq 1 ]]; then
+            if [[ ${FLAG_DRYRUN:-0} -eq 1 ]]; then
                 sayinfo "Would have generated SSH host keys"
             else
-                if [[ FLAG_VERBOSE -eq 1 ]]; then
+                if [[ ${FLAG_VERBOSE:-0} -eq 1 ]]; then
                     saydebug "Generating SSH host keys"
                 fi
 
@@ -228,10 +229,10 @@ set -euo pipefail
                 ssh-keygen -A
             fi
 
-            if [[ FLAG_DRYRUN -eq 1 ]]; then
+            if [[ ${FLAG_DRYRUN:-0} -eq 1 ]]; then
                 saydebug "Would have unmasked and enabled SSH service"
             else
-                if [[ FLAG_VERBOSE -eq 1 ]]; then
+                if [[ ${FLAG_VERBOSE:-0} -eq 1 ]]; then
                     saydebug "Unmasking and enabling SSH service"
                 fi
 
@@ -240,10 +241,10 @@ set -euo pipefail
                 systemctl enable ssh 2>/dev/null || true
             fi
 
-            if [[ FLAG_DRYRUN -eq 1 ]]; then
+            if [[ "${FLAG_DRYRUN:-0}" -eq 1 ]]; then
                 saydebug "Would have restarted SSH service"
             else
-                if [[ FLAG_VERBOSE -eq 1 ]]; then
+                if [[ ${FLAG_VERBOSE:-0} -eq 1 ]]; then
                     saydebug "Restarting SSH service"
                 fi
 
@@ -266,32 +267,83 @@ set -euo pipefail
             sayend "Joined to ${DOMAIN}"
         }
        # 5) Prepare template for next clone
+        # --- __prepare_template ----------------------------------------------------------
+            # Prepare the system to be used as a clone template.
+            #
+            # This function removes machine-specific identity and transient state so that
+            # newly cloned machines will regenerate unique identifiers on first boot.
+            #
+            # Actions performed:
+            #   - Collect and confirm template defaults (hostname, IP, netplan file, etc.)
+            #   - Clear system machine-id
+            #   - Remove SSH host keys
+            #   - Clear temporary directories and caches
+            #   - Remove DHCP lease state
+            #   - Trim logs (journald + rotated logs)
+            #   - Ensure first-boot service is enabled
+            #
+            # Notes:
+            #   - Does NOT reboot or shut down the system
+            #   - Intended to be run once, just before converting VM to template
+            #   - Network identity is finalized via __create_tmpl_netplan (caller responsibility)
         __prepare_template(){
             saystart "Preparing template for next clone"
 
             __get_clone_defaults
 
+            # Write a minimal netplan
+            __create_tmpl_netplan
+
+            # Write cleanup old netplans
+            __cleanup_netplans
+
+            # Set hostname
+            __set_hostname --host "$CLONE_HOST" --use-dhcp "No" --ip "${CLONE_IP:-192.168.0.254}"
+
             # Clear machine-id
-            #__clear_machine_id
+            __clear_machine_id
 
             # Remove SSH host keys
-            #__remove_ssh_host_keys
-
-            # Clear temporary and transient directories
-            #__clear_temp_and_caches
+            __remove_ssh_host_keys
 
             # Clear DHCP leases
-            #__clear_dhcp_leases
+            __clear_dhcp_leases
 
+            # Clear temporary and transient directories
+            __clear_temp_and_caches
+
+            # Clear leftovers
+            __clear_leftovers
+  
             # Trim logs
-            #__trim_logs
+            __trim_logs
 
             # Ensure first-boot service is present and enabled
-            #__enable_firstboot_service
+            __enable_firstboot_service
 
             sayend "Template preparation complete."
         }
     # --- Network config ----------------------------------------------------------
+        # --- __get_network_settings ------------------------------------------------------
+            # Collect interactive hostname + IPv4 settings and persist them to state.
+            #
+            # This function prompts the user for the machine's hostname and network settings,
+            # validates inputs, and stores the resulting values for reuse.
+            #
+            # Collected values:
+            #   - HOST           : hostname (short name derived as SHORT)
+            #   - NIC            : primary network interface
+            #   - NETPLAN_FILE   : target netplan YAML file to generate
+            #   - USE_DHCP       : Yes/No toggle for IPv4 DHCP
+            #   - If static IPv4:
+            #       - IP, CIDR, GW, ROUTES (optional), DNS
+            #
+            # Persists:
+            #   - Uses __save_settings (td_state_set) to store runtime values
+            #
+            # Notes:
+            #   - Repeats until the user confirms "Ok to apply?"
+            #   - Does not write/apply netplan; callers handle __create_runtime_netplan/__apply_netplan
         __get_network_settings(){
             saystart "Collecting settings for Hostname and Network configuration..."
             printf '\n'
@@ -346,37 +398,107 @@ set -euo pipefail
 
             sayend "Settings collection complete."
         }
-        __set_hostname(){
-            # ---- set hostname (short only) ----
-            if [[ "${FLAG_DRYRUN:-0}" -eq 0 ]]; then
-                saydebug "Setting hostname (short): $SHORT"
-                hostnamectl set-hostname "$SHORT"
-            else
-                sayinfo "Would have set hostname to : $SHORT"
+        # --- __set_hostname --------------------------------------------------------------
+            # Set system hostname (short) and rebuild /etc/hosts.
+            #
+            # Usage:
+            #   __set_hostname --host "$HOST" [--ip "$IP"] [--use-dhcp "$USE_DHCP"]
+            #                 [--short "$SHORT"] [--hosts-file /etc/hosts]
+            #
+            # Notes:
+            # - If --short is not provided, it is derived from --host (split at first '.')
+            # - If use-dhcp is true, the IP line in /etc/hosts is omitted
+            # - If --ip is empty, the IP line is omitted
+        __set_hostname() {
+            local host=""
+            local short=""
+            local ip=""
+            local use_dhcp="Yes"
+            local hosts_file="/etc/hosts"
+
+            local tmp_hosts=""
+
+            # --- Parse options
+            while [[ $# -gt 0 ]]; do
+                case "$1" in
+                    --host)       host="$2"; shift 2 ;;
+                    --short)      short="$2"; shift 2 ;;
+                    --ip)         ip="$2"; shift 2 ;;
+                    --use-dhcp)   use_dhcp="$2"; shift 2 ;;
+                    --hosts-file) hosts_file="$2"; shift 2 ;;
+                    --) shift; break ;;
+                    *)
+                        sayfail "__set_hostname: Unknown option: $1"
+                        return 2
+                        ;;
+                esac
+            done
+
+            # --- Validate
+            if [[ -z "$host" ]]; then
+                sayfail "__set_hostname: --host is required"
+                return 2
             fi
 
+            if [[ -z "$short" ]]; then
+                short="${host%%.*}"
+            fi
+
+            # ---- set hostname (short only) ----
             if [[ "${FLAG_DRYRUN:-0}" -eq 0 ]]; then
-                saydebug "Rebuilding /etc/hosts"
-                # ---- rebuild /etc/hosts atomically ----
+                saydebug "Setting hostname (short): $short"
+                hostnamectl set-hostname "$short"
+            else
+                sayinfo "Would have set hostname to : $short"
+            fi
+
+            # ---- rebuild /etc/hosts atomically ----
+            if [[ "${FLAG_DRYRUN:-0}" -eq 0 ]]; then
+                saydebug "Rebuilding $hosts_file"
+
                 tmp_hosts="$(mktemp)"
                 {
-                echo "127.0.0.1 localhost"
-                echo "127.0.1.1 ${SHORT} ${SHORT}"
-                if [[ ${USE_DHCP:-0} == 0 && -n "${IP:-}" ]]; then
-                    echo "${IP} ${SHORT}"
-                fi
+                    echo "127.0.0.1 localhost"
+                    echo "127.0.1.1 ${short} ${short}"
+
+                    # Only add IP line when NOT using DHCP and IP is provided
+                    if ! is_true "$use_dhcp" && [[ -n "$ip" ]]; then
+                        echo "${ip} ${short}"
+                    fi
                 } >"$tmp_hosts"
-                install -m 0644 "$tmp_hosts" /etc/hosts
+
+                install -m 0644 "$tmp_hosts" "$hosts_file"
 
                 sayok "Hosts updated:"
                 cat "$tmp_hosts" | sed 's/^/  /'
 
                 rm -f "$tmp_hosts"
             else
-                sayinfo "Would have updated /etc/hosts"
+                sayinfo "Would have updated $hosts_file"
             fi
         }
 
+        # --- __author_netplan -------------------------------------------------------------
+            # Emit a complete netplan YAML configuration to stdout based on current
+            # runtime network settings.
+            #
+            # This function does not write to disk or apply the configuration.
+            # It is intended to be used by callers that want to:
+            #   - Preview the generated netplan
+            #   - Write it to a specific file
+            #
+            # Uses runtime variables:
+            #   - NIC
+            #   - USE_DHCP
+            #   - IP, CIDR
+            #   - GW
+            #   - ROUTES (optional)
+            #   - DNS
+            #
+            # Notes:
+            #   - Supports both DHCP and static IPv4 configurations
+            #   - DNS and routes are validated and rendered explicitly
+            #   - Output is valid netplan YAML
         __author_netplan(){
             echo "# Generated by clone-config.sh"
             echo "network:"
@@ -384,7 +506,7 @@ set -euo pipefail
             echo "  renderer: $RENDERER"
             echo "  ethernets:"
             echo "    $NIC:"
-            if is_true $USE_DHCP; then
+            if is_true "$USE_DHCP"; then
                 echo "      dhcp4: true"
             else
                 echo "      dhcp4: false"
@@ -422,7 +544,21 @@ set -euo pipefail
                 fi
             fi
         }
-        __create_netplan(){
+
+        # --- __create_runtime_netplan -----------------------------------------------------
+            # Generate and write the runtime netplan configuration for the current machine.
+            #
+            # Behavior:
+            #   - Uses __author_netplan to generate YAML
+            #   - Writes configuration to NETPLAN_FILE
+            #   - Sets restrictive permissions (0600)
+            #   - Disables other existing netplan YAML files to avoid conflicts
+            #
+            # Notes:
+            #   - Does NOT apply the netplan (see __apply_netplan)
+            #   - Intended for configuring an already-cloned machine
+            #   - Assumes NETPLAN_FILE refers to the active runtime configuration
+        __create_runtime_netplan(){
             saystart "Writing $NETPLAN_FILE"
             mkdir -p /etc/netplan
 
@@ -451,6 +587,20 @@ set -euo pipefail
                 sayinfo "Would have set access to netplan and disabled others"
             fi
         }
+
+        # --- __apply_netplan --------------------------------------------------------------
+            # Apply the currently written netplan configuration to the system.
+            #
+            # Behavior:
+            #   - Prompts the user for confirmation before applying
+            #   - Runs `netplan generate` and `netplan apply`
+            #   - Displays resulting IPv4 address and default route
+            #   - Ensures SSH is enabled and running after network changes
+            #
+            # Notes:
+            #   - Applying netplan may cause brief network disruption
+            #   - SSH is explicitly restarted/enabled to avoid loss of access
+            #   - Safe to skip and apply manually later if desired
         __apply_netplan(){
             if ! is_true "$FLAG_DRYRUN"; then
                 if ask_yesno "Apply netplan now?"; then
@@ -460,6 +610,7 @@ set -euo pipefail
                     netplan apply
                     sayinfo "IPv4 on $NIC:"; ip -4 addr show "$NIC" | sed 's/^/  /'
                     sayinfo "Default route:"; ip route show default | sed 's/^/  /'
+                    sudo systemctl enable --now ssh
                 else
                     saywarning "Skipped apply. Later: sudo netplan generate && sudo netplan apply"
                 fi
@@ -469,6 +620,25 @@ set -euo pipefail
         }
 
     # --- Domain join -------------------------------------------------------------
+        # --- __get_domain_settings -------------------------------------------------------
+            # Collect interactive domain join settings and derive WORKGROUP/REALM values.
+            #
+            # This function prompts for the AD domain and the authorized join user, then derives
+            # normalized values needed by Samba/Kerberos:
+            #   - DOMAIN_LC : lowercase DNS domain (for smb.conf conventions)
+            #   - REALM_UC  : uppercase Kerberos realm
+            #   - WORKGROUP : first label of the realm (e.g. EXAMPLE from EXAMPLE.COM)
+            #
+            # Persists:
+            #   - Uses __save_domain_settings to store DOMAIN and ADM_USR for reuse
+            #
+            # Flow:
+            #   - Presents derived values for confirmation
+            #   - Uses ask_ok_redo_quit to continue, redo, or abort
+            #
+            # Notes:
+            #   - This function collects/derives settings only; join work happens in
+            #     __install_samba_client, __write_smbconf, and __finalize_domain_join.
         __get_domain_settings(){
             saydebug "Collecting settings for Domain Join..."
             printf '\n' 
@@ -517,11 +687,43 @@ set -euo pipefail
             done
             __save_domain_settings
         }
+
+        # --- __save_domain_settings ------------------------------------------------------
+            # Persist domain join settings to the state store.
+            #
+            # Saves the values collected in __get_domain_settings so subsequent runs can reuse
+            # defaults without prompting again.
+            #
+            # Persists:
+            #   - DOMAIN  : DNS domain name (e.g. example.com)
+            #   - ADM_USR : authorized account name (e.g. administrator)
+            #
+            # Notes:
+            #   - Derived values (DOMAIN_LC, REALM_UC, WORKGROUP) are recomputed at runtime and
+            #     are intentionally not persisted here.
         __save_domain_settings(){
             td_state_set "DOMAIN" "$DOMAIN"
             td_state_set "ADM_USR" "$ADM_USR"
         }
-
+        # --- __write_smbconf -------------------------------------------------------------
+            # Write a minimal Samba smb.conf suitable for joining an AD domain as a member server.
+            #
+            # Generates /etc/samba/smb.conf with the required global settings for:
+            #   - security = ADS
+            #   - realm/workgroup
+            #   - winbind defaults
+            #   - idmap pre-join defaults (tdb) so winbind can start
+            #
+            # Behavior:
+            #   - In dry-run mode, prints the generated smb.conf to stdout
+            #   - Otherwise writes to /etc/samba/smb.conf
+            #
+            # Inputs (expected to be set by __get_domain_settings):
+            #   - WORKGROUP, REALM_UC
+            #
+            # Notes:
+            #   - This is the "pre-join" smb.conf; __finalize_domain_join may later inject
+            #     a WORKGROUP-specific RID idmap mapping after a successful join.
         __write_smbconf(){
             saydebug "Writing smb.conf for domain join..."
             if [ "${FLAG_DRYRUN:-0}" -eq 1 ]; then
@@ -557,7 +759,22 @@ set -euo pipefail
             } > "$TARGET"
             sayok "smb.conf written to $TARGET"
         }
-
+        # --- __install_samba_client ------------------------------------------------------
+            # Install the Samba AD member-server client stack required for domain join.
+            #
+            # Installs packages needed for:
+            #   - Samba member server services (samba)
+            #   - Winbind + NSS/PAM integration
+            #   - Kerberos client tools (krb5-user)
+            #   - Basic DNS utilities and ACL/attr helpers used by Samba
+            #
+            # Behavior:
+            #   - In dry-run mode, only reports intended actions
+            #   - Otherwise runs apt update and apt install
+            #
+            # Notes:
+            #   - Intended for Ubuntu/Debian systems (apt-based).
+            #   - Call before __write_smbconf / __finalize_domain_join.
         __install_samba_client(){
             if is_true "$FLAG_DRYRUN"; then
                 sayinfo "Would have installed Samba AD client stack"
@@ -569,6 +786,30 @@ set -euo pipefail
             fi
         }
 
+        # --- __finalize_domain_join ------------------------------------------------------
+            # Perform the domain join, configure NSS, switch idmap strategy, and verify.
+            #
+            # This function completes the AD member join process:
+            #   1) Ensure NSS is configured to resolve domain users via winbind
+            #   2) Restart Samba services (smbd/nmbd/winbind)
+            #   3) Acquire Kerberos ticket (kinit) and join AD (net ads join)
+            #   4) Switch from generic pre-join idmap (tdb) to WORKGROUP RID mapping
+            #   5) Restart services again and validate resolution (wbinfo/getent)
+            #
+            # Inputs (expected):
+            #   - DOMAIN, REALM_UC, WORKGROUP
+            #   - ADM_USR (and any normalized form, if you define ADM_USR_NORM upstream)
+            #
+            # Behavior:
+            #   - Honors FLAG_DRYRUN by printing intended actions without changing the system
+            #   - Fails (non-zero) when join/verification steps fail (non-dry-run)
+            #
+            # Notes:
+            #   - If RID idmap is already present for the WORKGROUP, the switch step is skipped.
+            #   - Verification checks:
+            #       wbinfo -p
+            #       getent passwd "${WORKGROUP}\\${ADM_USR}"
+            #   - Requires working DNS and time sync for Kerberos to succeed.
         __finalize_domain_join(){
             # -- NSS update
                 if is_true "$FLAG_DRYRUN"; then
@@ -664,9 +905,26 @@ set -euo pipefail
             fi
         }
 
-
-
     # --- Prepare for next clone ---------------------------------------------------
+        # --- __get_clone_defaults ---------------------------------------------------------
+            # Collect and confirm default settings that the template should use when cloned.
+            #
+            # These values define the *initial identity* of a newly cloned machine before
+            # first-boot reconfiguration takes place.
+            #
+            # Collected settings:
+            #   - Template hostname
+            #   - Network interface
+            #   - Static IPv4 address (typically staging IP, e.g. .254)
+            #   - CIDR prefix
+            #   - Gateway
+            #   - DNS servers
+            #   - Netplan filename to generate
+            #
+            # Behavior:
+            #   - Existing values are used as defaults
+            #   - User is prompted to confirm or modify
+            #   - Values are persisted to state via __save_clone_defaults
         __get_clone_defaults(){
             : "${CLONE_NIC:=${NIC:-eth0}}"
             : "${CLONE_NETPLAN_FILE:=/etc/netplan/10-netplan-clone.yaml}"
@@ -710,6 +968,25 @@ set -euo pipefail
             __save_clone_defaults
 
         }
+
+        # --- __save_clone_defaults --------------------------------------------------------
+            # Persist clone template default settings to the state store.
+            #
+            # Saves the values collected in __get_clone_defaults so they can be reused
+            # across runs without prompting again.
+            #
+            # Persisted values:
+            #   - CLONE_NIC
+            #   - CLONE_HOST
+            #   - CLONE_IP
+            #   - CLONE_CIDR
+            #   - CLONE_GW
+            #   - CLONE_DNS
+            #   - CLONE_NETPLAN_FILE
+            #
+            # Notes:
+            #   - State persistence allows idempotent template preparation
+            #   - Caller is responsible for loading state on next run
         __save_clone_defaults(){
             td_state_set "CLONE_NIC" "$CLONE_NIC"
             td_state_set "CLONE_HOST" "$CLONE_HOST"
@@ -719,7 +996,14 @@ set -euo pipefail
             td_state_set "CLONE_DNS" "$CLONE_DNS"
             td_state_set "CLONE_NETPLAN_FILE" "$CLONE_NETPLAN_FILE"
         }
-
+        # --- __clear_machine_id -----------------------------------------------------------
+            # Remove the system machine-id so it will be regenerated on next boot.
+            #
+            # Required for cloning to ensure each VM gets a unique system identity.
+            #
+            # Notes:
+            #   - systemd will regenerate /etc/machine-id automatically
+            #   - Should only be done when preparing a template
         __clear_machine_id(){
             saydebug "Clearing machine-id..."
             if [[ "${FLAG_DRYRUN:-0}" -eq 1 ]]; then
@@ -730,6 +1014,14 @@ set -euo pipefail
             fi
         }
 
+        # --- __remove_ssh_host_keys -------------------------------------------------------
+            # Remove existing SSH host keys from the system.
+            #
+            # This ensures that cloned machines generate unique SSH host keys
+            # on first boot, preventing key collisions and client warnings.
+            #
+            # Notes:
+            #   - SSH service will regenerate keys automatically when started
         __remove_ssh_host_keys(){
             saydebug "Removing SSH host keys..."
             if [[ "${FLAG_DRYRUN:-0}" -eq 1 ]]; then
@@ -740,6 +1032,17 @@ set -euo pipefail
             fi
         }
 
+        # --- __clear_temp_and_caches ------------------------------------------------------
+            # Remove temporary files and transient cache data from the system.
+            #
+            # Actions:
+            #   - Clears /tmp
+            #   - Clears /var/tmp
+            #
+            # Notes:
+            #   - Safe to run when preparing a template
+            #   - Does not affect persistent application data
+            #   - Helps reduce template size and leftover runtime state
         __clear_temp_and_caches(){
             saydebug "Clearing temporary files and caches..."
             if [[ "${FLAG_DRYRUN:-0}" -eq 1 ]]; then
@@ -750,6 +1053,69 @@ set -euo pipefail
             fi
         }
 
+        # --- __clear_leftovers ------------------------------------------------------------
+            # Remove miscellaneous machine-specific leftovers before converting the system
+            # into a clone template.
+            #
+            # Actions:
+            #   - Remove root user's bash history
+            #   - Remove current user's bash history (if present)
+            #   - Remove systemd random seed so entropy is regenerated on first boot
+            #
+            # Notes:
+            #   - Prevents sensitive or identifying data from leaking into clones
+            #   - random-seed removal ensures better entropy uniqueness per clone
+            #   - Safe to run multiple times
+        __clear_leftovers(){
+            if [[ "${FLAG_DRYRUN:-0}" -eq 1 ]]; then
+                sayinfo "Would have cleared shell histories and systemd random-seed"
+                return 0
+            fi
+
+            rm -f /root/.bash_history
+            rm -f "$HOME/.bash_history" 2>/dev/null || true
+            rm -f /var/lib/systemd/random-seed
+
+            sayok "Leftover identity artifacts cleared."
+        }
+        # --- __trim_logs ------------------------------------------------------------------
+            # Clean system logs to reduce template size and remove historical noise.
+            #
+            # Actions:
+            #   - Rotate and vacuum systemd journal
+            #   - Remove rotated/compressed log files under /var/log
+            #
+            # Notes:
+            #   - Active log files are left intact
+            #   - Safer than truncating all files under /var/log
+        __trim_logs(){
+            saydebug "Clearing journald and removing rotated logs..."
+
+            if [[ "${FLAG_DRYRUN:-0}" -eq 1 ]]; then
+                sayinfo "Would have rotated/vacuumed journald and deleted rotated logs under /var/log"
+                return 0
+            fi
+
+            # Clear systemd journal (Ubuntu often stores most logs here)
+            journalctl --rotate || true
+            journalctl --vacuum-time=1s || true
+
+            # Remove rotated/compressed logs; leave active logs intact
+            find /var/log -type f \( -name "*.gz" -o -name "*.1" -o -name "*.old" -o -name "*.[0-9]" \) -delete || true
+
+            sayok "Logs cleaned (journal vacuum + rotated logs removed)."
+        }
+
+        # --- __clear_dhcp_leases ----------------------------------------------------------
+            # Remove stored DHCP lease information from the system.
+            #
+            # Actions:
+            #   - Deletes dhclient lease files under /var/lib/dhcp
+            #
+            # Notes:
+            #   - Prevents cloned machines from reusing stale DHCP leases
+            #   - Safe even when static networking is used
+            #   - Particularly useful if DHCP was used earlier in the VM lifecycle
         __clear_dhcp_leases(){
             saydebug "Clearing DHCP leases..."
             if [[ "${FLAG_DRYRUN:-0}" -eq 1 ]]; then
@@ -760,23 +1126,26 @@ set -euo pipefail
             fi
         }
 
-        __trim_logs(){
-            saydebug "Trimming log files..."
-            if [[ "${FLAG_DRYRUN:-0}" -eq 1 ]]; then
-                sayinfo "Would have trimmed log files in /var/log/"
-            else
-                find /var/log -type f -exec truncate -s 0 {} \;
-                sayok "Log files trimmed"
-            fi
-        }
-
+        # --- __cleanup_netplans -----------------------------------------------------------
+            # Remove or disable netplan configuration files that should no longer be active.
+            #
+            # Behavior:
+            #   - Iterates over existing netplan YAML files
+            #   - Removes or disables all except the intended active configuration
+            #
+            # Notes:
+            #   - Must be used carefully: caller must ensure the correct netplan file
+            #     (runtime or template) is preserved
+            #   - For template preparation, prefer a CLONE-specific cleanup variant
         __cleanup_netplans(){
             saydebug "Cleaning up netplan configurations..."
+            local keep="$CLONE_NETPLAN_FILE"
             if [[ "${FLAG_DRYRUN:-0}" -eq 1 ]]; then
                 sayinfo "Would have removed existing netplan configurations except the active one"
             else
-                for f in /etc/netplan/*.yaml; do
-                    if [ "$f" != "$NETPLAN_FILE" ]; then
+                 for f in /etc/netplan/*.yaml; do
+                    [[ -e "$f" ]] || continue
+                    if [[ "$f" != "$keep" ]]; then
                         rm -f "$f"
                     fi
                 done
@@ -784,8 +1153,24 @@ set -euo pipefail
             fi
         }
 
-        __create_netplan(){
+        # --- __create_tmpl_netplan --------------------------------------------------------
+            # Generate and write a minimal netplan configuration for the clone template.
+            #
+            # This netplan defines the *initial* network identity of a freshly cloned VM,
+            # typically using a fixed staging IP to allow immediate SSH access.
+            #
+            # Behavior:
+            #   - Uses CLONE_* variables collected via __get_clone_defaults
+            #   - Writes a minimal, deterministic netplan configuration
+            #   - Does NOT apply the netplan
+            #
+            # Notes:
+            #   - Intended for template state only
+            #   - First-boot logic may later replace this netplan dynamically
+        __create_tmpl_netplan(){
+            __get_clone_defaults
             saydebug "Creating minimal netplan configuration..."
+            
             if [[ "${FLAG_DRYRUN:-0}" -eq 1 ]]; then
                 NETPLAN_PREVIEW="$(__minimal_netplan)"
                 sayinfo "Netplan config would be:"
@@ -797,6 +1182,46 @@ set -euo pipefail
                 sayok "Minimal netplan written to $CLONE_NETPLAN_FILE"
             fi
         }
+
+        # --- __minimal_netplan ------------------------------------------------------------
+            # Emit a minimal static netplan YAML configuration to stdout.
+            #
+            # This configuration is intended for use on clone templates and provides:
+            #   - A fixed IPv4 address (staging IP)
+            #   - Default route
+            #   - Explicit DNS servers
+            #
+            # Output:
+            #   - Valid netplan YAML written to stdout
+            #
+            # Notes:
+            #   - DNS servers are split from CLONE_DNS (comma-separated)
+            #   - No DHCP is enabled
+            #   - Caller is responsible for writing to disk and applying if desired
+        __minimal_netplan(){
+            echo "# Minimal netplan generated by clone-config.sh"
+            echo "network:"
+            echo "  version: 2"
+            echo "  renderer: networkd"
+            echo "  ethernets:"
+            echo "    ${CLONE_NIC:-ens99}:"
+            echo "      dhcp4: no"
+            echo "      addresses:"
+            echo "        - ${CLONE_IP:-192.168.0.254}/${CLONE_CIDR:-24}"
+            echo "      routes:"
+            echo "        - to: 0.0.0.0/0"
+            echo "          via: ${CLONE_GW:-192.168.0.1}"
+            echo "      nameservers:"
+            echo "        addresses:"
+
+            IFS=',' read -r -a dnsarr <<<"${CLONE_DNS:-1.1.1.1}"
+            for d in "${dnsarr[@]}"; do
+                d="$(echo "$d" | tr -d '\r' | xargs)"
+                validate_ip "$d" || { say "Skip invalid DNS: $d"; continue; }
+                printf '          - "%s"\n' "$d"
+            done
+        }
+        
         __enable_firstboot_service(){
             saydebug "Enabling first-boot service..."
             if [[ "${FLAG_DRYRUN:-0}" -eq 1 ]]; then
@@ -807,28 +1232,11 @@ set -euo pipefail
             fi
         }
 
-        __minimal_netplan(){
-            echo "# Minimal netplan generated by clone-config.sh"
-            echo "network:"
-            echo "  version: 2"
-            echo "  renderer: networkd"
-            echo "  ethernets:"
-            echo "    ${CLONE_NIC:-ens99}"
-            echo "      dhcp4: no"
-            echo "      addresses:"
-            echo "        - ${CLONE_IP:-192.168.0.251}/${CLONE_CIDR:-24}"
-            echo "      routes:"
-            echo "        - to: default"
-            echo "          via: ${CLONE_GW:-192.168.0.1}"
-            echo "      nameservers:"
-            echo "        addresses:"
-            echo "          - ${CLONE_DNS:-1.1.1.1}"
-        }
-
 # === main() must be the last function in the script ==============================
     main() {
     # --- Bootstrap ---------------------------------------------------------------
         td_bootstrap --state --needroot -- "$@"
+
         if [[ "${FLAG_STATERESET:-0}" -eq 1 ]]; then
             td_state_reset
             sayinfo "State file reset as requested."
@@ -886,10 +1294,10 @@ set -euo pipefail
                     ;;
             esac
             
-            if [[ $wait_after > 1 ]]; then
-                ask_autocontinue $wait_after 
+            if (( wait_after > 1 )); then
+                ask_autocontinue "$wait_after"
             else
-                sleep $wait_after
+                sleep "$wait_after"
             fi
         done
     }

@@ -66,7 +66,7 @@
     [[ -n "${TD_ARG_LOADED:-}" ]] && return 0
     TD_ARG_LOADED=1
 
-# --- Helper funtions -------------------------------------------------------------
+# --- Helper functions -------------------------------------------------------------
     # Split spec into internal temp variables
     __td_arg_split() {
         local spec="$1"
@@ -439,7 +439,7 @@
     td_showarguments() {
             
             _borderclr=${TUI_BORDER}
-            printf "\n"
+            td_print
             td_print_sectionheader --text "Configuration data" --border "=" 
             td_print_sectionheader --text "Script info ($RUN_MODE)"
             td_print_labeledvalue "File" "$TD_SCRIPT_FILE"
@@ -447,7 +447,7 @@
             td_print_labeledvalue "Script description" "$TD_SCRIPT_DESC"
             td_print_labeledvalue "Script dir" "$TD_SCRIPT_DIR"
             td_print_labeledvalue "Script version" "$TD_SCRIPT_VERSION (build $TD_SCRIPT_BUILD)"
-            printf "\n"
+            td_print
             
             td_print_sectionheader --text "Framework info"
             td_print_labeledvalue "Product"      "$TD_PRODUCT"
@@ -456,15 +456,21 @@
             td_print_labeledvalue "Company"      "$TD_COMPANY"
             td_print_labeledvalue "Copyright"    "$TD_COPYRIGHT"
             td_print_labeledvalue "License"      "$TD_LICENSE"
-            printf "\n"
+            td_print
 
             td_print_sectionheader --text "System framework settings"
             td_print_globals sys
-            printf "\n"
+            td_print
 
             td_print_sectionheader --text "User framework settings"
             td_print_globals usr
-            printf "\n"
+            td_print
+
+            if array_has_items TD_SCRIPT_SETTINGS; then
+                td_print_sectionheader --text "Script settings"
+                td_print_globals script
+                td_print
+            fi
             
             td_print_sectionheader --text "Arguments / Flags:"
 
@@ -486,6 +492,6 @@
             done
 
             td_print_sectionheader --border "=" 
-            printf '\n'
+            td_print
     }
    

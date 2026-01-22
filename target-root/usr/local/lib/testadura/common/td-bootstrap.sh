@@ -90,7 +90,7 @@ TD_BOOTSTRAP_LOADED=1
         sayend "All libraries sourced." 
     }
 
-# --- Framwork metadata ------------------------------------------------------
+# --- Framework metadata ------------------------------------------------------
         TD_SYS_GLOBALS=(
             TD_SYSCFG_DIR
             TD_SYSCFG_FILE
@@ -122,6 +122,8 @@ TD_BOOTSTRAP_LOADED=1
             ui-dlg.sh
             default-colors.sh
             default-styles.sh
+        )
+        TD_SCRIPT_SETTINGS=(
         )
 # --- Helper functions -------------------------------------------------------
     __create_cfg_template() {
@@ -212,57 +214,57 @@ TD_BOOTSTRAP_LOADED=1
     }
 
  # -- Template cfg files   
-        __print_sysglobals_cfg(){
-            local var
-            printf '%s\n' "# Framework globals system only globals and settings"
-            
-            # Build lookup table for user globals
-            local -A _usr
-            for var in "${TD_USR_GLOBALS[@]}"; do
-                _usr["$var"]=1
-            done
+    __print_sysglobals_cfg(){
+        local var
+        printf '%s\n' "# Framework globals system only globals and settings"
+        
+        # Build lookup table for user globals
+        local -A _usr
+        for var in "${TD_USR_GLOBALS[@]}"; do
+            _usr["$var"]=1
+        done
 
-            # Emit only SYS globals not present in USR globals
-            for var in "${TD_SYS_GLOBALS[@]}"; do
-                [[ -n "${_usr[$var]:-}" ]] && continue
+        # Emit only SYS globals not present in USR globals
+        for var in "${TD_SYS_GLOBALS[@]}"; do
+            [[ -n "${_usr[$var]:-}" ]] && continue
 
-                if [[ -v "$var" ]]; then
-                    printf '%s=%q\n' "$var" "${!var}"
-                else
-                    printf '# %s is unset\n' "$var"
-                fi
-            done
-            printf "\n"
-            __print_usrglobals_cfg
-        }
-        __print_usrglobals_cfg(){
-            local var
-            printf '%s\n' "# User overridable globals and settings"
-            for var in "${TD_USR_GLOBALS[@]}"; do
-                if [[ -v "$var" ]]; then
-                    printf '%s=%q\n' "$var" "${!var}"
-                else
-                    printf '# %s is unset\n' "$var"
-                fi
-            done
-        }
-        __print_bootstrap_cfg() {
-            printf "%s\n" "# SolidgroundUX bootstrap configuration"
-            printf "%s\n" "# Purpose: allow locating the framework + application roots."
-            printf "%s\n" "# Values below mirror derived defaults at source-time."
-            printf "%s\n" "# Override by editing this file if needed."
-            printf "%s\n" ""
+            if [[ -v "$var" ]]; then
+                printf '%s=%q\n' "$var" "${!var}"
+            else
+                printf '# %s is unset\n' "$var"
+            fi
+        done
+        printf "\n"
+        __print_usrglobals_cfg
+    }
+    __print_usrglobals_cfg(){
+        local var
+        printf '%s\n' "# User overridable globals and settings"
+        for var in "${TD_USR_GLOBALS[@]}"; do
+            if [[ -v "$var" ]]; then
+                printf '%s=%q\n' "$var" "${!var}"
+            else
+                printf '# %s is unset\n' "$var"
+            fi
+        done
+    }
+    __print_bootstrap_cfg() {
+        printf "%s\n" "# SolidgroundUX bootstrap configuration"
+        printf "%s\n" "# Purpose: allow locating the framework + application roots."
+        printf "%s\n" "# Values below mirror derived defaults at source-time."
+        printf "%s\n" "# Override by editing this file if needed."
+        printf "%s\n" ""
 
-            printf 'TD_FRAMEWORK_ROOT=%q\n' "$TD_FRAMEWORK_ROOT"
-            printf 'TD_APPLICATION_ROOT=%q\n' "$TD_APPLICATION_ROOT"
-            printf "%s\n" ""
+        printf 'TD_FRAMEWORK_ROOT=%q\n' "$TD_FRAMEWORK_ROOT"
+        printf 'TD_APPLICATION_ROOT=%q\n' "$TD_APPLICATION_ROOT"
+        printf "%s\n" ""
 
-            printf "%s\n" "# Initially derived, but overridable here"
+        printf "%s\n" "# Initially derived, but overridable here"
 
-            printf 'TD_COMMON_LIB=%q\n' "${TD_COMMON_LIB:-$TD_FRAMEWORK_ROOT/usr/local/lib/testadura/common}" 
-            printf 'TD_SYSCFG_DIR=%q\n' "${TD_SYSCFG_DIR:-$TD_APPLICATION_ROOT/etc/testadura}"
-            printf 'TD_USRCFG_DIR=%q\n' "${TD_USRCFG_DIR:-$HOME/.config/testadura}"
-        }
+        printf 'TD_COMMON_LIB=%q\n' "${TD_COMMON_LIB:-$TD_FRAMEWORK_ROOT/usr/local/lib/testadura/common}" 
+        printf 'TD_SYSCFG_DIR=%q\n' "${TD_SYSCFG_DIR:-$TD_APPLICATION_ROOT/etc/testadura}"
+        printf 'TD_USRCFG_DIR=%q\n' "${TD_USRCFG_DIR:-$HOME/.config/testadura}"
+    }
 
 
 # --- Main sequence functions        
@@ -357,7 +359,7 @@ TD_BOOTSTRAP_LOADED=1
 
     }    
 # --- Public API -------------------------------------------------------------
-    # -- td_bootstrap ---------------------------------------------------------------
+    # -- td_bootstrap --------------------------------------------------------
         # Initialize (or re-enter) a Testadura "framework context" for the current script.
         #
         # Summary:
@@ -448,8 +450,11 @@ TD_BOOTSTRAP_LOADED=1
         #   - If RUN_MODE is used in headers, ensure it does not contain newlines.
 
     td_bootstrap() {
-        FLAG_INIT_CONFIG="${FLAG_INIT_CONFIG:-0}"
-        FLAG_DRYRUN="${FLAG_DRYRUN:-0}"
+        # --- Normalize common flags (safe under set -u) ---------------------
+            : "${FLAG_DRYRUN:=0}"
+            : "${FLAG_VERBOSE:=0}"
+            : "${FLAG_STATERESET:=0}"
+            : "${FLAG_INIT_CONFIG:=0}"
 
         __parse_bootstrap_args "$@"
 
@@ -474,13 +479,13 @@ TD_BOOTSTRAP_LOADED=1
         (( exe_cfg ))   && td_cfg_load
 
         td_parse_args "${TD_BOOTSTRAP_REST[@]}"     
-   
+
         __finalize_bootstrap
 
         if [[ "${FLAG_VERBOSE:-0}" -eq 1 ]]; then
-            td_showarguments
-        fi
-        return 0
+                td_showarguments
+            fi
+            return 0
     }
 
 

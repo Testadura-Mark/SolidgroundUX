@@ -107,6 +107,67 @@
   # mktemp_file -- create a temporary file, return its path.
   mktemp_file(){ TMPDIR=${TMPDIR:-/tmp} mktemp "${TMPDIR%/}/XXXXXX"; }
 
+  # td_slugify -- sanitize filenames
+  td_slugify() {
+      # Usage: td_slugify "Some Title!!"
+      # Output: some-title
+      local s="${1:-}"
+
+      # Lowercase (bash 4+)
+      s="${s,,}"
+
+      # Replace whitespace with dash
+      s="$(printf '%s' "$s" | tr -s '[:space:]' '-')"
+
+      # Remove anything not [a-z0-9-_.]
+      s="$(printf '%s' "$s" | tr -cd 'a-z0-9-_.')"
+
+      # Collapse multiple dashes
+      while [[ "$s" == *--* ]]; do s="${s//--/-}"; done
+
+      # Trim leading/trailing dashes
+      s="${s#-}"
+      s="${s%-}"
+
+      [[ -n "$s" ]] || s="hub"
+      printf '%s' "$s"
+  }
+
+  # --- __td_wrap_words -------------------------------------------------------------
+  # td_wrap_words -- Wrap a text to a given width (word-boundary wrap).
+  # Usage: td_wrap_words --width 60 --text "hello world ..."
+  td_wrap_words() {
+      local width=80 text=""
+      while [[ $# -gt 0 ]]; do
+          case "$1" in
+              --width) width="$2"; shift 2 ;;
+              --text)  text="$2";  shift 2 ;;
+              --) shift; break ;;
+              *) return 2 ;;
+          esac
+      done
+
+      [[ -z "$text" ]] && return 0
+      (( width < 1 )) && printf '%s\n' "$text" && return 0
+
+      local line="" word=""
+
+      # Split into words on whitespace (same semantics as your array approach),
+      # but without building an array.
+      while read -r word; do
+          if [[ -z "$line" ]]; then
+              line="$word"
+          elif (( ${#line} + 1 + ${#word} <= width )); then
+              line+=" $word"
+          else
+              printf '%s\n' "$line"
+              line="$word"
+          fi
+      done < <(printf '%s\n' "$text" | tr -s '[:space:]' '\n')
+
+      [[ -n "$line" ]] && printf '%s\n' "$line"
+  }
+
 # --- Systeminfo ------------------------------------------------------------------
   get_primary_nic() {
       ip route show default 2>/dev/null | awk 'NR==1 {print $5}'
@@ -207,6 +268,11 @@
       local plain
       plain="$(strip_ansi "$1")"
       printf '%s' "${#plain}"
+  }
+  array_has_items(){
+    declare -p "$1" &>/dev/null || return 1
+    local -n _arr="$1"
+    (( ${#_arr[@]} > 0 ))
   }
   is_true() {
     case "${1,,}" in

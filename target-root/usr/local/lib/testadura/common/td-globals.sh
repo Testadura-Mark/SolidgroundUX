@@ -46,7 +46,7 @@
 
 # --- Framework info ---------------------------------------------------------------
     TD_PRODUCT="SolidgroundUX"
-    TD_VERSION="1.1-beta"
+    TD_VERSION="1.0-R2-beta"
     TD_VERSION_DATE="2026-01-08"
     TD_COMPANY="Testadura Consultancy"
     TD_COPYRIGHT="© 2025 Mark Fieten — Testadura Consultancy"

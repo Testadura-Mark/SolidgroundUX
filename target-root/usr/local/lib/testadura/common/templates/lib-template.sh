@@ -1,5 +1,5 @@
 # =================================================================================
-# Testadura Consultancy — kib-template.sh
+# Testadura Consultancy — lib-template.sh
 # ---------------------------------------------------------------------------------
 # Purpose    : Template for Testadura Bash libraries (header + guards + structure)
 # Author     : Mark Fieten

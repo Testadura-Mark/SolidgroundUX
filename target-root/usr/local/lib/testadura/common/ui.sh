@@ -80,7 +80,7 @@
 
 
 # --- Public API ------------------------------------------------------------------
-    # --- td_update_runmode -------------------------------------------------------
+    # --- td_update_runmode
         # Update the global RUN_MODE label based on current execution mode.
         #
         # Derives a colorized, user-facing run mode indicator ("DRYRUN" or "COMMIT")
@@ -94,7 +94,7 @@
             RUN_MODE="$(td_runmode_color)COMMIT${RESET}"
         fi
     }
-    # --- td_runmode_color -------------------------------------------------------------
+    # --- td_runmode_color
         # Return the color sequence associated with the current run mode.
         #
         # Outputs the appropriate TUI color escape based on FLAG_DRYRUN.
@@ -106,13 +106,16 @@
         (( FLAG_DRYRUN )) && printf '%s' "$TUI_DRYRUN" || printf '%s' "$TUI_COMMIT"
     }
 
-    # --- td_print_globals -----------------------------------------------------------
-    # Print framework globals (system/user/both) using TD_SYS_GLOBALS / TD_USR_GLOBALS.
-    # Usage: td_print_globals [sys|usr|both]
-     td_print_globals() {
-        # Usage: td_show_globals sys|usr|both
+    # --- td_print_globals 
+        # Print framework globals (system/user/both/script) using TD_SYS_GLOBALS /
+        # TD_USR_GLOBALS / TD_SCRIPT_GLOBALS.
+        #
+        # Usage:
+        #   td_print_globals [sys|usr|both|script]
+        #
+    td_print_globals() {
         local which="${1:-both}"
-        local name value
+        local name
         local -A usr_seen=()
 
         case "$which" in
@@ -121,11 +124,19 @@
                     __td_print_global "$name"
                 done
                 ;;
+
             usr)
                 for name in "${TD_USR_GLOBALS[@]:-}"; do
                     __td_print_global "$name"
                 done
                 ;;
+
+            script)
+                for name in "${TD_SCRIPT_SETTINGS[@]:-}"; do
+                    __td_print_global "$name"
+                done
+                ;;
+
             both)
                 # Mark user globals
                 for name in "${TD_USR_GLOBALS[@]:-}"; do
@@ -143,18 +154,19 @@
                     __td_print_global "$name"
                 done
                 ;;
+
             *)
-                printf 'td_show_globals: invalid selector: %s\n' "$which" >&2
+                printf 'td_print_globals: invalid selector: %s\n' "$which" >&2
                 return 2
                 ;;
         esac
     }
 
-    # --- td_print_labeledvalue ------------------------------------------------------
-    # Print a single "label : value" line with optional width/sep/colors.
-    # Usage:
-    #   td_print_labeledvalue "Label" "Value"
-    #   td_print_labeledvalue --label "Label" --value "Value" --sep ":" --width 22
+    # --- td_print_labeledvalue 
+        # Print a single "label : value" line with optional width/sep/colors.
+        # Usage:
+        #   td_print_labeledvalue "Label" "Value"
+        #   td_print_labeledvalue --label "Label" --value "Value" --sep ":" --width 22
     td_print_labeledvalue() {
         local label=""
         local value=""
@@ -221,13 +233,13 @@
     }
 
     # --- td_print_fill
-    # Print one line with left/right content separated by a fill region.
-    # Fill width is computed using visible (ANSI-stripped) lengths.
-    #
-    # Usage:
-    #   td_print_fill "Left" "Right"
-    #   td_print_fill --left "Menu" --right "$RUN_MODE" --rightclr "$TUI_HIGHLIGHT"
-    #   td_print_fill --fillchar "." --maxwidth 100
+        # Print one line with left/right content separated by a fill region.
+        # Fill width is computed using visible (ANSI-stripped) lengths.
+        #
+        # Usage:
+        #   td_print_fill "Left" "Right"
+        #   td_print_fill --left "Menu" --right "$RUN_MODE" --rightclr "$TUI_HIGHLIGHT"
+        #   td_print_fill --fillchar "." --maxwidth 100
     td_print_fill() {
         local left="" right=""
         local padleft=2 padright=1 maxwidth=80
@@ -294,22 +306,24 @@
             ""
     }
 
-    # --- td_print_titlebar ---------------------------------------------------------
-    # Print a framed title bar with optional right-aligned status text.
-    #
-    # By default:
-    #   - Left text  = script base name
-    #   - Right text = RUN_MODE
-    #   - Width      = 80 columns
-    #
-    # Layout and fill behavior are delegated to td_print_sectionheader()
-    # and td_print_fill(); this function only wires options together.
+    # --- td_print_titlebar
+        # Print a framed title bar with optional right-aligned status text.
+        #
+        # By default:
+        #   - Left text  = script base name
+        #   - Right text = RUN_MODE
+        #   - Width      = 80 columns
+        #
+        # Layout and fill behavior are delegated to td_print_sectionheader()
+        # and td_print_fill(); this function only wires options together.
     td_print_titlebar() {
 
-        local text="${TD_SCRIPT_TITLE:-$TD_SCRIPT_BASE}"
+        local left="${TD_SCRIPT_TITLE:-$TD_SCRIPT_BASE}"
         local right="${RUN_MODE:-}"
-        local textclr="${TUI_HIGHLIGHT}"
+        local leftclr="${TUI_HIGHLIGHT}"
         local rightclr=""                 # let td_print_fill inherit
+        local sub="${TD_SCRIPT_DESC:-""}"
+        local subclr="${TUI_ITALIC}"
         local border="="
         local borderclr="${TUI_BORDER}"
         local padleft=4
@@ -318,21 +332,24 @@
         # -- Parse options
         while [[ $# -gt 0 ]]; do
             case "$1" in
-                --text)      text="$2"; shift 2 ;;
+                --left)      left="$2"; shift 2 ;;
+                --leftclr)   leftclr="$2"; shift 2 ;;
                 --right)     right="$2"; shift 2 ;;
-                --textclr)   textclr="$2"; shift 2 ;;
                 --rightclr)  rightclr="$2"; shift 2 ;;
+                --sub)       right="$2"; shift 2 ;;
+                --subclr)    rightclr="$2"; shift 2 ;;
                 --border)    border="$2"; shift 2 ;;
                 --borderclr) borderclr="$2"; shift 2 ;;
                 --padleft)   padleft="$2"; shift 2 ;;
                 --maxwidth)  maxwidth="$2"; shift 2 ;;
                 --) shift; break ;;
                 *)
-                    [[ -z "$text" ]] && text="$1"
+                    [[ -z "$left" ]] && left="$1"
                     shift
                     ;;
             esac
         done
+
         td_print
         # -- Numeric safety
         [[ "$padleft"  =~ ^[0-9]+$ ]] || padleft=4
@@ -346,12 +363,16 @@
             --maxwidth "$maxwidth"
 
         td_print_fill \
-            --left "$text" \
+            --left "$left" \
             --right "$right" \
             --padleft "$padleft" \
             --maxwidth "$maxwidth" \
-            --leftclr "$textclr" \
+            --leftclr "$leftclr" \
             ${rightclr:+--rightclr "$rightclr"}
+
+        if [[ "${sub}" != "" ]]; then
+            td_print --text "$sub" --justify "C" --textclr "$subclr"
+        fi
 
         td_print_sectionheader \
             --border "$border" \
@@ -360,13 +381,13 @@
     }
 
     # --- td_print_sectionheader
-    # Print a full-width section header line.
-    # Renders optional text with left padding and border fill up to max width.
-    # ANSI-safe: visual width is computed after stripping color codes.
-    #
-    # Usage:
-    #   td_print_sectionheader "Title"
-    #   td_print_sectionheader --text "Framework info" --maxwidth 80
+        # Print a full-width section header line.
+        # Renders optional text with left padding and border fill up to max width.
+        # ANSI-safe: visual width is computed after stripping color codes.
+        #
+        # Usage:
+        #   td_print_sectionheader "Title"
+        #   td_print_sectionheader --text "Framework info" --maxwidth 80
     td_print_sectionheader() {
         local text=""
         local textclr="${TUI_HIGHLIGHT}"
@@ -449,23 +470,158 @@
     }
 
     # --- td_print
-    # Print a single formatted text line with padding and justification.
-    # Renders text within a fixed maximum width, optionally centered or right-aligned.
-    # Supports ANSI-colored input; visual width is computed after stripping color codes.
-    #
-    # Usage:
-    #   td_print "Hello world"
-    #   td_print --text "Centered text" --justify C
-    #   td_print --text "Right aligned" --justify R --pad 2
-    #   td_print --text "Colored text" --textclr "$TUI_HIGHLIGHT" --maxwidth 100
+        # Print formatted text with padding, justification, and optional word-wrapping.
+        #
+        # This is a high-level print helper that decides whether text should be rendered
+        # as a single line or wrapped into multiple lines, and delegates the actual
+        # rendering of each line to td_print_single().
+        #
+        # Wrapping behavior:
+        # - If --wrap is explicitly specified, that value is always honored.
+        # - If --wrap is NOT specified, wrapping is enabled automatically when the
+        #   text length exceeds the available width:
+        #
+        #       available = maxwidth - (pad * 2) - rightmargin
+        #
+        # - In wrap (multi-line) mode:
+        #   - Text is wrapped using td_wrap_words() with the available width.
+        #   - Each wrapped line is rendered using td_print_single() with an effective
+        #     maxwidth of (maxwidth - rightmargin), creating a visual right margin.
+        #
+        # - In non-wrapped (single-line) mode:
+        #   - The full maxwidth is passed to td_print_single().
+        #   - rightmargin has no effect.
+        #
+        # Parameters:
+        #   --text <string>        Text to print (positional fallback supported)
+        #   --textclr <ansi>       ANSI color sequence applied to the entire line
+        #   --justify <L|C|R>      Text justification: Left (default), Center, Right
+        #   --pad <n>              Padding added on both left and right sides (default: 4)
+        #   --rightmargin <n>      Reserved margin on the right (wrap mode only)
+        #   --maxwidth <n>         Total line width including padding (default: 80)
+        #   --wrap <0|1>       Explicit wrap mode; overrides auto-wrap logic
+        #
+        # Behavior notes:
+        # - An empty call prints a blank line.
+        # - Text is assumed to be plain (no ANSI escapes); coloring is applied via --textclr.
+        # - All layout decisions are made here; td_print_single() is purely a renderer.
+        #
+        # Examples:
+        #   td_print "Hello world"
+        #   td_print --text "Centered text" --justify C
+        #   td_print --text "Long text" --rightmargin 4
+        #   td_print --text "Force wrap" --wrap 1
     td_print() {
         local text=""
         local textclr="${TUI_TEXT:-}"
+        local wrap=0
+        local wrap_explicit=0
         local pad=4
+        local rightmargin=0
         local justify="L"   # L = left, C = center, R = right
         local maxwidth=80
 
         # --- Parse options --------------------------------------------------------
+        while [[ $# -gt 0 ]]; do
+            case "$1" in
+                --text)         text="$2"; shift 2 ;;
+                --textclr)      textclr="$2"; shift 2 ;;
+                --justify)      justify="${2^^}"; shift 2 ;;
+                --wrap)         wrap="$2"; wrap_explicit=1; shift 2 ;;
+                --pad)          pad="$2"; shift 2 ;;
+                --rightmargin)  rightmargin="$2"; shift 2 ;;
+                --maxwidth)     maxwidth="$2"; shift 2 ;;
+                --) shift; break ;;
+                *)
+                    [[ -z "$text" ]] && text="$1"
+                    shift
+                    ;;
+            esac
+        done
+
+        # Empty call => newline
+        if [[ -z "$text" ]]; then
+            td_print_single
+            return 0
+        fi
+
+        # --- Safety defaults ------------------------------------------------------
+        (( pad < 0 )) && pad=0
+        (( rightmargin < 0 )) && rightmargin=0
+        (( maxwidth < 1 )) && maxwidth=80
+
+        # --- Available width for auto-wrap decision -------------------------------
+        local avail=$(( maxwidth - (pad * 2) - rightmargin ))
+        (( avail < 1 )) && avail=1
+
+        # --- Auto-wrap if not explicitly specified --------------------------------
+        if (( ! wrap_explicit )); then
+            (( ${#text} > avail )) && wrap=1 || wrap=0
+        fi
+
+        # --- Render ---------------------------------------------------------------
+        if (( wrap )); then
+            local mw_eff=$(( maxwidth - rightmargin ))
+            (( mw_eff < 1 )) && mw_eff=1
+
+            while IFS= read -r line; do
+                td_print_single \
+                    --text "$line" \
+                    --textclr "$textclr" \
+                    --pad "$pad" \
+                    --justify "$justify" \
+                    --maxwidth "$mw_eff"
+            done < <(td_wrap_words --width "$avail" --text "$text")
+        else
+            td_print_single \
+                --text "$text" \
+                --textclr "$textclr" \
+                --pad "$pad" \
+                --justify "$justify" \
+                --maxwidth "$maxwidth"
+        fi
+    }
+
+    # --- td_print_single
+        # Render a single formatted text line within a fixed width.
+        #
+        # This is a low-level rendering function used by td_print(). It formats and
+        # outputs exactly one line of text, applying padding, justification, and
+        # optional coloring. No wrapping or layout decisions are made here.
+        #
+        # Behavior:
+        # - Renders exactly one output line per call.
+        # - Text longer than the available width is truncated.
+        # - Padding is applied symmetrically on both sides.
+        # - Justification is applied within the padded area.
+        # - Coloring is applied to the entire rendered line.
+        #
+        # Available width calculation:
+        #   available = maxwidth - (pad * 2)
+        #
+        # Parameters:
+        #   --text <string>        Text to render (positional fallback supported)
+        #   --textclr <ansi>       ANSI color sequence applied to the entire line
+        #   --justify <L|C|R>      Text justification: Left (default), Center, Right
+        #   --pad <n>              Padding on both left and right sides (default: 4)
+        #   --maxwidth <n>         Total line width including padding (default: 80)
+        #
+        # Notes:
+        # - If called with no text, a blank line is printed.
+        # - Text is assumed to be plain (no ANSI escape sequences).
+        # - Width calculations are byte-based and assume a monospaced terminal.
+        # - All layout policy (wrapping, margins) must be handled by the caller.
+        #
+        # Intended use:
+        # - Call directly for precise single-line output.
+        # - Used internally by td_print() for both single-line and wrapped output.
+    td_print_single() {
+        local text=""
+        local textclr="${TUI_TEXT:-}"
+        local pad=4
+        local justify="L"
+        local maxwidth=80
+
         while [[ $# -gt 0 ]]; do
             case "$1" in
                 --text)      text="$2"; shift 2 ;;
@@ -475,40 +631,31 @@
                 --maxwidth)  maxwidth="$2"; shift 2 ;;
                 --) shift; break ;;
                 *)
-                    # Positional fallback
                     [[ -z "$text" ]] && text="$1"
                     shift
                     ;;
             esac
         done
 
-        # --- Empty call: newline only ---------------------------------------------
         if [[ -z "$text" ]]; then
             printf "\n"
             return 0
         fi
 
-        # --- Safety defaults ------------------------------------------------------
-        [[ -z "$text" ]] && return 0
         (( pad < 0 )) && pad=0
         (( maxwidth < 1 )) && maxwidth=80
 
-        # --- Strip ANSI for length calculation -----------------------------------
-        local plain="${text//[$'\e''['0-9;]*[a-zA-Z]/}"
-        local textlen=${#plain}
+        local textlen=${#text}
 
         local avail=$(( maxwidth - (pad * 2) ))
         (( avail < 1 )) && avail=1
 
-        # --- Truncate if needed ---------------------------------------------------
         if (( textlen > avail )); then
             text="${text:0:avail}"
             textlen=${#text}
         fi
 
-        # --- Compute spacing ------------------------------------------------------
         local leftspace=0 rightspace=0
-
         case "$justify" in
             C)
                 leftspace=$(( (avail - textlen) / 2 ))
@@ -518,7 +665,6 @@
                 leftspace=$(( avail - textlen ))
                 ;;
             *)
-                # Left justify
                 rightspace=$(( avail - textlen ))
                 ;;
         esac
@@ -526,7 +672,6 @@
         (( leftspace < 0 )) && leftspace=0
         (( rightspace < 0 )) && rightspace=0
 
-        # --- Build line -----------------------------------------------------------
         local line=""
         line+="$(printf '%*s' "$pad" "")"
         line+="$(printf '%*s' "$leftspace" "")"
@@ -534,9 +679,9 @@
         line+="$(printf '%*s' "$rightspace" "")"
         line+="$(printf '%*s' "$pad" "")"
 
-        # --- Output ---------------------------------------------------------------
         printf "%b\n" "${textclr}${line}${RESET}"
     }
+
 
 
 

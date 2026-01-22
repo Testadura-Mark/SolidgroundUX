@@ -1,0 +1,2 @@
+#!/usr/bin/env bash
+exec exec bash /usr/local/lib/testadura/common/tools/script-hub.sh "$@"
