@@ -1,5 +1,5 @@
 # =================================================================================
-# Testadura Consultancy — module-template.sh
+# Testadura Consultancy — sample-module.sh
 # ---------------------------------------------------------------------------------
 # Purpose    : A reusable module for td-script-hub (or any hub-style menu app).
 # Author     : Mark Fieten
@@ -8,31 +8,7 @@
 # Licensed under the Testadura Non-Commercial License (TD-NC) v1.0.
 # ---------------------------------------------------------------------------------
 # Description:
-#   This module encapsulates a coherent set of related actions that can be
-#   exposed through a shared, interactive menu hosted by a script hub.
-#
-#   The module contributes functionality by:
-#     - defining handler functions
-#     - optionally defining module-local defaults
-#     - registering one or more menu entries (group, key, label, handler)
-#
-#   The module itself contains no control flow and no startup logic.
-#   All behavior is executed only when explicitly invoked by the user
-#   via the hub’s menu dispatcher.
-#
-# Module contract (IMPORTANT):
-#   - This file is SOURCED by the hub, not executed.
-#   - On load, the module MUST ONLY:
-#       * define functions
-#       * define defaults/constants
-#       * register menu items/groups
-#   - The module MUST NOT:
-#       * perform actions (no installs, no file changes, no network changes)
-#       * exit the shell, call main(), or call long-running logic
-#
-# Design notes:
-#   - Composition over inheritance: modules contribute actions + registrations.
-#   - All effects happen only inside handlers invoked by the hub dispatcher.
+#   module-template with some sample functions for learning/testing
 # =================================================================================
 
 # --- Validate use ----------------------------------------------------------------
@@ -78,23 +54,23 @@
         sayend "Configuration complete."
     }
 # --- Menu specs ---------------------------------------------------------------
-    # Each entry: "key|group|label|handler|flags"
+    # Each entry: "key|group|label|handler|flags|wait"
     # - Leave key empty ("") to auto-assign.
     # - Explicit keys ("2", "10", "V", etc.) are respected.
     # - Later collisions overwrite earlier ones (hub policy).
 
     declare -a TD_MOD_MENU_SPECS=(
         # --- Examples -------------------------------------------------------------
-        "|Examples|Example: run action|td_mod_example_do_thing|"
-        "|Examples|Example: configure module|td_mod_example_configure|"
-        "10|Examples|Example: configure module (10)|td_mod_example_configure|"
-        "2|Examples|Example: configure module (existing)|td_mod_example_configure|"
+        "|Examples|Example: run action (2sec)|td_mod_example_do_thing||2"
+        "|Examples|Example: configure module(6sec)|td_mod_example_configure||6"
+        "10|Examples|Example: configure module (0)|td_mod_example_configure||0"
+        "2|Examples|Example: configure module (15)|td_mod_example_configure||15"
 
         # --- Other Examples -------------------------------------------------------
-        "|Other Examples|Example: run action|td_mod_example_do_thing|"
-        "|Other Examples|Example: configure module|td_mod_example_configure|"
-        "10|Other Examples|Example: configure module (10)|td_mod_example_configure|"
-        "2|Other Examples|Example: configure module (existing)|td_mod_example_configure|"
+        "|Other Examples|Example: run action 2|td_mod_example_do_thing||2"
+        "|Other Examples|Example: configure module 2|td_mod_example_configure||2"
+        "10|Other Examples|Example: configure module (2)|td_mod_example_configure||2"
+        "2|Other Examples|Example: configure module (4)|td_mod_example_configure||4"
     )
 # --- Public API ------------------------------------------------------------------
     # prefix with td_
