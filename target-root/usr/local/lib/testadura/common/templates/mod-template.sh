@@ -43,8 +43,8 @@
     }
 
     # Load guard
-    [[ -n "${TD_<LIBNAME>_LOADED:-}" ]] && return 0
-    TD_<LIBNAME>_LOADED=1
+    [[ -n "${TD_SAMPLEMOD_LOADED:-}" ]] && return 0
+    TD_SAMPLEMOD_LOADED=1
 
 # --- Module identity ------------------------------------------------------------
     # Keep names unique + grep-friendly.
@@ -60,47 +60,23 @@
     # Handlers are the ONLY place where effects may happen.
     # Keep them small; delegate heavy logic to helper functions below.
 
-    td_mod_example_do_thing() {
-        # Example handler: safe output only
-        saystart "Example action"
-        sayinfo  "TD_MOD_ID   : $TD_MOD_ID"
-        sayinfo  "Option      : ${EXAMPLE_OPTION}"
-        sayend   "Done."
-    }
-
-    td_mod_example_configure() {
-        # Example interactive handler (uses ask)
-        saystart "Configure example module"
-
-        ask --label "Enable example option?" --var EXAMPLE_OPTION --default "${EXAMPLE_OPTION}" --colorize both
-        sayok "Saved: EXAMPLE_OPTION=${EXAMPLE_OPTION}"
-
-        sayend "Configuration complete."
-    }
-# --- Registration --------------------------------------------------------------
-    # Register menu items at source-time (this is allowed).
-    # Keys should be unique across the hub. If collision: hub should overwrite/update.
-
-    td_menu_register_group "Examples"
-
-    td_menu_register_item \
-        --key     "E" \
-        --group   "Examples" \
-        --label   "Example: run action" \
-        --handler "td_mod_example_do_thing" \
-        --flags   ""
-
-    td_menu_register_item \
-        --key     "C" \
-        --group   "Examples" \
-        --label   "Example: configure module" \
-        --handler "td_mod_example_configure" \
-        --flags   ""
+# --- Menu specs ---------------------------------------------------------------
+    # Each entry: "key|group|label|handler|flags"
+    # - Leave key empty ("") to auto-assign.
+    # - If key exists assign next available number
+    # - Explicit keys ("2", "10", "V", etc.) are respected.
+    # - Later collisions overwrite earlier ones (hub policy).
+    # Usage:
+    #   TD_MOD_MENU_SPECS=(
+    #    "|Examples|Example: run action|td_mod_example_do_thing|"
+    #    "|Examples|Example: configure module|td_mod_example_configure|"
+    #    "10|Examples|Example: configure module (10)|td_mod_example_configure|"
+    #    "2|Examples|Example: configure module (existing)|td_mod_example_configure|"
+    #   )
+    declare -a TD_MOD_MENU_SPECS=(
+       
+    )
 # --- Public API ------------------------------------------------------------------
-    # prefix with td_
-    # Example:
-    # td_<libname>_do_something() {
-    #     :
-    # }
+
 
 
