@@ -185,12 +185,13 @@
     td_show_help() {
         local script_name="${TD_SCRIPT_NAME:-$(basename "${TD_SCRIPT_FILE:-$0}")}"
 
-        echo "Usage: $script_name [options] [--] [args...]"
-        echo
-        echo "${SCRIPT_DESC:-No description available}"
-        echo
-        echo "Options:"
-        echo "  -h, --help           Show this help and exit"
+        printf 'Usage: %s [options] [--] [args...]\n' "$script_name"
+        printf '\n'
+        printf '%s\n' "${TD_SCRIPT_DESC:-No description available}"
+        printf '\n'
+        printf 'Options:\n'
+        printf '  -h, --help           Show this help and exit\n'
+        printf '\n'
 
         if declare -p TD_ARGS_SPEC >/dev/null 2>&1; then
             local spec opt meta
@@ -212,21 +213,22 @@
                     value) meta=" VALUE" ;;
                     enum)  meta=" {${__td_choices//,/|}}" ;;
                     flag)  meta="" ;;
-                    *)     meta="" ;;
                 esac
 
-                printf "  %-20s %s\n" "$opt$meta" "${__td_help:-}"
+                printf '  %-20s %s\n' "$opt$meta" "${__td_help:-}"
             done
         fi
 
         if declare -p TD_SCRIPT_EXAMPLES >/dev/null 2>&1; then
-            echo
-            echo "Examples:"
+            printf '\n'
+            printf 'Examples:\n'
             local ex
             for ex in "${TD_SCRIPT_EXAMPLES[@]:-}"; do
-                printf "  %s\n" "$ex"
+                printf '  %s\n' "$ex"
             done
         fi
+
+        td_print
     }
 
     # --- td_parse_args -----------------------------------------------------------
@@ -477,19 +479,30 @@
             local entry varname
             for entry in "${TD_ARGS_SPEC[@]:-}"; do
                 IFS='|' read -r name short type var help choices <<< "$entry"
-                varname="${var}"
-                local label="--$name (-$short)"
-                local value="$varname = ${!varname}"
-                #td_print_labeledvalue "  --%s (-%s) " " %s = %s\n" "$name" "$short" "$varname" "${!varname:-<unset>}"
+                varname="${var:-}"
+
+                if [[ -n "${short:-}" ]]; then
+                    label="--$name (-$short)"
+                else
+                    label="--$name"
+                fi
+
+                if [[ -n "$varname" ]]; then
+                    value="$varname = ${!varname-<unset>}"
+                else
+                    value="<no var>"
+                fi
+
                 td_print_labeledvalue "$label" "$value"
             done
-            if (( ${#TD_POSITIONAL[@]} > 0 )); then
-                td_print_sectionheader --label  "Positional arguments:"
+
+            if declare -p TD_POSITIONAL >/dev/null 2>&1 && (( ${#TD_POSITIONAL[@]} > 0 )); then
+                td_print_sectionheader --text "Positional arguments:"
+                local i
+                for i in "${!TD_POSITIONAL[@]}"; do
+                    td_print_labeledvalue "Arg[$i]" "${TD_POSITIONAL[$i]}"
+                done
             fi
-            
-            for i in "${!TD_POSITIONAL[@]}"; do
-                td_print_labeledvalue "Arg[$i]" "${TD_POSITIONAL[i]}"
-            done
 
             td_print_sectionheader --border "=" 
             td_print

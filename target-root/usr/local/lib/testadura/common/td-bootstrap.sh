@@ -47,6 +47,9 @@ TD_BOOTSTRAP_LOADED=1
     TD_FRAMEWORK_ROOT="${TD_FRAMEWORK_ROOT:-}"
     TD_APPLICATION_ROOT="${TD_APPLICATION_ROOT:-}" # Application root (where this script is deployed)    
 
+# Minimal colors
+    FAINT_WHITE=$'\e[2;37m'
+    RESET=$'\e[0m'
 # --- Minimal fallback UI (overridden by ui.sh when sourced) -----------------
     saystart()   { printf 'START   \t%s\n' "$*" >&2; }
     saywarning() { printf 'WARNING \t%s\n' "$*" >&2; }
@@ -352,9 +355,9 @@ TD_BOOTSTRAP_LOADED=1
         TD_USER_HOME="$(getent passwd "${SUDO_USER:-$USER}" | cut -d: -f6)" # User home directory
         
         if [[ "${FLAG_DRYRUN:-0}" -eq 1 ]]; then
-            sayinfo "Running in $RUN_MODE mode (no changes will be made)."
+            saydebug "Running in $RUN_MODE mode (no changes will be made)."
         else
-            saywarning "Running in $RUN_MODE mode (changes will be applied)."
+            saydebug "Running in $RUN_MODE mode (changes will be applied)."
         fi
 
     }    
@@ -455,12 +458,24 @@ TD_BOOTSTRAP_LOADED=1
             : "${FLAG_VERBOSE:=0}"
             : "${FLAG_STATERESET:=0}"
             : "${FLAG_INIT_CONFIG:=0}"
+            : "${FLAG_SHOWARGS:=0}"
+            : "${RUN_MODE:="${FAINT_WHITE}COMMIT${RESET}"}"
 
         __parse_bootstrap_args "$@"
 
         __init_bootstrap
         __source_globals
         __source_corelibs
+
+        # --- Early info-only modes (must happen before need_root/cannot_root) ------------
+        local a
+
+        for a in "${TD_BOOTSTRAP_REST[@]}"; do
+            case "$a" in
+                -h|--help)     return 100 ;;
+                --showargs)    return 101 ;;
+            esac
+        done
 
         # If you want ui, init after libs (unless ui_init is dependency-free)
         (( exe_ui )) && ui_init
@@ -473,19 +488,14 @@ TD_BOOTSTRAP_LOADED=1
             cannot_root "${TD_BOOTSTRAP_REST[@]}"
         fi
 
-        # Load state/cfg and parse *script* args (not bootstrap args)
-            
+        # Load state/cfg and parse *script* args (not bootstrap args)        
         (( exe_state )) && td_state_load
         (( exe_cfg ))   && td_cfg_load
 
-        td_parse_args "${TD_BOOTSTRAP_REST[@]}"     
+        # Parse args so flags/vals are populated (but don't enforce root)
+        td_parse_args "${TD_BOOTSTRAP_REST[@]}"   
 
-        __finalize_bootstrap
-
-        if [[ "${FLAG_VERBOSE:-0}" -eq 1 ]]; then
-                td_showarguments
-            fi
-            return 0
+        return 0
     }
 
 

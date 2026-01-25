@@ -107,7 +107,8 @@ set -euo pipefail
         "folder|f|value|PROJECT_FOLDER|Set project folder|"
         "dryrun|d|flag|FLAG_DRYRUN| Emulate only don't do any work|"
         "statereset|r|flag|FLAG_STATERESET|Reset the state file|"
-        "verbose|v|flag|FLAG_VERBOSE|Verbose output|"
+        "verbose|v|flag|FLAG_VERBOSE|Verbose output|" 
+        "showargs||flag|FLAG_SHOWARGS|Print parsed arguments and exit|"  
     )
 
     TD_SCRIPT_EXAMPLES=(
@@ -239,10 +240,29 @@ set -euo pipefail
    main() {
     # --- Bootstrap ---------------------------------------------------------------
             
-            td_bootstrap --state -- "$@"
+            td_bootstrap --state --needroot -- "$@"
+            rc=$?
+
+            case "$rc" in
+                0)
+                    :   # continue normal execution
+                    ;;
+                100)
+                    saydebug "Exit after info call"
+                    exit 0
+                    ;;
+                *)
+                    exit "$rc"
+                    ;;
+            esac
+
             if [[ "${FLAG_STATERESET:-0}" -eq 1 ]]; then
-                td_state_reset
-                sayinfo "State file reset as requested."
+                if [[ "${FLAG_DRYRUN:-0}" -eq 1 ]]; then
+                    sayinfo "Would have reset state-file"
+                else
+                    td_state_reset
+                    sayinfo "State file reset as requested."
+                fi
             fi
 
             td_print_titlebar 

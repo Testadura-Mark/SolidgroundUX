@@ -90,6 +90,7 @@ set -euo pipefail
         "dryrun|d|flag|FLAG_DRYRUN|Just list the files don't do any work|"
         "statereset|r|flag|FLAG_STATERESET|Reset the state file|"
         "verbose|v|flag|FLAG_VERBOSE|Verbose output, show arguments|"
+        "showargs||flag|FLAG_SHOWARGS|Print parsed arguments and exit|"
     )
 
     TD_SCRIPT_EXAMPLES=(
@@ -106,7 +107,7 @@ set -euo pipefail
 
 # === main() must be the last function in the script ==============================
     main() {
-    # --- Bootstrap ---------------------------------------------------------------
+    # -- Bootstrap
         #   --ui            Initialize UI layer (ui_init after libs)
         #   --state         Load persistent state (td_state_load)
         #   --cfg           Load configuration (td_cfg_load)
@@ -116,13 +117,38 @@ set -euo pipefail
         #   --initcfg       Allow creation of missing config templates during bootstrap
         #
         #   --              End bootstrap options; remaining args are passed to td_parse_args
-        td_bootstrap -- "$@"
-        if [[ "${FLAG_STATERESET:-0}" -eq 1 ]]; then
-            td_state_reset
-            sayinfo "State file reset as requested."
+        td_bootstrap --state --needroot -- "$@"
+        rc=$?
+
+        case "$rc" in
+            0)
+                :   # continue normal execution
+                ;;
+            100)
+                saydebug "Exit after info call"
+                exit 0
+                ;;
+            *)
+                exit "$rc"
+                ;;
+        esac
+
+        if [[ "${FLAG_SHOWARGS:-0}" -eq 1 ]]; then
+            td_showarguments
+            exit 0
         fi
 
-    # --- Main script logic here --------------------------------------------------
+        if [[ "${FLAG_STATERESET:-0}" -eq 1 ]]; then
+            if [[ "${FLAG_DRYRUN:-0}" -eq 1 ]]; then
+                sayinfo "Would have reset state-file"
+            else
+                td_state_reset
+                sayinfo "State file reset as requested."
+            fi
+        fi
+
+        td_print_titlebar 
+    # -- Main script logic here
 
     }
 

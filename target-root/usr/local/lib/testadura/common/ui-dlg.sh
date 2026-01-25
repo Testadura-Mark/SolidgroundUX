@@ -74,23 +74,27 @@
             printf '%s' "$keymap"
     }
 # --- Public API ------------------------------------------------------------------
-    # --- td_dlg_autocontinue -----------------------------------------------------
+    # td_dlg_autocontinue 
         # Interactive auto-continue dialog with countdown and key controls.
         #
         # Usage:
         #   td_dlg_autocontinue [SECONDS] [MESSAGE] [CHOICES]
         #
-        # Arguments:
-        #   SECONDS   Seconds before auto-continue (default: 5)
-        #   MESSAGE   Optional message shown above the prompt
-        #   CHOICES   String of allowed actions:
-        #             A = any key → continue
-        #             E = Enter → continue
-        #             R = R → redo
-        #             C = C or Esc → cancel
-        #             P = P or Space → pause/resume countdown
-        #             Q = Q → quit
-        #             H = hide keymap
+        # CHOICES:
+        #   Reserved actions:
+        #     A = any key → continue
+        #     E = Enter → continue
+        #     R = R → redo
+        #     C = C or Esc → cancel
+        #     P = P or Space → pause/resume countdown
+        #     Q = Q → quit
+        #     H = hide keymap
+        #
+        #   Extra keys:
+        #     Any other single-character keys included in CHOICES are treated as
+        #     "custom return keys". They do not perform an action; the dialog simply
+        #     returns a code:
+        #       10 for the first custom key, 11 for the second, etc.
         #
         # Returns:
         #   0 = continue (Enter / allowed key)
@@ -98,10 +102,7 @@
         #   2 = cancel
         #   3 = redo
         #   4 = quit
-        #
-        # Notes:
-        #   - Requires an interactive TTY.
-        #   - Non-interactive sessions return immediately.
+        #   10+ = custom key index (first custom key = 10)
     td_dlg_autocontinue() {
         local seconds="${1:-5}"
         local msg="${2:-}"
@@ -113,6 +114,57 @@
             return 0
         fi
 
+        # --- Helpers ---------------------------------------------------------------
+        # Reserved keys are matched case-insensitively.
+        local reserved="AERCPQH"
+
+        # Build a de-duplicated list of custom keys in encounter order.
+        # Excludes reserved letters (A/E/R/C/P/Q/H), but allows Enter/Space/Esc behavior
+        # through the existing logic.
+        local custom_keys=""
+        local _ch=""
+        local i=0
+
+        for (( i=0; i<${#dlgchoices}; i++ )); do
+            _ch="${dlgchoices:i:1}"
+            # Normalize to uppercase for reserved detection
+            if [[ "${reserved}" == *"${_ch^^}"* ]]; then
+                continue
+            fi
+            # Skip duplicates
+            if [[ "$custom_keys" == *"$_ch"* ]]; then
+                continue
+            fi
+            custom_keys+="${_ch}"
+        done
+
+        # Return code for a custom key, or empty if not a custom key.
+        # Custom keys are matched exactly as provided, but also accept case-insensitive
+        # match if the provided key is alphabetic.
+        td__dlg_custom_rc_for_key() {
+            local pressed="${1:-}"
+            local j=0
+            local k=""
+
+            for (( j=0; j<${#custom_keys}; j++ )); do
+                k="${custom_keys:j:1}"
+                if [[ "$pressed" == "$k" ]]; then
+                    printf '%d' "$((10 + j))"
+                    return 0
+                fi
+                # If both are letters, accept case-insensitive match
+                if [[ "$pressed" =~ ^[A-Za-z]$ && "$k" =~ ^[A-Za-z]$ ]]; then
+                    if [[ "${pressed^^}" == "${k^^}" ]]; then
+                        printf '%d' "$((10 + j))"
+                        return 0
+                    fi
+                fi
+            done
+
+            return 1
+        }
+
+        # --- Existing state --------------------------------------------------------
         local paused=0
         local key=""
         local got=0
@@ -198,6 +250,15 @@
                         return 0
                         ;;
                     *)
+                        # 1) Custom key? return 10+
+                        local rc=""
+                        rc="$(td__dlg_custom_rc_for_key "$key" 2>/dev/null || true)"
+                        if [[ -n "$rc" ]]; then
+                            printf '\r\e[%dB\n' "$((lines-1))" >"$tty"
+                            return "$rc"
+                        fi
+
+                        # 2) Fallback to "any key continues" if enabled
                         [[ "$dlgchoices" == *"A"* ]] || continue
                         printf '\r\e[%dB\n' "$((lines-1))" >"$tty"
                         return 0
@@ -214,6 +275,7 @@
             fi
         done
     }
+
 
 
 

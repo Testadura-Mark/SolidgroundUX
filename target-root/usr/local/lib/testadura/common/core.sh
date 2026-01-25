@@ -84,7 +84,31 @@
 
 # --- Filesystem Helpers ----------------------------------------------------------
   # ensure_dir -- create directory (including parents) if it does not exist.
-  ensure_dir(){ [[ -d "$1" ]] || mkdir -p "$1"; }
+  ensure_dir() {
+      local dir="${1:-}"
+      [[ -n "$dir" ]] || return 2
+      [[ -d "$dir" ]] || mkdir -p -- "$dir"
+  }
+
+  # ensure_writable_dir
+    # Create directory (including parents) if it does not exist.
+    # If running via sudo, assign ownership to the invoking user (dev convenience).
+  ensure_writable_dir() {
+      local dir="${1:-}"
+      [[ -n "$dir" ]] || return 2
+
+      local created=0
+      if [[ ! -d "$dir" ]]; then
+          mkdir -p -- "$dir"
+          created=1
+      fi
+
+      if (( created )) && [[ -n "${SUDO_USER:-}" ]]; then
+          local grp
+          grp="$(id -gn "$SUDO_USER" 2>/dev/null || printf '%s' "$SUDO_USER")"
+          chown "$SUDO_USER:$grp" "$dir" 2>/dev/null || true
+      fi
+  }
 
   # exists -- test if a regular file exists.
   exists(){ [[ -f "$1" ]]; }
@@ -131,41 +155,6 @@
 
       [[ -n "$s" ]] || s="hub"
       printf '%s' "$s"
-  }
-
-  # --- __td_wrap_words -------------------------------------------------------------
-  # td_wrap_words -- Wrap a text to a given width (word-boundary wrap).
-  # Usage: td_wrap_words --width 60 --text "hello world ..."
-  td_wrap_words() {
-      local width=80 text=""
-      while [[ $# -gt 0 ]]; do
-          case "$1" in
-              --width) width="$2"; shift 2 ;;
-              --text)  text="$2";  shift 2 ;;
-              --) shift; break ;;
-              *) return 2 ;;
-          esac
-      done
-
-      [[ -z "$text" ]] && return 0
-      (( width < 1 )) && printf '%s\n' "$text" && return 0
-
-      local line="" word=""
-
-      # Split into words on whitespace (same semantics as your array approach),
-      # but without building an array.
-      while read -r word; do
-          if [[ -z "$line" ]]; then
-              line="$word"
-          elif (( ${#line} + 1 + ${#word} <= width )); then
-              line+=" $word"
-          else
-              printf '%s\n' "$line"
-              line="$word"
-          fi
-      done < <(printf '%s\n' "$text" | tr -s '[:space:]' '\n')
-
-      [[ -n "$line" ]] && printf '%s\n' "$line"
   }
 
 # --- Systeminfo ------------------------------------------------------------------
@@ -292,6 +281,65 @@
             out+="$s"
         done
         printf '%s' "$out"
+  }
+
+    # td_wrap_words
+      # Wrap a text to a given width (word-boundary wrap).
+      # Usage: td_wrap_words --width 60 --text "hello world ..."
+    td_wrap_words() {
+        local width=80 text=""
+        while [[ $# -gt 0 ]]; do
+            case "$1" in
+                --width) width="$2"; shift 2 ;;
+                --text)  text="$2";  shift 2 ;;
+                --) shift; break ;;
+                *) return 2 ;;
+            esac
+        done
+
+        [[ -z "$text" ]] && return 0
+        (( width < 1 )) && printf '%s\n' "$text" && return 0
+
+        local line="" word=""
+
+        # Split into words on whitespace (same semantics as your array approach),
+        # but without building an array.
+        while read -r word; do
+            if [[ -z "$line" ]]; then
+                line="$word"
+            elif (( ${#line} + 1 + ${#word} <= width )); then
+                line+=" $word"
+            else
+                printf '%s\n' "$line"
+                line="$word"
+            fi
+        done < <(printf '%s\n' "$text" | tr -s '[:space:]' '\n')
+
+        [[ -n "$line" ]] && printf '%s\n' "$line"
+    }
+
+    # td_open_editor
+      # Open a file for editing using the user's preferred editor.
+      # Uses sudo only if the file is not writable.
+    td_open_editor() {
+        local file="$1"
+        [[ -n "$file" ]] || return 1
+
+        local editor=""
+
+        if [[ -n "${EDITOR:-}" ]]; then
+            editor="$EDITOR"
+        elif [[ -n "${VISUAL:-}" ]]; then
+            editor="$VISUAL"
+        else
+            editor="nano"
+        fi
+
+        if [[ -w "$file" ]]; then
+            $editor "$file"
+        else
+            sudo $editor "$file"
+        fi
     }
 # --- Die and exit  handlers ------------------------------------------------------
     die(){ local code="${2:-1}"; _sh_err "${1:-fatal error}"; exit "$code"; }
