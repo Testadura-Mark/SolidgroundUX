@@ -31,17 +31,23 @@ and this project adheres to **Semantic Versioning** where practical.
 
 ## [1.1-beta] – 2026-01-18
 
+## [1.1-beta] – Structural Expansion
+
 ### Added
-- Formalized execution model with explicit `main()` requirement
-- ArgSpec-based argument handling
-- Workspace creation, deployment, release, and clone configuration tools
-- --log and --console arguments to bootstrapper to actively enable file and/or console logging
-- /src/testadura-releases/install.sh to install a tar.gz onto a system
+- Script Hub execution environment with module discovery
+- Menu-driven execution model with grouped, ordered actions
+- Global run modes: Commit, Dry-Run, Verbose
+- Workspace creation, deployment, release, and clone tooling
+- Unified UI output, logging, and status handling
 
 ### Changed
-- Refined bootstrap lifecycle and environment detection
-- Consolidated repository layout using `target-root`
-- Unified UI messaging and logging behavior
+- Formalized script lifecycle and execution flow
+- Introduced deterministic menu compilation and rendering
+- Standardized directory layout and deployment targets
+- Hardened safety mechanisms for dry-run and commit paths
+
+### Notes
+This release represents a conceptual shift from a loose scripting toolkit to a structured execution environment, while preserving the transparency and flexibility of Bash.
 
 ### Fixed
 - Load-guard edge cases
@@ -55,6 +61,7 @@ and this project adheres to **Semantic Versioning** where practical.
 - Initial SolidgroundUX framework
 - Core bootstrap, UI, state, and config libraries
 - Script and library templates
+- Script-hub module integrator
 
 ---
 

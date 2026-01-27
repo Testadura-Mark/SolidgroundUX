@@ -220,6 +220,47 @@ It:
     - Network 
     - Samba domain membership
     - Prepare a machine for cloning
+    
+### **5. td-script-hub**
+
+`td-script-hub` is the execution environment that turns individual SolidgroundUX scripts into a structured, discoverable system.
+
+Rather than invoking scripts directly, the Script Hub provides:
+
+- Automatic discovery of executable modules
+- A consistent, menu-driven interface
+- Centralized run modes (Commit, Dry-Run, Verbose)
+- Predictable execution order and grouping
+- Unified UI output and logging behavior
+
+At its core, the hub establishes **convention-based structure** without obscuring the fact that everything remains plain Bash.
+
+#### Concepts at a glance
+
+- **Hub**  
+  A logical root that owns a namespace, module directory, runtime flags, and shared UI state.
+
+- **Module**  
+  A self-contained directory discovered by the hub. Modules typically contain an `app.sh` entry point and related helpers.
+
+- **Applet**  
+  The executable identity of a module, defining menu entries, titles, and handlers. Applets are activated through the hub, not executed directly.
+
+- **Menu model**  
+  Menu entries are registered as specifications, compiled into normalized items, grouped, ordered, and rendered deterministically.
+
+- **Run modes**  
+  Execution modifiers that apply globally:
+  - **Commit** – perform real actions
+  - **Dry-Run** – simulate without side effects
+  - **Verbose** – expose internal decisions
+
+Run modes are always visible and treated as first-class controls, not optional flags.
+
+The Script Hub is optional, but once adopted it becomes the canonical way to compose, run, and reason about SolidgroundUX-based tooling.
+
+For a deeper explanation of the execution model and design principles, see the Script Hub documentation in  
+`/usr/local/share/doc/solidgroundux`.
 
 
 

@@ -1050,8 +1050,6 @@ set -euo pipefail
                 ;;
             101)
                 td_showarguments
-        td_color_samples        
-        td_style_samples
                 exit 0
                 ;;
             *)

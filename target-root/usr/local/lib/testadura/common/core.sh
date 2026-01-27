@@ -26,7 +26,7 @@
 #   - No logging, prompts, or interactive behavior
 #   - No dependency on framework state or globals
 #   - Safe to use during early bootstrap and in isolation
-#
+# 
 # =================================================================================
 
 # --- Validate use ----------------------------------------------------------------

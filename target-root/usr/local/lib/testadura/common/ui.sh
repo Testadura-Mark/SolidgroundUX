@@ -686,8 +686,6 @@
         printf "%b\n" "${textclr}${line}${RESET}"
     }
 
-
-
 # --- ANSI SGR helpers -----------------------------------------------------------
     # Low-level helpers for constructing ANSI Select Graphic Rendition (SGR)
     # escape sequences in a composable and declarative way.
