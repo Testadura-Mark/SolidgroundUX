@@ -1050,6 +1050,8 @@ set -euo pipefail
                 ;;
             101)
                 td_showarguments
+        td_color_samples        
+        td_style_samples
                 exit 0
                 ;;
             *)
@@ -1057,7 +1059,6 @@ set -euo pipefail
                 exit "$rc"
                 ;;
         esac
-
         if [[ "${FLAG_STATERESET:-0}" -eq 1 ]]; then
             if [[ "${FLAG_DRYRUN:-0}" -eq 1 ]]; then
                 sayinfo "Would have reset state-file"

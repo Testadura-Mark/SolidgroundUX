@@ -197,10 +197,15 @@
             fi
 
             # Status line (no newline; we keep cursor on this line)
+           local clr
+           clr="$(td_color "$WHITE" "" "$FX_ITALIC")"
+
             if (( paused )); then
-                printf '\r\e[K%s' "${TUI_ITALIC}Paused... Press P or Space to resume countdown${RESET}" >"$tty"
+                printf '\r\e[K%sPaused... Press P or Space to resume countdown%s' \
+                    "$clr" "$RESET" >"$tty"
             else
-                printf '\r\e[K%s' "${TUI_ITALIC}Continuing in ${seconds}s...${RESET}" >"$tty"
+                printf '\r\e[K%sContinuing in %ds...%s' \
+                    "$clr" "$seconds" "$RESET" >"$tty"
             fi
 
             # Read key

@@ -48,22 +48,34 @@ TD_BOOTSTRAP_LOADED=1
     TD_APPLICATION_ROOT="${TD_APPLICATION_ROOT:-}" # Application root (where this script is deployed)    
 
 # Minimal colors
-    FAINT_WHITE=$'\e[2;37m'
+    MSG_CLR_INFO=$'\e[38;5;250m'
+    MSG_CLR_STRT=$'\e[38;5;82m'
+    MSG_CLR_OK=$'\e[38;5;82m'
+    MSG_CLR_WARN=$'\e[1;38;5;208m'
+    MSG_CLR_FAIL=$'\e[38;5;196m' 
+    MSG_CLR_CNCL=$'\e[0;33m'
+    MSG_CLR_END=$'\e[38;5;82m'
+    MSG_CLR_EMPTY=$'\e[2;38;5;250m'
+    MSG_CLR_DEBUG=$'\e[1;35m'
+
+    TUI_COMMIT=$'\e[2;37m'
     RESET=$'\e[0m'
 # --- Minimal fallback UI (overridden by ui.sh when sourced) -----------------
-    saystart()   { printf 'START   \t%s\n' "$*" >&2; }
-    saywarning() { printf 'WARNING \t%s\n' "$*" >&2; }
-    sayfail()    { printf 'FAIL    \t%s\n' "$*" >&2; }
-    saydebug()   { 
-                   if [[ ${FLAG_VERBOSE:-0} -eq 1 ]]; then
-                        printf 'DEBUG   \t%s\n' "$*" >&2
-                    fi        
-                }
-    saycancel()  { printf 'CANCEL  \t%s\n' "$*" >&2; }
-    sayend()     { printf 'END     \t%s\n' "$*" >&2; }
-    sayok()      { printf 'OK      \t%s\n' "$*" >&2; }
-    sayinfo()    { printf 'INFO    \t%s\n' "$*" >&2; }
-    sayerror()   { printf 'ERR     \t%s\n' "$*" >&2; }
+    saystart()   { printf '%sSTART%s\t%s\n' "${MSG_CLR_STRT-}" "${RESET-}" "$*" >&2; }
+    sayinfo()    { printf '%sINFO%s \t%s\n' "${MSG_CLR_INFO-}" "${RESET-}" "$*" >&2; }
+    sayok()      { printf '%sOK%s   \t%s\n' "${MSG_CLR_OK-}"   "${RESET-}" "$*" >&2; }
+    saywarning() { printf '%sWARN%s \t%s\n' "${MSG_CLR_WARN-}" "${RESET-}" "$*" >&2; }
+    sayfail()    { printf '%sFAIL%s \t%s\n' "${MSG_CLR_FAIL-}" "${RESET-}" "$*" >&2; }
+    saydebug() {
+        if (( ${FLAG_VERBOSE:-0} )); then
+            printf '%sDEBUG%s \t%s\n' "${MSG_CLR_DBG-}" "${RESET-}" "$*" >&2;
+        fi
+    }
+    saycancel() { printf '%sCANCEL%s\t%s\n' "${MSG_CLR_CAN-}" "${RESET-}" "$*" >&2; }
+    sayend() { printf '%sEND%s   \t%s\n' "${MSG_CLR_END-}" "${RESET-}" "$*" >&2; }
+    sayok() { printf '%sOK%s    \t%s\n' "${MSG_CLR_OK-}" "${RESET-}" "$*" >&2; }
+    sayinfo() { printf '%sINFO%s  \t%s\n' "${MSG_CLR_INFO-}" "${RESET-}" "$*" >&2; }
+    sayerror() { printf '%sERR%s   \t%s\n' "${MSG_CLR_ERR-}" "${RESET-}" "$*" >&2; }
 
 # --- Loading libraries from TD_COMMON_LIB -----------------------------------
     td_source_libs() {
@@ -459,7 +471,7 @@ TD_BOOTSTRAP_LOADED=1
             : "${FLAG_STATERESET:=0}"
             : "${FLAG_INIT_CONFIG:=0}"
             : "${FLAG_SHOWARGS:=0}"
-            : "${RUN_MODE:="${FAINT_WHITE}COMMIT${RESET}"}"
+            : "${RUN_MODE:="${TUI_COMMIT}COMMIT${RESET}"}"
 
         __parse_bootstrap_args "$@"
 

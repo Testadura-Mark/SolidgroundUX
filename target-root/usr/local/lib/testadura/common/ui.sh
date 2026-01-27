@@ -46,8 +46,7 @@
 
 # --- Overrides -------------------------------------------------------------------
   # _sh_err override: use say --type FAIL if available
-  _sh_err() 
-  {
+  _sh_err() {
       if declare -f say >/dev/null 2>&1; then
           say --type FAIL "$*"
       else
@@ -56,8 +55,7 @@
   }
 
   # confirm override: use ask with yes/no validation if available
-  confirm() 
-  {
+  confirm() {
       if declare -f ask >/dev/null 2>&1; then
           local _ans
 
@@ -80,7 +78,7 @@
 
 
 # --- Public API ------------------------------------------------------------------
-    # --- td_update_runmode
+    # td_update_runmode
         # Update the global RUN_MODE label based on current execution mode.
         #
         # Derives a colorized, user-facing run mode indicator ("DRYRUN" or "COMMIT")
@@ -94,7 +92,7 @@
             RUN_MODE="$(td_runmode_color)COMMIT${RESET}"
         fi
     }
-    # --- td_runmode_color
+    # td_runmode_color
         # Return the color sequence associated with the current run mode.
         #
         # Outputs the appropriate TUI color escape based on FLAG_DRYRUN.
@@ -106,7 +104,7 @@
         (( FLAG_DRYRUN )) && printf '%s' "$TUI_DRYRUN" || printf '%s' "$TUI_COMMIT"
     }
 
-    # --- td_print_globals 
+    # td_print_globals 
         # Print framework globals (system/user/both/script) using TD_SYS_GLOBALS /
         # TD_USR_GLOBALS / TD_SCRIPT_GLOBALS.
         #
@@ -162,7 +160,7 @@
         esac
     }
 
-    # --- td_print_labeledvalue 
+    # td_print_labeledvalue 
         # Print a single "label : value" line with optional width/sep/colors.
         # Usage:
         #   td_print_labeledvalue "Label" "Value"
@@ -232,13 +230,13 @@
             "${valueclr}${value}${RESET}"
     }
 
-    # --- td_print_fill
+    # td_print_fill
         # Print one line with left/right content separated by a fill region.
         # Fill width is computed using visible (ANSI-stripped) lengths.
         #
         # Usage:
         #   td_print_fill "Left" "Right"
-        #   td_print_fill --left "Menu" --right "$RUN_MODE" --rightclr "$TUI_HIGHLIGHT"
+        #   td_print_fill --left "Menu" --right "$RUN_MODE" --rightclr "$BRIGHT_WHITE"
         #   td_print_fill --fillchar "." --maxwidth 100
     td_print_fill() {
         local left="" right=""
@@ -306,7 +304,7 @@
             ""
     }
 
-    # --- td_print_titlebar
+    # td_print_titlebar
         # Print a framed title bar with optional right-aligned status text.
         #
         # By default:
@@ -320,10 +318,10 @@
 
         local left="${TD_SCRIPT_TITLE:-$TD_SCRIPT_BASE}"
         local right="${RUN_MODE:-}"
-        local leftclr="${TUI_HIGHLIGHT}"
+        local leftclr="$(td_color "$WHITE" "" "$FX_BOLD")"
         local rightclr=""                 # let td_print_fill inherit
         local sub="${TD_SCRIPT_DESC:-""}"
-        local subclr="${TUI_ITALIC}"
+        local subclr="$(td_color "$WHITE" "" "$FX_ITALIC")"
         local subjust="C"
         local border="="
         local borderclr="${TUI_BORDER}"
@@ -386,7 +384,7 @@
             --maxwidth "$maxwidth"
     }
 
-    # --- td_print_sectionheader
+    # td_print_sectionheader
         # Print a full-width section header line.
         # Renders optional text with left padding and border fill up to max width.
         # ANSI-safe: visual width is computed after stripping color codes.
@@ -396,13 +394,13 @@
         #   td_print_sectionheader --text "Framework info" --maxwidth 80
     td_print_sectionheader() {
         local text=""
-        local textclr="${TUI_HIGHLIGHT}"
+        local textclr="$(td_color "$WHITE" "" "$FX_BOLD")"
         local border="-"
         local borderclr="${TUI_BORDER}"
         local padleft=4
         local padend=1
         local maxwidth=80
-
+   
         # -- Parse options
         while [[ $# -gt 0 ]]; do
             case "$1" in
@@ -475,7 +473,7 @@
         printf '%s\n' "$fnl"
     }
 
-    # --- td_print
+    # td_print
         # Print formatted text with padding, justification, and optional word-wrapping.
         #
         # This is a high-level print helper that decides whether text should be rendered
@@ -588,7 +586,7 @@
         fi
     }
 
-    # --- td_print_single
+    # td_print_single
         # Render a single formatted text line within a fixed width.
         #
         # This is a low-level rendering function used by td_print(). It formats and
@@ -686,6 +684,226 @@
         line+="$(printf '%*s' "$pad" "")"
 
         printf "%b\n" "${textclr}${line}${RESET}"
+    }
+
+
+
+# --- ANSI SGR helpers -----------------------------------------------------------
+    # Low-level helpers for constructing ANSI Select Graphic Rendition (SGR)
+    # escape sequences in a composable and declarative way.
+    #
+    # These helpers separate:
+    #   - Color selection (foreground/background via 256-color palette indices)
+    #   - Text attributes (bold, faint, underline, etc.)
+    #
+    # They do NOT print anything by themselves beyond the escape sequence;
+    # callers are responsible for output and resetting styles.
+    
+    # td_print_cell WIDTH TEXT_WITH_ANSI
+        # Pads with spaces so the *visible* text occupies WIDTH columns.
+    td_print_cell() {
+        local width="$1"
+        local s="$2"
+
+        # Strip ANSI CSI sequences for visible length calculation
+        local plain
+        plain="$(printf '%s' "$s" | sed -E $'s/\x1B\\[[0-9;]*[[:alpha:]]//g')"
+
+        local vislen="${#plain}"
+        local pad=$(( width - vislen ))
+        (( pad < 0 )) && pad=0
+
+        printf '%s%*s' "$s" "$pad" ""
+    }
+
+    # td_color
+        # Construct a combined ANSI SGR escape sequence for text styling.
+        #
+        # Usage:
+        #   td_color <fg> <bg> [fx...]
+        #
+        # Parameters:
+        #   fg   : ANSI SGR escape sequence for foreground color
+        #          (e.g. "$WHITE", "$TUI_HIGHLIGHT", or empty to skip)
+        #   bg   : ANSI SGR escape sequence for background color
+        #          (or empty to skip)
+        #   fx   : Zero or more text attributes, either:
+        #            - numeric SGR codes (e.g. 1 = bold, 3 = italic), or
+        #            - full ANSI SGR escape sequences (e.g. "$FX_BOLD")
+        #
+        # Behavior:
+        #   - Combines all provided SGR attributes into a single style prefix.
+        #   - Preserves existing color escape sequences.
+        #   - Omits unset components cleanly (no stray separators).
+        #   - Does not emit a reset; caller must apply RESET explicitly.
+        #
+        # Example:
+        #   printf '%sWARN%s\n' "$(td_color "$CLR_YELLOW" "" "$FX_BOLD")" "$RESET"
+        #
+        # Notes:
+        #   - Order of SGR parameters is irrelevant.
+        #   - Designed to compose semantic styles, not generate palette indices.
+        #   - Safe under set -u.
+    td_color() {  
+        local fg="${1:-}"
+        local bg="${2:-}"
+        shift 2 || true
+
+        local codes=""
+        local fx
+
+        # Allow fx as numbers (1,2,3...) OR as full escapes like $'\e[1m'
+        for fx in "$@"; do
+            [[ -n "$fx" ]] || continue
+            if [[ "$fx" =~ ^[0-9]+$ ]]; then
+                codes+="${fx};"
+            elif [[ "$fx" == $'\e['*m ]]; then
+                # extract "1;2;3" from ESC[1;2;3m
+                local inner="${fx#$'\e['}"
+                inner="${inner%m}"
+                codes+="${inner};"
+            fi
+        done
+
+        codes="${codes%;}"
+
+        # If we have any fx codes, emit one SGR prefix, then fg/bg sequences
+        if [[ -n "$codes" ]]; then
+            printf '\033[%sm%s%s' "$codes" "$fg" "$bg"
+        else
+            printf '%s%s' "$fg" "$bg"
+        fi
+    }
+    # td_fg
+        # Construct an ANSI SGR escape sequence for foreground color only,
+        # with optional text attributes.
+        #
+        # Usage:
+        #   td_fg <fg> [fx...]
+        #
+        # This is a thin convenience wrapper around td_color, intended to
+        # improve call-site readability for common cases.
+        #
+        # Example:
+    td_fg() {  # td_fg <fg> [fx...]
+        local fg="${1:-}"
+        shift || true
+        td_color "$fg" "" "$@"
+    }
+
+    # td_bg
+        # Construct an ANSI SGR escape sequence for background color only,
+        # with optional text attributes.
+        #
+        # Usage:
+        #   td_bg <bg> [fx...]
+        #
+        # This is a thin convenience wrapper around td_color, intended for
+        # composable background styling.
+        #
+        # Example:
+        #   printf '%s%sText%s\n' "$(td_fg "$CLR_WHITE")$(td_bg "$CLR_RED")" "$RESET"
+    td_bg() {  # td_bg <bg> [fx...]
+        local bg="${1:-}"
+        shift || true
+        td_color "" "$bg" "$@"
+    }
+
+    td_color_samples()
+    {
+        printf '\n%s\n\n' "---- Available foreground colors & effects in SolidgroundUX ----"
+
+        td_sample_row	BLUE	BRIGHT_BLUE	    DARK_BLUE	    BG_BLUE	    BG_DARK_BLUE
+        td_sample_row	BROWN	BRIGHT_BROWN	DARK_BROWN      BG_BROWN	BG_DARK_BROWN
+        td_sample_row	CYAN	BRIGHT_CYAN	    DARK_CYAN	    BG_CYAN	    BG_DARK_CYAN
+        td_sample_row	GOLD	BRIGHT_GOLD	    DARK_GOLD	    BG_GOLD	    BG_DARK_GOLD
+        td_sample_row	GREEN	BRIGHT_GREEN	DARK_GREEN	    BG_GREEN	BG_DARK_GREEN
+        td_sample_row	MAGENTA	BRIGHT_MAGENTA	DARK_MAGENTA	BG_MAGENTA	BG_DARK_MAGENTA
+        td_sample_row	ORANGE	BRIGHT_ORANGE	DARK_ORANGE	    BG_ORANGE	BG_DARK_ORANGE
+        td_sample_row	PINK	BRIGHT_PINK	    DARK_PINK	    BG_PINK	    BG_DARK_PINK
+        td_sample_row	PURPLE	BRIGHT_PURPLE	DARK_PURPLE	    BG_PURPLE	BG_DARK_PURPLE
+        td_sample_row	RED	    BRIGHT_RED	    DARK_RED	    BG_RED	    BG_DARK_RED
+        td_sample_row	TEAL	BRIGHT_TEAL	    DARK_TEAL	    BG_TEAL	    BG_DARK_TEAL
+        td_sample_row	WHITE	BRIGHT_WHITE	DARK_WHITE	    BG_WHITE	BG_DARK_WHITE
+        td_sample_row	YELLOW	BRIGHT_YELLOW	DARK_YELLOW	    BG_YELLOW	BG_DARK_YELLOW
+
+    }
+
+    td_sample_row()
+    {
+        local clr name val
+
+        for clr in "$@"; do
+            eval "val=\${$clr}"
+
+            td_print_cell 20 "$val$clr$RESET"
+
+            # Bold
+            printf "%sBOLD%s\t" \
+                "$(td_color "$val" "" "$FX_BOLD")" \
+                "$RESET"
+
+            # Faint / Dim
+            printf "%sFAINT%s\t" \
+                "$(td_color "$val" "" "$FX_FAINT")" \
+                "$RESET"
+
+            # Italic
+            printf "%sITALIC%s\t" \
+                "$(td_color "$val" "" "$FX_ITALIC")" \
+                "$RESET"
+
+            # Underline
+            printf "%sUNDER%s\t" \
+                "$(td_color "$val" "" "$FX_UNDERLINE")" \
+                "$RESET"
+
+            # Reverse
+            printf "%sREVERSE%s\t" \
+                "$(td_color "$val" "" "$FX_REVERSE")" \
+                "$RESET"
+
+            # Strikethrough
+            printf "%sSTRIKE%s\t" \
+                "$(td_color "$val" "" "$FX_STRIKE")" \
+                "$RESET"
+
+            printf "\n"    
+        done
+
+        printf "\n"
+    }
+    td_style_samples(){
+        printf '\n%s\n\n' "---- Message colors (Say) ----"
+       
+        printf '%s\n' "${MSG_CLR_INFO}MSG_CLR_INFO${RESET}"
+        printf '%s\n' "${MSG_CLR_STRT}MSG_CLR_STRT${RESET}"
+        printf '%s\n' "${MSG_CLR_OK}MSG_CLR_OK${RESET}"
+        printf '%s\n' "${MSG_CLR_WARN}MSG_CLR_WARN${RESET}"
+        printf '%s\n' "${MSG_CLR_FAIL}MSG_CLR_FAIL${RESET}"
+        printf '%s\n' "${MSG_CLR_CNCL}MSG_CLR_CNCL${RESET}"
+        printf '%s\n' "${MSG_CLR_END}MSG_CLR_END${RESET}"
+        printf '%s\n' "${MSG_CLR_EMPTY}MSG_CLR_EMPTY${RESET}"
+        printf '%s\n' "${MSG_CLR_DEBUG}MSG_CLR_DEBUG${RESET}"
+
+        printf '\n%s\n\n' "---- Ui element color ----"
+        printf '%s\n' "${TUI_BORDER}TUI_BORDER${RESET}"
+
+        printf '%s\n' "${TUI_LABEL}TUI_LABEL${RESET} : ${TUI_VALUE}TUI_VALUE${RESET}"
+
+        printf '%s\n' "${TUI_COMMIT}TUI_COMMIT${RESET}/${TUI_DRYRUN}TUI_DRYRUN${RESET}"
+        printf '%s\n' "${TUI_ENABLED}TUI_ENABLED${RESET}/${TUI_DISABLED}TUI_DISABLED${RESET}"
+        printf '%s\n' "${TUI_PROMPT}TUI_PROMPT${RESET} : ${TUI_INPUT}TUI_INPUT${RESET}"
+
+        printf '%s\n' "${TUI_INVALID}TUI_INVALID${RESET}/${TUI_VALID}TUI_VALID${RESET}"
+        
+        printf '%s\n' "${TUI_SUCCESS}TUI_SUCCESS${RESET}"
+        printf '%s\n' "${TUI_ERROR}TUI_ERROR${RESET}"
+
+        printf '%s\n' "${TUI_TEXT}TUI_TEXT${RESET}"
+
+        printf '%s\n' "${TUI_DEFAULT}TUI_DEFAULT${RESET}"
+
     }
 
 

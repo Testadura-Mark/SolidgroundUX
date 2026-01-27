@@ -119,7 +119,7 @@ set -euo pipefail
 # --- local script functions ------------------------------------------------------
     __show_mainmenu() {
         local _barcolor="${TUI_BORDER}"
-        local _titlecolor="${TUI_HIGHLIGHT}"
+        local _titlecolor="$(td_color "$WHITE" "" "$FX_BOLD")"
         local _itemcolor="${TUI_TEXT}"
         local _pad=2
         local _tpad=$((_pad + 3))
@@ -665,8 +665,8 @@ set -euo pipefail
 
 
                 # Show derived values (don’t let user overwrite them unless you truly want that)
-                printf "%sDerived domain   : %s\n" "${TUI_ITALIC}" "${DOMAIN_LC:-<none>}"
-                printf "%sKerberos realm   : %s\n" "${TUI_ITALIC}" "${REALM_UC:-<none>}"                      
+                printf "%sDerived domain   : %s\n" "$(td_color "$WHITE" "" "$FX_ITALIC")" "${DOMAIN_LC:-<none>}"
+                printf "%sKerberos realm   : %s\n" "$(td_color "$WHITE" "" "$FX_ITALIC")" "${REALM_UC:-<none>}"                      
                 printf "${TUI_BORDER}==================================================\n"
 
                 decision=0

@@ -291,10 +291,10 @@ ask(){
 
         while true; do
             if (( paused )); then
-                printf "${TUI_ITALIC}\nPaused. Press any key to continue, or 'c' to cancel... ${RESET}"
+                printf "%s\nPaused. Press any key to continue, or 'c' to cancel...%s" "$(td_color "$WHITE" "" "$FX_ITALIC")" "${RESET}"
                 IFS= read -r -n 1 -s key
             else
-                printf "\r\033[K${TUI_ITALIC}Continuing in %ds… (any key=now, p=pause, c=cancel) ${RESET}" "$seconds"
+                printf "\r\033[K%sContinuing in %ds… (any key=now, p=pause, c=cancel)%s" "$(td_color "$WHITE" "" "$FX_ITALIC")" "$seconds" "${RESET}"
                 IFS= read -r -n 1 -s -t 1 key || key=""
             fi
 
@@ -306,7 +306,7 @@ ask(){
                         continue
                         ;;
                     c|C|q|Q|$'\e')
-                        printf "\n${CLR_CNCL}Cancelled.${RESET}\n"
+                        printf "\n${MSG_CLR_CNCL}Cancelled.${RESET}\n"
                         return 1
                         ;;
                     *)
