@@ -115,6 +115,17 @@ set -euo pipefail
     ) 
 
 # --- local script functions ------------------------------------------------------
+    # __save_parameters
+        # Persist the current release parameters to the state store.
+        #
+        # Stores all user-selected and derived values required to reproduce
+        # the same prepare-release run later (e.g. for auto mode or reruns).
+        #
+        # This function does not perform validation; it assumes parameters
+        # have already been resolved and confirmed by the user.
+        #
+        # Used by:
+        #   - __get_parameters (after user confirmation)
     __save_parameters(){
         td_state_set "RELEASE" "$RELEASE"
         td_state_set "SOURCE_DIR" "$SOURCE_DIR"
@@ -123,6 +134,27 @@ set -euo pipefail
         td_state_set "FLAG_CLEANUP" "$FLAG_CLEANUP"
         td_state_set "FLAG_USEEXISTING" "$FLAG_USEEXISTING"
     }
+
+    # --- __get_parameters ----------------------------------------------------------
+        # Resolve and collect all parameters required for prepare-release.
+        #
+        # Behavior:
+        #   - Initializes defaults based on application metadata and paths
+        #   - Supports non-interactive "auto" mode using stored or default values
+        #   - In interactive mode, prompts the user to review and adjust parameters
+        #   - Persists confirmed parameters via __save_parameters
+        #
+        # Parameters handled:
+        #   - RELEASE        : release identifier (used for tar and manifest naming)
+        #   - SOURCE_DIR     : source directory to stage from
+        #   - STAGING_ROOT   : root directory where releases are created
+        #   - TAR_FILE       : final tar.gz filename
+        #   - FLAG_CLEANUP   : whether to remove staging files after completion
+        #   - FLAG_USEEXISTING : reuse existing staging files if present
+        #
+        # Exit behavior:
+        #   - Returns 0 on successful parameter confirmation
+        #   - Exits script on explicit user cancel
     __get_parameters(){
         RELEASE="${RELEASE:-"$TD_PRODUCT-$TD_VERSION"}"
         SOURCE_DIR="${SOURCE_DIR:-"$TD_APPLICATION_ROOT"}"
@@ -141,7 +173,7 @@ set -euo pipefail
             td_print_titlebar "Prepare Release"
             ask --label "Release" --var RELEASE --default "$RELEASE" --colorize both 
             ask --label "Source directory" --var SOURCE_DIR --default "$SOURCE_DIR" --validate_fn validate_dir_exists --colorize both
-            ask --label "Staging directory" --var STAGING_ROOT --default "$STAGING_ROOT" --validate_fn validate_dir_exists--colorize both
+            ask --label "Staging directory" --var STAGING_ROOT --default "$STAGING_ROOT" --validate_fn validate_dir_exists --colorize both
             ask --label "Tar file" --var TAR_FILE --default "$TAR_FILE" --colorize both
             if [[ "$FLAG_CLEANUP" -eq 1 ]]; then
                 cleanup="Y"
@@ -200,72 +232,143 @@ set -euo pipefail
         done
     }
 
-   __create_tar() {
+    # td_release_write_checksum
+        # Add/update a SHA256SUMS entry for a tarball in the staging root.
+        # Ensures the SHA256SUMS line contains only the tar filename (not an absolute path).
+        #
+        # Usage:
+        #   td_release_write_checksum "$TAR_PATH" "$TAR_FILE" "$STAGING_ROOT"
+    td_release_write_checksum() {
+        local tar_path="${1:-}"
+        local tar_file="${2:-}"
+        local staging_root="${3:-}"
 
-    saystart "Creating release: $RELEASE"
+        [[ -n "$tar_path" ]] || return 1
+        [[ -n "$tar_file" ]] || return 1
+        [[ -n "$staging_root" ]] || return 1
 
-    STAGE_PATH="${STAGING_ROOT%/}/$RELEASE"
+        local sums_file
+        sums_file="${staging_root%/}/SHA256SUMS"
 
-    if [[ "$FLAG_DRYRUN" -eq 1 ]]; then
-        sayinfo "Would have check/created directory: $STAGE_PATH"
-    else
-        saydebug "Ensuring staging dir exists: $STAGE_PATH"
-        mkdir -p "$STAGE_PATH"
-    fi
+        touch "$sums_file" || return 1
 
-    # -- Stage clean copy ---------------------------------------------------------
-    if [[ "$FLAG_USEEXISTING" -eq 1 && -n "$(ls -A "$STAGE_PATH" 2>/dev/null)" ]]; then
-        sayinfo "Using existing staging files as requested."
-    else
-        if [[ "$FLAG_DRYRUN" -eq 1 ]]; then
-            sayinfo "Would have staged files from $SOURCE_DIR to $STAGE_PATH"
-        else
-            saydebug "Staging files from $SOURCE_DIR to $STAGE_PATH"
-            rsync -a --delete \
-                --exclude '.*' \
-                --exclude '*.state' \
-                --exclude '*.code-workspace' \
-                "${SOURCE_DIR%/}/" "$STAGE_PATH/" || { sayfail "rsync failed."; return 1; }
-        fi
-    fi
+        # Remove any existing entry for this filename (idempotent).
+        # Match: two spaces + filename at end of line.
+        sed -i "\|  $tar_file$|d" "$sums_file" || return 1
 
-    # --- Create tar.gz -----------------------------------------------------------
-    TAR_PATH="${STAGING_ROOT%/}/$TAR_FILE"
-    saydebug "Creating tar.gz archive $TAR_PATH from staged files in $STAGE_PATH"
+        local hash
+        hash="$(sha256sum "$tar_path" | awk '{print $1}')" || return 1
+        [[ -n "$hash" ]] || return 1
 
-    if [[ "$FLAG_DRYRUN" -eq 1 ]]; then
-        sayinfo "Would have created tar.gz archive at: $TAR_PATH"
-    else
-        tar -C "$STAGE_PATH" -czpf "$TAR_PATH" . || { sayfail "tar failed."; return 1; }
-
-        sha256sum "$TAR_PATH" >> SHA256SUMS
-
-        sayinfo "Created $TAR_PATH"
-
-        # --- Inspect archive (first few entries) --------------------------------
-        tar -tf "$TAR_PATH" | head -n 30
-    fi
-
-    # --- Cleanup staged dir ------------------------------------------------------
-    if [[ "$FLAG_CLEANUP" -eq 1 ]]; then
-        if [[ "$FLAG_DRYRUN" -eq 1 ]]; then
-            sayinfo "Would have cleaned up staged files at: $STAGE_PATH"
-        else
-            saydebug "Cleaning up staged files as requested."
-            rm -rf "$STAGE_PATH"
-        fi
-    fi
-
-    if [[ "$FLAG_DRYRUN" -eq 1 ]]; then
-        sayinfo "Would have listed available releases in: ${STAGING_ROOT%/}"
-    else
-        sayinfo "Release created successfully. Available releases:"
-        ls -ltr "${STAGING_ROOT%/}"/*.tar.gz 2>/dev/null || true
-    fi
-
-    sayend "Release created."
-
+        printf '%s  %s\n' "$hash" "$tar_file" >> "$sums_file" || return 1
     }
+
+    # __create_tar
+        # Stage a clean release tree and produce a versioned tar.gz archive.
+        #
+        # Responsibilities:
+        #   - Create/ensure staging directory: $STAGING_ROOT/$RELEASE
+        #   - Populate it from SOURCE_DIR (rsync), unless --use-existing is set
+        #   - Create an uncompressed tar archive from staged files
+        #   - Generate an uninstall manifest from the tar contents
+        #   - Embed the manifest into the tar archive
+        #   - Compress the tar to tar.gz
+        #   - Update $STAGING_ROOT/SHA256SUMS (one entry per tarball)
+        #
+        # Output artifacts:
+        #   - $STAGING_ROOT/$TAR_FILE            (final tar.gz)
+        #   - $STAGING_ROOT/$RELEASE.manifest    (external uninstall manifest)
+        #   - $STAGING_ROOT/SHA256SUMS
+        #
+        # Notes:
+        #   - Manifest is generated BEFORE embedding, so it does not list itself.
+        #   - Append (-r) is only used on uncompressed tar archives.
+        #   - DRYRUN prints actions without changing the filesystem.
+    __create_tar() {
+
+        saystart "Creating release: $RELEASE"
+
+        STAGE_PATH="${STAGING_ROOT%/}/$RELEASE"
+
+        # --- Ensure staging directory ----------------------------------------------
+        if [[ "$FLAG_DRYRUN" -eq 1 ]]; then
+            sayinfo "Would have check/created directory: $STAGE_PATH"
+        else
+            saydebug "Ensuring staging dir exists: $STAGE_PATH"
+            mkdir -p "$STAGE_PATH" || { sayfail "mkdir failed."; return 1; }
+        fi
+
+        # --- Stage clean copy -------------------------------------------------------
+        if [[ "$FLAG_USEEXISTING" -eq 1 && -n "$(ls -A "$STAGE_PATH" 2>/dev/null)" ]]; then
+            sayinfo "Using existing staging files as requested."
+        else
+            if [[ "$FLAG_DRYRUN" -eq 1 ]]; then
+                sayinfo "Would have staged files from $SOURCE_DIR to $STAGE_PATH"
+            else
+                saydebug "Staging files from $SOURCE_DIR to $STAGE_PATH"
+                rsync -a --delete \
+                    --exclude '.*' \
+                    --exclude '*.state' \
+                    --exclude '*.code-workspace' \
+                    "${SOURCE_DIR%/}/" "$STAGE_PATH/" || {
+                        sayfail "rsync failed."
+                        return 1
+                    }
+            fi
+        fi
+
+        # Build uncompressed tar
+            TAR_PATH_TAR="${STAGING_ROOT%/}/${TAR_FILE%.gz}"
+            TAR_PATH_GZ="${STAGING_ROOT%/}/$TAR_FILE"
+
+            saydebug "Creating tar archive $TAR_PATH_TAR from staged files in $STAGE_PATH"
+
+            if [[ "$FLAG_DRYRUN" -eq 1 ]]; then
+                sayinfo "Would have created tar archive at: $TAR_PATH_TAR"
+                sayinfo "Would have generated manifest and compressed to: $TAR_PATH_GZ"
+                return 0
+            fi
+
+            tar -C "$STAGE_PATH" -cpf "$TAR_PATH_TAR" . || {
+                sayfail "tar failed."
+                return 1
+            }
+
+        # Write uninstall manifest (external)
+            MANIFEST_PATH="${STAGING_ROOT%/}/${RELEASE}.manifest"
+
+            tar -tf "$TAR_PATH_TAR" \
+                | sed 's|^\./||' \
+                | sed '/^[[:space:]]*$/d' \
+                > "$MANIFEST_PATH" || {
+                    sayfail "Failed to write manifest."
+                    return 1
+                }
+
+        # Embed manifest into tar
+            tar -C "$STAGING_ROOT" -rf "$TAR_PATH_TAR" "${RELEASE}.manifest" || {
+                sayfail "Failed to embed manifest into tar."
+                return 1
+            }
+
+        # Compress to tar.gz
+            gzip -f "$TAR_PATH_TAR" || {
+                sayfail "gzip failed."
+                return 1
+            }
+
+        # Update SHA256SUMS
+            td_release_write_checksum "$TAR_PATH_GZ" "$TAR_FILE" "$STAGING_ROOT" || {
+                sayfail "Failed to update SHA256SUMS."
+                return 1
+            }
+
+        sayinfo "Created $TAR_PATH_GZ"
+
+        # Inspect archive (first few entries)
+        tar -tf "$TAR_PATH_GZ" | head -n 30
+    }
+
     
 
 # === main() must be the last function in the script ==============================

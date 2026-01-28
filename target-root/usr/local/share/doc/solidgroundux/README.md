@@ -81,11 +81,94 @@ Templates define *how you start*, not how you think.
 ## 🚀 Getting Started
 
 ### 📦 Installation
+SolidgroundUX is distributed as versioned release archives and can be installed either manually or via the provided installer script.
 - Download the latest release from  
   https://github.com/Testadura-Mark/SolidgroundUX/releases
 - The installer expects to run in a directory containing the release tarballs
 - `sudo install.sh --auto` installs the latest available version
 - `sudo install.sh` lets you choose from available versions
+
+## 🔹 Fresh install vs Upgrade
+
+### Fresh install
+A *fresh install* is the initial placement of SolidgroundUX onto a system or into a development sandbox.
+
+- Installation is performed by **extracting the release archive**
+- No installer script is required
+- Recommended for:
+  - first-time installation
+  - development or test environments
+  - sandboxed or non-system installs
+
+### Upgrade (managed install)
+An *upgrade* installs a newer version over an existing installation using the installer script.
+
+- Intended for systems where SolidgroundUX is already installed
+- Performs checksum verification
+- Extracts files consistently
+- Records the version manifest for later uninstallation
+
+---
+
+## 🔹 Manual installation (bootstrap / first install)
+
+- Download the latest release from  
+  https://github.com/Testadura-Mark/SolidgroundUX/releases
+
+- Extract the archive to the desired target root:
+
+```bash
+  sudo tar -C / -xzf SolidgroundUX-x.y.z.tar.gz
+```
+  For development or sandbox installs, extract to a custom directory:
+```bash
+  tar -C ~/dev/solidgroundux-root -xzf SolidgroundUX-x.y.z.tar.gz
+```
+  Extracting the archive is sufficient to install SolidgroundUX.
+
+  No installer is required for the initial setup.
+
+### Managed installation and updates (install.sh)
+Place install.sh in a directory containing:
+- one or more SolidgroundUX-*.tar.gz release archives
+- a SHA256SUMS file
+- optional *.manifest files
+
+The installer verifies checksums and extracts the selected release.
+
+Common usage
+- Install the latest available version automatically:
+```bash
+  sudo ./install.sh --auto
+```
+- Select a version interactively:
+```bash
+  sudo ./install.sh
+```
+- Development install to a custom target root (no sudo required):
+```bash
+  ./install.sh --auto --target-root ~/dev/solidgroundux-root
+```
+- Dry-run (verify and simulate extraction):
+```bash
+  ./install.sh --auto --dryrun
+```
+By default, files are extracted to /.
+
+Use --target-root for development or non-system installs.
+
+### Uninstallation (uninstall.sh)
+
+Each release includes a version-specific uninstall manifest
+Installed manifests are stored under:
+
+  /var/lib/solidgroundux/manifests/
+
+To uninstall a specific version:
+```bash
+  sudo ./uninstall.sh /var/lib/solidgroundux/manifests/SolidgroundUX-x.y.z.manifest
+```
+The uninstaller removes only files listed in the manifest and cleans up empty directories.
 
 ### 🛠️ Script development
 Once SolidgroundUX has been installed:
@@ -94,6 +177,12 @@ Once SolidgroundUX has been installed:
 - Copy or generate an executable template
 - Open the generated script and implement your logic inside `main()`
 - Proceed…
+
+### Notes
+
+- Multiple release archives may coexist, but only one version should be installed on a system at a time
+- Uninstallation is always manifest-driven; no files outside the manifest are touched
+- Development installs using --target-root are fully isolated from the system
 
 ## ✨ Features
 
