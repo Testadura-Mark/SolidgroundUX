@@ -282,7 +282,7 @@ TD_BOOTSTRAP_LOADED=1
     }
 
 
-# --- Main sequence functions        
+# --- Main sequence functions ------------------------------------------------        
     __parse_bootstrap_args() {
         exe_ui=0
         exe_libs=1
@@ -472,12 +472,12 @@ TD_BOOTSTRAP_LOADED=1
             : "${FLAG_INIT_CONFIG:=0}"
             : "${FLAG_SHOWARGS:=0}"
             : "${RUN_MODE:="${TUI_COMMIT}COMMIT${RESET}"}"
-
         __parse_bootstrap_args "$@"
 
         __init_bootstrap
         __source_globals
         __source_corelibs
+
 
         # --- Early info-only modes (must happen before need_root/cannot_root) ------------
         local a
@@ -505,8 +505,10 @@ TD_BOOTSTRAP_LOADED=1
         (( exe_cfg ))   && td_cfg_load
 
         # Parse args so flags/vals are populated (but don't enforce root)
-        td_parse_args "${TD_BOOTSTRAP_REST[@]}"   
+        td_parse_args "${TD_BOOTSTRAP_REST[@]}"  
 
+        td_update_runmode
+        
         return 0
     }
 

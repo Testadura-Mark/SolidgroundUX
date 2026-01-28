@@ -131,11 +131,33 @@
         local file="$1"
         rm -f "$file"
     }
+    # __td_kv_get
+        # Get KEY's value from FILE. Prints value to stdout.
+        # Returns 0 if key found, 1 if not found, >1 on read error.
+    __td_kv_get() {
+        local file="$1" key="$2"
+        [[ -n "$file" && -n "$key" ]] || return 2
+        [[ -r "$file" ]] || return 2
 
+        local line
+        line="$(grep -m1 -E "^${key}=" -- "$file" 2>/dev/null)" || true
+        [[ -n "$line" ]] || return 1
+
+        printf '%s' "${line#*=}"
+        return 0
+    }
+
+    # __td_kv_has
+        # Return 0 if KEY exists in FILE (even if empty), else 1.
+    __td_kv_has() {
+        local file="$1" key="$2"
+        [[ -n "$file" && -n "$key" ]] || return 2
+        grep -q -E "^${key}=" -- "$file" 2>/dev/null
+    }
 # --- public: config --------------------------------------------------------------
     # --- td_cfg_load -----------------------------------------------------------------
-    # Load TD_CFG_FILE (KEY=VALUE) into the current shell.
-    # Returns 0 on success; non-zero on read/parse failure.
+        # Load TD_CFG_FILE (KEY=VALUE) into the current shell.
+        # Returns 0 on success; non-zero on read/parse failure.
     td_cfg_load() {
         local file
         file="${TD_CFG_FILE}"
@@ -143,8 +165,8 @@
     }
 
     # --- td_cfg_set ----------------------------------------------------------------
-    # Persist KEY=VALUE to TD_CFG_FILE and update the current shell variable.
-    # Usage: td_cfg_set KEY VALUE
+        # Persist KEY=VALUE to TD_CFG_FILE and update the current shell variable.
+        # Usage: td_cfg_set KEY VALUE
     td_cfg_set() {
         local key="$1" val="$2"
         local file
@@ -154,8 +176,8 @@
     }
 
     # --- td_cfg_unset --------------------------------------------------------------
-    # Remove KEY from TD_CFG_FILE and unset it in the current shell.
-    # Usage: td_cfg_unset KEY
+        # Remove KEY from TD_CFG_FILE and unset it in the current shell.
+        # Usage: td_cfg_unset KEY
     td_cfg_unset() {
         local key="$1"
         local file
@@ -165,24 +187,64 @@
     }
 
     # --- td_cfg_reset --------------------------------------------------------------
-    # Reset TD_CFG_FILE to an empty/default file (implementation-defined).
+        # Reset TD_CFG_FILE to an empty/default file (implementation-defined).
     td_cfg_reset() {
         local file
         file="${TD_CFG_FILE}"
         __td_kv_reset_file "$file"
     }
 
+    # --- td_cfg_get ------------------------------------------------------------------
+        # Get KEY's value from TD_CFG_FILE. Prints value to stdout.
+        # Returns 0 if found, 1 if missing.
+    td_cfg_get() {
+        local key="$1"
+        __td_kv_get "$TD_CFG_FILE" "$key"
+    }
+
+    # --- td_cfg_has ------------------------------------------------------------------
+        # Return 0 if KEY exists in TD_CFG_FILE (even if empty).
+    td_cfg_has() {
+        local key="$1"
+        __td_kv_has "$TD_CFG_FILE" "$key"
+    }
+    
+    # --- td_cfg_show_keys ------------------------------------------------------------
+        # Show cfg keys and their values (reads from file, does not rely on shell vars).
+        # Usage: td_cfg_show_keys KEY1 [KEY2 ...]
+    td_cfg_show_keys() {
+        local key val
+
+        td_print_sectionheader --text "CFG" --pad 2 --padend 1
+
+        for key in "$@"; do
+            if td_cfg_has "$key"; then
+                val="$(td_cfg_get "$key")" || val=""
+                if [[ -z "$val" ]]; then
+                    td_print_fill --left "$key" --right '""' --pad 2
+                else
+                    td_print_fill --left "$key" --right "$val" --pad 2
+                fi
+            else
+                td_print_fill --left "$key" --right "<unset>" --pad 2
+            fi
+        done
+
+        td_print
+    }
+
+    
 # --- public: state ---------------------------------------------------------------
     # --- td_state_load -----------------------------------------------------------
-    # Load TD_STATE_FILE (KEY=VALUE) into the current shell.
+        # Load TD_STATE_FILE (KEY=VALUE) into the current shell.
     td_state_load() {
         saydebug "Loading state from file ${TD_STATE_FILE}"
         __td_kv_load_file "$TD_STATE_FILE"
     }
 
     # --- td_state_set ------------------------------------------------------------
-    # Persist KEY=VALUE to TD_STATE_FILE and update the current shell variable.
-    # Usage: td_state_set KEY VALUE
+        # Persist KEY=VALUE to TD_STATE_FILE and update the current shell variable.
+        # Usage: td_state_set KEY VALUE
     td_state_set() {
         local key="$1" val="$2"
         saydebug "Setting state key '$key' to '$val' in file ${TD_STATE_FILE}"
@@ -192,8 +254,8 @@
     }
 
     # --- td_state_unset ----------------------------------------------------------
-    # Remove KEY from TD_STATE_FILE and unset it in the current shell.
-    # Usage: td_state_unset KEY
+        # Remove KEY from TD_STATE_FILE and unset it in the current shell.
+        # Usage: td_state_unset KEY
     td_state_unset() {
         local key="$1"
         saydebug "Unsetting state key '$key' in file ${TD_STATE_FILE}"
@@ -202,9 +264,70 @@
     }
 
     # --- td_state_reset ----------------------------------------------------------
-    # Reset TD_STATE_FILE to an empty/default file (implementation-defined).
+        # Reset TD_STATE_FILE to an empty/default file (implementation-defined).
     td_state_reset() {
         [[ -n "$TD_STATE_FILE" ]] || return 0
         saydebug "Deleting statefile %s" "$TD_STATE_FILE"
         __td_kv_reset_file "$TD_STATE_FILE"
+    }
+
+    # --- td_state_get ----------------------------------------------------------------
+        # Get KEY's value from TD_STATE_FILE. Prints value to stdout.
+        # Returns 0 if found, 1 if missing.
+    td_state_get() {
+        local key="$1"
+        __td_kv_get "$TD_STATE_FILE" "$key"
+    }
+
+    # --- td_state_has ----------------------------------------------------------------
+        # Return 0 if KEY exists in TD_STATE_FILE (even if empty).
+    td_state_has() {
+        local key="$1"
+        __td_kv_has "$TD_STATE_FILE" "$key"
+    }
+
+    # --- td_state_save_keys ----------------------------------------------------------
+        # Save a list of variable names to the state store.
+    td_state_save_keys() {
+        local key val
+        for key in "$@"; do
+            val="${!key}"
+            td_state_set "$key" "$val"
+        done
+    }
+
+    # --- td_state_load_keys ----------------------------------------------------------
+        # Load a list of variable names from the state store into shell variables.
+        # Existing values are left untouched if no state value exists.
+    td_state_load_keys() {
+        local key val
+        for key in "$@"; do
+            if val="$(td_state_get "$key")"; then
+                printf -v "$key" '%s' "$val"
+            fi
+        done
+    }
+
+    # --- td_state_show_keys ----------------------------------------------------------
+        # Show state keys and their values (reads from file).
+        # Usage: td_state_show_keys KEY1 [KEY2 ...]
+    td_state_show_keys() {
+        local key val
+
+        td_print_sectionheader --text "STATE" --pad 2 --padend 1
+
+        for key in "$@"; do
+            if td_state_has "$key"; then
+                val="$(td_state_get "$key")" || val=""
+                if [[ -z "$val" ]]; then
+                    td_print_fill --left "$key" --right '""' --pad 2
+                else
+                    td_print_fill --left "$key" --right "$val" --pad 2
+                fi
+            else
+                td_print_fill --left "$key" --right "<unset>" --pad 2
+            fi
+        done
+
+        td_print
     }
