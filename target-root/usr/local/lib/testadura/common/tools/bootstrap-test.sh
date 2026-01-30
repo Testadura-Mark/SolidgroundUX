@@ -87,18 +87,23 @@ set -euo pipefail
     #   - After parsing you can use: FLAG_VERBOSE, VAL_CONFIG, ENUM_MODE, ...
     # ------------------------------------------------------------------------
     TD_ARGS_SPEC=(
+        "dryrun|d|flag|FLAG_DRYRUN|Just list the files don't do any work|"
+        "statereset|r|flag|FLAG_STATERESET|Reset the state file|"
+        "verbose|v|flag|FLAG_VERBOSE|Verbose output, show arguments|"
+        "showargs||flag|FLAG_SHOWARGS|Print parsed arguments and exit|"
     )
 
     TD_SCRIPT_EXAMPLES=(
         "Run in dry-run mode:"
         "  $TD_SCRIPT_NAME --dryrun"
+        "  $TD_SCRIPT_NAME -d"
         ""
         "Show arguments:"
         "  $TD_SCRIPT_NAME --verbose"
+        "  $TD_SCRIPT_NAME -v"
     ) 
 
 # --- local script functions ------------------------------------------------------
-
 # --- Main Sequence ---------------------------------------------------------------
     # td_builtinarg_handler
         # Handle framework builtin arguments after bootstrap and script setup.
@@ -120,7 +125,10 @@ set -euo pipefail
         #   Scripts may override this function to alter or extend builtin argument
         #   handling. If overridden, the script author is responsible for the resulting
         #   behavior.
-    td_builtinarg_handler(){
+    td_builtinarg_handler()
+    {
+        printf 'Script FLAG_HELP %s\n' $FLAG_HELP
+        printf 'Script FLAG_SHOWARGS: %s\n' $FLAG_SHOWARGS
         # Info-only builtins: perform action and EXIT.
         if (( FLAG_HELP )); then
             td_showhelp

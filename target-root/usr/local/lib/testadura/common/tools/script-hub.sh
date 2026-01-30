@@ -132,11 +132,6 @@ set -euo pipefail
     #   - After parsing you can use: FLAG_VERBOSE, VAL_CONFIG, ENUM_MODE, ...
     # ---------------------------------------------------------------------------
     TD_ARGS_SPEC=(
-        "dryrun|d|flag|FLAG_DRYRUN|Just list the files don't do any work|"
-        "statereset|r|flag|FLAG_STATERESET|Reset the state file|"
-        "verbose|v|flag|FLAG_VERBOSE|Verbose output, show arguments|" 
-        "showargs||flag|FLAG_SHOWARGS|Print parsed arguments and exit|"   
-        "moddir|m|value|VAL_MODDIR|Override module directory|"
         "title|t|value|VAL_TITLE|Menu title to be displayed in the header|"
         "applet|a|value|VAL_APP|Path to an application configuration file|"
     )
@@ -144,11 +139,9 @@ set -euo pipefail
     TD_SCRIPT_EXAMPLES=(
         "Run in dry-run mode:"
         "  $TD_SCRIPT_NAME --dryrun"
-        "  $TD_SCRIPT_NAME -d"
         ""
-        "Show arguments:"
+        "Show verbose logging:"
         "  $TD_SCRIPT_NAME --verbose"
-        "  $TD_SCRIPT_NAME -v"
     ) 
 
 # --- local script functions ------------------------------------------------------
@@ -1021,85 +1014,118 @@ set -euo pipefail
                 fi
             done
         }
-
-# === main() must be the last function in the script ==============================
-    main() {
-    # -- Bootstrap
-        #   --ui            Initialize UI layer (ui_init after libs)
-        #   --state         Load persistent state (td_state_load)
-        #   --cfg           Load configuration (td_cfg_load)
-        #   --needroot      Enforce execution as root
-        #   --cannotroot    Enforce execution as non-root
-        #   --args          Enable argument parsing (default: on; included for symmetry)
-        #   --initcfg       Allow creation of missing config templates during bootstrap
+# --- Main Sequence ---------------------------------------------------------------
+    # td_builtinarg_handler
+        # Handle framework builtin arguments after bootstrap and script setup.
         #
-        #   --              End bootstrap options; remaining args are passed to td_parse_args
-        if td_bootstrap --state --needroot -- "$@"; then
-            rc=0
-        else
-            rc=$?
+        # This function enacts standard, framework-defined command-line flags that are
+        # parsed during bootstrap and exposed as FLAG_* variables.
+        #
+        # Behavior:
+        #   - Info-only builtins (e.g. --help, --showargs) are executed and cause an
+        #     immediate exit.
+        #   - Mutating builtins (e.g. --resetstate) are executed and execution continues.
+        #   - Dry-run mode is respected where applicable.
+        #
+        # Intended usage:
+        #   Call once from the executable script, after td_bootstrap and after the script
+        #   has defined its argument specification and config/state context.
+        #
+        # Customization:
+        #   Scripts may override this function to alter or extend builtin argument
+        #   handling. If overridden, the script author is responsible for the resulting
+        #   behavior.
+    td_builtinarg_handler(){
+        # Info-only builtins: perform action and EXIT.
+        if (( FLAG_HELP )); then
+            td_showhelp
+            exit 0
         fi
 
-        case "$rc" in
-            0)
-                :   # continue normal execution
-                ;;
-            100)
-                td_show_help
-                exit 0
-                ;;
-            101)
-                td_showarguments
-                exit 0
-                ;;
-            *)
-                saydebug "td_boostrap returned an invalid retunrcode $rc"
-                exit "$rc"
-                ;;
-        esac
-        if [[ "${FLAG_STATERESET:-0}" -eq 1 ]]; then
-            if [[ "${FLAG_DRYRUN:-0}" -eq 1 ]]; then
-                sayinfo "Would have reset state-file"
+        if (( FLAG_SHOWARGS )); then
+            td_showarguments
+            exit 0
+        fi
+
+        # Mutating builtins: perform action and CONTINUE.
+        if (( FLAG_STATERESET )); then
+            if (( FLAG_DRYRUN )); then
+                sayinfo "Would have reset state file."
             else
                 td_state_reset
                 sayinfo "State file reset as requested."
             fi
         fi
+    }
+# --- main -----------------------------------------------------------------------
+    # main MUST BE LAST function in script
+        # Main entry point for the executable script.
+        #
+        # Execution flow:
+        #   1) Invoke td_bootstrap to initialize the framework environment, parse
+        #      framework-level arguments, and optionally load UI, state, and config.
+        #   2) Abort immediately if bootstrap reports an error condition.
+        #   3) Enact framework builtin arguments (help, showargs, state reset, etc.).
+        #      Info-only builtins terminate execution; mutating builtins may continue.
+        #   4) Continue with script-specific logic.
+        #
+        # Bootstrap options used here:
+        #   --state         Load persistent state via td_state_load
+        #   --needroot     Enforce execution as root
+        #   --             End of bootstrap options; remaining args are script arguments
+        #
+        # Notes:
+        #   - Builtin argument handling is centralized in td_builtinarg_handler.
+        #   - Scripts may override builtin handling, but doing so transfers
+        #     responsibility for correct behavior to the script author.
+    main() {
+        # -- Bootstrap
+            td_bootstrap --state --needroot -- "$@"
+            rc=$?
+            if (( rc != 0 )); then
+                exit "$rc"
+            fi
 
-    # -- Main script logic here       
+            # -- Handle builtin arguments
+                td_builtinarg_handler
 
-        # Resolve applet (optional), then resolve identity + module directory
-            td_hub_load_app
-            td_hub_resolve_identity
-            td_hub_resolve_moddir
+            # -- UI
+                td_print_titlebar
 
-            saydebug "Using module directory: $MOD_DIR Menu title: $MNU_TITLE"
-        # Build menu
-            td_menu_reset_specs
-            td_menu_add_builtins_specs
-            td_menu_load_modules_specs
-            td_menu_build_from_specs
-            td_menu_apply_ordering
+        # -- Main script logic    
 
-        # Menu loop
-            local choice=""
-            while (( ! TD_MENU_EXIT )); do
-                td_menu_refresh_runmodes
-                td_menu_render
+            # Resolve applet (optional), then resolve identity + module directory
+                td_hub_load_app
+                td_hub_resolve_identity
+                td_hub_resolve_moddir
 
-                # Build choices string dynamically (e.g. "1-9,A,B,D,V,X")
-                # For now, accept any key and validate in dispatch.
-                local choices
-                choices="$(printf '%s,' "${TD_MENU_KEYS[@]}")"
-                choices="${choices%,}"   # trim trailing comma
+                saydebug "Using module directory: $MOD_DIR Menu title: $MNU_TITLE"
+            # Build menu
+                td_menu_reset_specs
+                td_menu_add_builtins_specs
+                td_menu_load_modules_specs
+                td_menu_build_from_specs
+                td_menu_apply_ordering
 
-                td_choose --label "Select option" --choices "$choices" --var choice --displaychoices 0
+            # Menu loop
+                local choice=""
+                while (( ! TD_MENU_EXIT )); do
+                    td_menu_refresh_runmodes
+                    td_menu_render
 
-                td_menu_dispatch "$choice"
-                td_menu_wait_after_action "$choice"
-            done
+                    # Build choices string dynamically (e.g. "1-9,A,B,D,V,X")
+                    # For now, accept any key and validate in dispatch.
+                    local choices
+                    choices="$(printf '%s,' "${TD_MENU_KEYS[@]}")"
+                    choices="${choices%,}"   # trim trailing comma
 
-            sayinfo "Exiting..."
+                    td_choose --label "Select option" --choices "$choices" --var choice --displaychoices 0
+
+                    td_menu_dispatch "$choice"
+                    td_menu_wait_after_action "$choice"
+                done
+
+                sayinfo "Exiting..."
     }
 
     # Run main with positional args only (not the options)

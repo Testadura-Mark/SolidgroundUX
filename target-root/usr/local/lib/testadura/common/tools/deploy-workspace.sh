@@ -113,10 +113,6 @@ set -euo pipefail
         "undeploy|u|flag|FLAG_UNDEPLOY|Remove files from main root|"
         "source|s|value|SRC_ROOT|Set Source directory|"
         "target|t|value|DEST_ROOT|Set Target directory|"
-        "dryrun|d|flag|FLAG_DRYRUN|Just list the files don't do any work|"
-        "statereset|r|flag|FLAG_STATERESET|Reset the state file|"
-        "verbose|v|flag|FLAG_VERBOSE|Verbose output|" 
-        "showargs||flag|FLAG_SHOWARGS|Print parsed arguments and exit|"
     )
 
     TD_SCRIPT_EXAMPLES=(
@@ -193,7 +189,6 @@ set -euo pipefail
             fi
         fi
         
-        td_print_titlebar 
         while true; do
             # --- Source root -----------------------------------------------------
             if [[ -z "${SRC_ROOT:-}" ]]; then
@@ -272,6 +267,8 @@ set -euo pipefail
                     ;;
             esac
         done
+        
+        td_print_titlebar 
     }
 
     __deploy(){
@@ -446,40 +443,88 @@ set -euo pipefail
 
         sayend "Symlink cleanup complete."
     }
+# --- Main Sequence ---------------------------------------------------------------
+    # td_builtinarg_handler
+        # Handle framework builtin arguments after bootstrap and script setup.
+        #
+        # This function enacts standard, framework-defined command-line flags that are
+        # parsed during bootstrap and exposed as FLAG_* variables.
+        #
+        # Behavior:
+        #   - Info-only builtins (e.g. --help, --showargs) are executed and cause an
+        #     immediate exit.
+        #   - Mutating builtins (e.g. --resetstate) are executed and execution continues.
+        #   - Dry-run mode is respected where applicable.
+        #
+        # Intended usage:
+        #   Call once from the executable script, after td_bootstrap and after the script
+        #   has defined its argument specification and config/state context.
+        #
+        # Customization:
+        #   Scripts may override this function to alter or extend builtin argument
+        #   handling. If overridden, the script author is responsible for the resulting
+        #   behavior.
+    td_builtinarg_handler(){
+        # Info-only builtins: perform action and EXIT.
+        if (( FLAG_HELP )); then
+            td_showhelp
+            exit 0
+        fi
 
+        if (( FLAG_SHOWARGS )); then
+            td_showarguments
+            exit 0
+        fi
 
-# === main() must be the last function in the script ===========================
-    main() {        
-    # --- Bootstrap ---------------------------------------------------------------
-        td_bootstrap --state --needroot -- "$@"
-        rc=$?
-
-        case "$rc" in
-            0)
-                :   # continue normal execution
-                ;;
-            100)
-                saydebug "Exit after info call"
-                exit 0
-                ;;
-            *)
-                exit "$rc"
-                ;;
-        esac
-
-        if [[ "${FLAG_STATERESET:-0}" -eq 1 ]]; then
-            if [[ "${FLAG_DRYRUN:-0}" -eq 1 ]]; then
-                sayinfo "Would have reset state-file"
+        # Mutating builtins: perform action and CONTINUE.
+        if (( FLAG_STATERESET )); then
+            if (( FLAG_DRYRUN )); then
+                sayinfo "Would have reset state file."
             else
                 td_state_reset
                 sayinfo "State file reset as requested."
             fi
         fi
-            
-    # --- Main script logic here ---------------------------------------------
-        __getparameters
+    }
+# --- main -----------------------------------------------------------------------
+    # main MUST BE LAST function in script
+        # Main entry point for the executable script.
+        #
+        # Execution flow:
+        #   1) Invoke td_bootstrap to initialize the framework environment, parse
+        #      framework-level arguments, and optionally load UI, state, and config.
+        #   2) Abort immediately if bootstrap reports an error condition.
+        #   3) Enact framework builtin arguments (help, showargs, state reset, etc.).
+        #      Info-only builtins terminate execution; mutating builtins may continue.
+        #   4) Continue with script-specific logic.
+        #
+        # Bootstrap options used here:
+        #   --state         Load persistent state via td_state_load
+        #   --needroot     Enforce execution as root
+        #   --             End of bootstrap options; remaining args are script arguments
+        #
+        # Notes:
+        #   - Builtin argument handling is centralized in td_builtinarg_handler.
+        #   - Scripts may override builtin handling, but doing so transfers
+        #     responsibility for correct behavior to the script author.
+    main() {
+        # -- Bootstrap
+            td_bootstrap --state --needroot -- "$@"
+            rc=$?
+            if (( rc != 0 )); then
+                exit "$rc"
+            fi
 
-        # -- Deploy or undeploy                    
+            # -- Handle builtin arguments
+                td_builtinarg_handler
+
+            # -- UI
+                td_print_titlebar
+
+        # -- Main script logic
+            __getparameters
+
+            # -- Deploy or undeploy                    
             if [[ "${FLAG_UNDEPLOY:-0}" -eq 0 ]]; then
                 __deploy
                 if [[ "$FLAG_LINK_EXES" -eq 1 ]]; then

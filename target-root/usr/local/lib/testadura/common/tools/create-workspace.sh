@@ -105,10 +105,6 @@ set -euo pipefail
     TD_ARGS_SPEC=(
         "project|p|value|PROJECT_NAME|Project name|"
         "folder|f|value|PROJECT_FOLDER|Set project folder|"
-        "dryrun|d|flag|FLAG_DRYRUN| Emulate only don't do any work|"
-        "statereset|r|flag|FLAG_STATERESET|Reset the state file|"
-        "verbose|v|flag|FLAG_VERBOSE|Verbose output|" 
-        "showargs||flag|FLAG_SHOWARGS|Print parsed arguments and exit|"  
     )
 
     TD_SCRIPT_EXAMPLES=(
@@ -117,7 +113,6 @@ set -euo pipefail
         ""
         "Perform a dry run:"
         "  $TD_SCRIPT_NAME --dryrun"
-        "  $TD_SCRIPT_NAME -d"
     )
 
 
@@ -236,52 +231,87 @@ set -euo pipefail
     }
 
 
-# === main() must be the last function in the script ===========================
-   main() {
-    # --- Bootstrap ---------------------------------------------------------------
-            
-            td_bootstrap --state --needroot -- "$@"
-            rc=$?
+# --- Main Sequence ---------------------------------------------------------------
+    # td_builtinarg_handler
+        # Handle framework builtin arguments after bootstrap and script setup.
+        #
+        # This function enacts standard, framework-defined command-line flags that are
+        # parsed during bootstrap and exposed as FLAG_* variables.
+        #
+        # Behavior:
+        #   - Info-only builtins (e.g. --help, --showargs) are executed and cause an
+        #     immediate exit.
+        #   - Mutating builtins (e.g. --resetstate) are executed and execution continues.
+        #   - Dry-run mode is respected where applicable.
+        #
+        # Intended usage:
+        #   Call once from the executable script, after td_bootstrap and after the script
+        #   has defined its argument specification and config/state context.
+        #
+        # Customization:
+        #   Scripts may override this function to alter or extend builtin argument
+        #   handling. If overridden, the script author is responsible for the resulting
+        #   behavior.
+    td_builtinarg_handler(){
+        td_update_runmode
 
-            case "$rc" in
-                0)
-                    :   # continue normal execution
-                    ;;
-                100)
-                    saydebug "Exit after info call"
-                    exit 0
-                    ;;
-                *)
-                    exit "$rc"
-                    ;;
-            esac
-
-            if [[ "${FLAG_STATERESET:-0}" -eq 1 ]]; then
-                if [[ "${FLAG_DRYRUN:-0}" -eq 1 ]]; then
-                    sayinfo "Would have reset state-file"
-                else
-                    td_state_reset
-                    sayinfo "State file reset as requested."
-                fi
-            fi
-
-            td_print_titlebar 
-    # --- Main script logic here ---------------------------------------------
-        # -- Resolve settings (0=OK, 1=abort, 2=skip template)
-        if __resolve_project_settings; then
-            proceed=0
-        else
-            proceed=$?
-        fi    
-
-        # User aborted
-        if [[ "$proceed" -eq 1 ]]; then
+        # Info-only builtins: perform action and EXIT.
+        if (( FLAG_HELP )); then
+            td_showhelp
             exit 0
         fi
 
-        # For 0 (OK) and 2 (skip template) we still create repo + workspace
-        __create_repository
-        __create_workspace_file
+        if (( FLAG_SHOWARGS )); then
+            td_showarguments
+            exit 0
+        fi
+
+        # Mutating builtins: perform action and CONTINUE.
+        if (( FLAG_STATERESET )); then
+            if (( FLAG_DRYRUN )); then
+                sayinfo "Would have reset state file."
+            else
+                td_state_reset
+                sayinfo "State file reset as requested."
+            fi
+        fi
+    }
+# --- main -----------------------------------------------------------------------
+    # main MUST BE LAST function in script
+    main() {
+        # -- Bootstrap
+            td_bootstrap --state --needroot -- "$@"
+            rc=$?
+            if (( rc != 0 )); then
+                exit "$rc"
+            fi
+           
+            saydebug "bootstrap returns: $rc"
+            saydebug "FLAG HELP : $FLAG_HELP FLAG_SHOWARGS : $FLAG_SHOWARGS"
+            
+            # -- Handle builtin arguments
+                td_builtinarg_handler
+
+            # -- UI
+                td_print_titlebar
+
+        # -- Main script logic
+
+            # -- Resolve settings (0=OK, 1=abort, 2=skip template)
+            if __resolve_project_settings; then
+                proceed=0
+            else
+                proceed=$?
+            fi    
+
+            # User aborted
+            if [[ "$proceed" -eq 1 ]]; then
+                exit 0
+            fi
+
+            # For 0 (OK) and 2 (skip template) we still create repo + workspace
+            __create_repository
+            __create_workspace_file
 
     }
 

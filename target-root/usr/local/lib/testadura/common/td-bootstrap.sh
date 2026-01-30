@@ -283,6 +283,75 @@ TD_BOOTSTRAP_LOADED=1
 
 
 # --- Main sequence functions ------------------------------------------------        
+    # __parse_bootstrap_args
+        # Parse framework-level (bootstrap) command-line switches.
+        #
+        # This function scans the command line for bootstrap options that control
+        # framework initialization and execution constraints. Parsing stops at the
+        # first non-bootstrap argument or at the explicit "--" separator.
+        #
+        # Behavior:
+            #   - Recognized bootstrap switches set internal execution selectors (exe_*),
+            #     framework flags, or logging options.
+            #   - All remaining arguments (after "--" or after the first unknown option)
+            #     are collected verbatim into TD_BOOTSTRAP_REST and left untouched.
+            #   - Script-specific arguments are *not* validated or interpreted here.
+            #
+        # Parsing rules:
+            #   - Bootstrap options must appear before script arguments.
+            #   - Encountering "--" explicitly ends bootstrap parsing.
+            #   - Encountering any unknown option implicitly ends bootstrap parsing.
+            #
+        # Recognized bootstrap switches:
+            #   --ui
+            #       Enable UI initialization (sets exe_ui=1).
+            #
+            #   --state
+            #       Enable loading of persistent state (sets exe_state=1).
+            #
+            #   --cfg
+            #       Enable loading of configuration files (sets exe_cfg=1).
+            #
+            #   --needroot
+            #       Enforce execution as root (sets exe_root=1).
+            #
+            #   --cannotroot
+            #       Enforce execution as non-root (sets exe_root=2).
+            #
+            #   --args
+            #       Enable parsing of script arguments (sets exe_args=1).
+            #       Included for symmetry; script arg parsing is enabled by default.
+            #
+            #   --log
+            #       Enable logging to file (sets TD_LOGFILE_ENABLED=1).
+            #
+            #   --console
+            #       Enable logging to console output (sets TD_LOG_TO_CONSOLE=1).
+            #
+            #   --initcfg
+            #       Allow creation of missing config templates during bootstrap
+            #       (sets FLAG_INIT_CONFIG=1).
+            #
+            #   --
+            #       Explicit end of bootstrap options. All remaining arguments are treated
+            #       as script arguments and copied into TD_BOOTSTRAP_REST.
+        #
+        # Outputs (globals):
+            #   exe_ui, exe_libs, exe_state, exe_cfg, exe_args, exe_root
+            #       Execution selectors used by td_bootstrap to control initialization.
+            #
+            #   TD_BOOTSTRAP_REST
+            #       Array containing all script arguments (post-bootstrap), preserved
+            #       exactly as received.
+            #
+            # Return value:
+            #   Always returns 0. Errors are not raised here; validation is deferred to
+            #   later bootstrap stages.
+            #
+        # Notes:
+            #   - This function does not enforce ordering or validity of script arguments.
+            #   - Bootstrap parsing is intentionally permissive to allow scripts to define
+            #     their own argument syntax without interference.
     __parse_bootstrap_args() {
         exe_ui=0
         exe_libs=1
@@ -312,7 +381,7 @@ TD_BOOTSTRAP_LOADED=1
 
         TD_BOOTSTRAP_REST=()
     }
-
+   
     __init_bootstrap() {
         cfg_source=0  # 0 defaults, 1 system, 2 user
         cfg_file="solidgroundux.cfg"
@@ -344,6 +413,30 @@ TD_BOOTSTRAP_LOADED=1
         init_derived_paths
         init_script_paths
     }
+
+    # __source_corelibs
+        # Source all core framework libraries required for normal operation.
+        #
+        # This function iterates over the list of core library filenames defined in
+        # TD_CORE_LIBS and sources each one from TD_COMMON_LIB.
+        #
+        # Behavior:
+        #   - Libraries are sourced in the order specified by TD_CORE_LIBS.
+        #   - Each library is expected to define functions, globals, or defaults used
+        #     throughout the framework.
+        #   - No validation or dependency resolution is performed here; ordering and
+        #     completeness are assumed to be correct.
+        #
+        # Assumptions:
+        #   - TD_COMMON_LIB is already set and points to the framework library directory.
+        #   - TD_CORE_LIBS contains relative filenames (not absolute paths).
+        #   - Missing or failing libraries will cause the script to terminate via
+        #     standard shell error handling unless caught by the caller.
+        #
+        # Notes:
+        #   - shellcheck warnings for dynamic sourcing are intentionally suppressed.
+        #   - This function is typically called from td_bootstrap after globals have
+        #     been initialized and before any framework functionality is used.
     __source_corelibs(){
         local lib path
         for lib in "${TD_CORE_LIBS[@]}"; do
@@ -374,143 +467,168 @@ TD_BOOTSTRAP_LOADED=1
 
     }    
 # --- Public API -------------------------------------------------------------
-    # -- td_bootstrap --------------------------------------------------------
-        # Initialize (or re-enter) a Testadura "framework context" for the current script.
+    # td_bootstrap
+        # Initialize (or re-enter) a Testadura framework context for the current script.
         #
         # Summary:
         #   td_bootstrap is the single entry point that:
         #   - Parses bootstrap-only switches (what to initialize, root constraints, etc.)
+        #   - Normalizes common framework flags (dry-run, verbose, state reset, etc.)
         #   - Loads framework globals (td-globals.sh + optional td-globals.cfg)
         #   - Loads core framework libraries (core/ui/say/ask/dlg/args/cfg/state, styles)
+        #   - Extracts framework builtin arguments (e.g. --help, --showargs) from the
+        #     remaining argument list and records them as flags
         #   - Optionally initializes the UI layer
-        #   - Optionally loads cfg/state files
+        #   - Optionally enforces root / non-root execution constraints
+        #   - Optionally loads cfg and state files
         #   - Parses the *script's* arguments (via TD_ARGS_SPEC) after bootstrap switches
-        #   - Finalizes runtime flags and derived values (RUN_MODE, TD_USER_HOME, etc.)
+        #   - Finalizes runtime flags and derived values (e.g. RUN_MODE)
         #
         # Important distinction:
-        #   - Bootstrap arguments control framework initialization.
+        #   - Bootstrap arguments control framework initialization and invariants.
+        #   - Builtin arguments (e.g. --help, --showargs) are detected here but enacted
+        #     later by the executable script.
         #   - Script arguments are parsed *after* bootstrap and are passed through in
         #     TD_BOOTSTRAP_REST, then parsed by td_parse_args().
         #
         # Usage:
-        #   td_bootstrap [bootstrap options] [--] [script args...]
-        #
+            #   td_bootstrap [bootstrap options] [--] [script args...]
+            #
         # Bootstrap options:
             #   --ui
             #       Initialize the UI layer (calls ui_init after libraries are sourced).
             #
             #   --state
-            #       Load state (calls td_state_load).
+            #       Load persistent state (calls td_state_load).
             #
             #   --cfg
-            #       Load config (calls td_cfg_load).
+            #       Load configuration (calls td_cfg_load).
             #
             #   --needroot
-            #       Enforce running as root (calls need_root with remaining script args).
-            #       Typical use: scripts that must write /etc, manage services, etc.
+            #       Enforce execution as root (calls need_root with remaining script args).
+            #       Typical use: scripts that must write to /etc, manage services, etc.
             #
             #   --cannotroot
-            #       Enforce NOT running as root (calls cannot_root with remaining script args).
-            #       Typical use: user-scoped scripts where root would be unsafe/unwanted.
+            #       Enforce execution as non-root (calls cannot_root with remaining script args).
+            #       Typical use: user-scoped scripts where root would be unsafe or unwanted.
             #
             #   --args
             #       Enable parsing of script arguments (default: on). Included for symmetry
-            #       with other selectors; usually not needed unless you add "libs-only" modes.
+            #       with other selectors; usually unnecessary unless supporting libs-only modes.
             #
             #   --initcfg
-            #       Allow creating missing config templates during bootstrap (framework-level
-            #       switch used by __create_cfg_template / __source_systemoruser).
+            #       Allow creation of missing config templates during bootstrap (framework-level
+            #       switch used by config initialization helpers).
             #
             #   --
             #       End bootstrap option parsing. Everything after "--" is treated as script
             #       arguments and passed to td_parse_args().
         #
         # Inputs (environment, optional):
-            #   TD_FRAMEWORK_ROOT, TD_APPLICATION_ROOT
-            #       Anchor roots used to derive TD_COMMON_LIB and config/state paths. May be
-            #       pre-set by the caller (e.g., dev workspace) or provided via bootstrap cfg.
-            #
-            #   FLAG_DRYRUN, FLAG_VERBOSE, FLAG_STATERESET, FLAG_INIT_CONFIG
-            #       May be pre-set by environment; bootstrap normalizes/uses them.
-            #
+        #   TD_FRAMEWORK_ROOT, TD_APPLICATION_ROOT
+        #       Anchor roots used to derive TD_COMMON_LIB and config/state paths. May be
+        #       pre-set by the caller (e.g. dev workspace) or provided via bootstrap cfg.
+        #
+        #   FLAG_DRYRUN, FLAG_VERBOSE, FLAG_STATERESET, FLAG_INIT_CONFIG
+        #       May be pre-set by the environment; bootstrap normalizes and uses them.
+        #
         # Outputs (side effects / globals):
-            #   TD_BOOTSTRAP_REST   : array of script args (post-bootstrap) passed to td_parse_args()
-            #   HELP_REQUESTED      : 0|1 (set by td_parse_args)
+            #   TD_BOOTSTRAP_REST   : array of script arguments (post-bootstrap, post-builtin)
+            #   FLAG_HELP           : 0|1 set when -h/--help is present
+            #   FLAG_SHOWARGS       : 0|1 set when --showargs is present
             #   TD_POSITIONAL       : array (set by td_parse_args)
-            #   Option vars from TD_ARGS_SPEC (created/initialized by td_parse_args)
+            #   Option variables from TD_ARGS_SPEC (created/initialized by td_parse_args)
             #   Derived framework globals (paths/defaults via init_* functions)
-            #   RUN_MODE            : display string (DRYRUN/COMMIT) used for UI messaging
-            #
+            #   RUN_MODE            : display string (DRYRUN / COMMIT) used for UI messaging
+        #
         # Return codes:
             #   0  Success
-            #   1  Script arg parsing / validation failure (from td_parse_args) or cfg/state load failure
-            #   2  Fatal framework failure (e.g., missing required libraries/globals)
+            #   >0 Fatal bootstrap failure (library load, cfg/state load, arg parsing, etc.)
         #
         # Examples:
             #   # Typical script entry: UI + cfg + state + parse script args
             #   td_bootstrap --ui --cfg --state -- "$@"
             #
-            #   # Force root (e.g., provisioning script). Script args start after "--".
+            #   # Force root (e.g. provisioning script). Script args start after "--".
             #   td_bootstrap --ui --cfg --needroot -- "$@"
             #
             #   # User-only tool; refuse sudo/root execution
             #   td_bootstrap --ui --cannotroot -- "$@"
             #
-            #   # Debug bootstrap and parsed values (assuming you show td_showarguments on verbose)
+            #   # Debug bootstrap and parsed values
             #   FLAG_VERBOSE=1 td_bootstrap --ui --cfg --state -- "$@"
             #
         # Notes:
-        #   - Keep td_bootstrap thin: it orchestrates load order and invariants but does
-        #     not implement application logic.
-        #   - If RUN_MODE is used in headers, ensure it does not contain newlines.
+            #   - td_bootstrap performs initialization and validation only; it does not
+            #     execute builtin actions such as help or showargs.
+            #   - Builtin flags are enacted by the executable script (e.g. via
+            #     td_builtinarg_handler) after bootstrap completes.
+            #   - Keep td_bootstrap thin: it orchestrates load order and invariants but does
+            #     not implement application logic.
+            #   - RUN_MODE is intended for display only; it must not contain newlines.
+
 
     td_bootstrap() {
+
         # --- Normalize common flags (safe under set -u) ---------------------
-            : "${FLAG_DRYRUN:=0}"
-            : "${FLAG_VERBOSE:=0}"
-            : "${FLAG_STATERESET:=0}"
-            : "${FLAG_INIT_CONFIG:=0}"
-            : "${FLAG_SHOWARGS:=0}"
-            : "${RUN_MODE:="${TUI_COMMIT}COMMIT${RESET}"}"
-        __parse_bootstrap_args "$@"
+        : "${TUI_COMMIT:=$(printf '\e[38;5;130m')}"
+        : "${TUI_DRYRUN:=$(printf '\e[38;5;245m')}"
+        : "${RESET:=$(printf '\e[0m')}"
+        : "${RUN_MODE:="${TUI_COMMIT}COMMIT${RESET}"}"
 
-        __init_bootstrap
-        __source_globals
-        __source_corelibs
+        : "${FLAG_DRYRUN:=0}"
+        : "${FLAG_VERBOSE:=0}"
+        : "${FLAG_STATERESET:=0}"
+        : "${FLAG_INIT_CONFIG:=0}"
+        : "${FLAG_SHOWARGS:=0}"
+        : "${FLAG_HELP:=0}"
 
+        __boot_fail() {
+            local msg="${1:-Bootstrap step failed}"
+            local rc="${2:-1}"
 
-        # --- Early info-only modes (must happen before need_root/cannot_root) ------------
-        local a
+            sayerror "$msg"
+            return "$rc"
+        }
 
-        for a in "${TD_BOOTSTRAP_REST[@]}"; do
-            case "$a" in
-                -h|--help)     return 100 ;;
-                --showargs)    return 101 ;;
-            esac
-        done
+        __parse_bootstrap_args "$@" || __boot_fail "Failed parsing bootstrap arguments" $?
+
+        __init_bootstrap || __boot_fail "Failed to initialize bootstrapper" $?
+        __source_globals || __boot_fail "Failed to source global variables" $?
+        __source_corelibs || __boot_fail "Failed to load core libraries" $?
 
         # If you want ui, init after libs (unless ui_init is dependency-free)
-        (( exe_ui )) && ui_init
+        if (( exe_ui )); then
+            ui_init || __boot_fail "ui_init failed" $?
+        fi
 
         # Root checks (after libs so need_root exists)
         if (( exe_root == 1 )); then
-            need_root "${TD_BOOTSTRAP_REST[@]}"
+            need_root "${TD_BOOTSTRAP_REST[@]}" || __boot_fail "Failed to enable need_root" $?
         fi
+
         if (( exe_root == 2 )); then
-            cannot_root "${TD_BOOTSTRAP_REST[@]}"
+            cannot_root "${TD_BOOTSTRAP_REST[@]}" || __boot_fail "Failed to enable cannot_root" $?
         fi
 
-        # Load state/cfg and parse *script* args (not bootstrap args)        
-        (( exe_state )) && td_state_load
-        (( exe_cfg ))   && td_cfg_load
+        # Load state/cfg and parse *script* args (not bootstrap args)
+        if (( exe_state )); then
+            td_state_load || __boot_fail "State load failed" $?
+        fi
 
-        # Parse args so flags/vals are populated (but don't enforce root)
-        td_parse_args "${TD_BOOTSTRAP_REST[@]}"  
+        if (( exe_cfg )); then
+            td_cfg_load || __boot_fail "CFG load failed" $?
+        fi
 
-        td_update_runmode
-        
+        if (( exe_args )); then
+            # Parse args so flags/vals are populated (but don't enforce root)
+            td_parse_args "${TD_BOOTSTRAP_REST[@]}" || __boot_fail "Error parsing arguments" $?
+
+            td_update_runmode || __boot_fail "Error setting RUN_MODE" $?
+        fi
         return 0
     }
+
 
 
 

@@ -97,21 +97,15 @@ set -euo pipefail
     TD_ARGS_SPEC=(
         "auto|a|flag|FLAG_AUTO|Repeat with last settings|"
         "cleanup|c|flag|FLAG_CLEANUP|Cleanup staging files after run|"
-        "dryrun|d|flag|FLAG_DRYRUN|Just list the files don't do any work|"
         "useexisting|u|flag|FLAG_USEEXISTING|Use existing staging files|"
-        "statereset|r|flag|FLAG_STATERESET|Reset the state file|"
-        "verbose|v|flag|FLAG_VERBOSE|Verbose output, show arguments|" 
-        "showargs||flag|FLAG_SHOWARGS|Print parsed arguments and exit|"
     )
 
     TD_SCRIPT_EXAMPLES=(
         "Run in dry-run mode:"
         "  $TD_SCRIPT_NAME --dryrun"
-        "  $TD_SCRIPT_NAME -d"
         ""
-        "Show arguments:"
+        "Show verbose logging"
         "  $TD_SCRIPT_NAME --verbose"
-        "  $TD_SCRIPT_NAME -v"
     ) 
 
 # --- local script functions ------------------------------------------------------
@@ -170,7 +164,6 @@ set -euo pipefail
         fi
 
         while true; do
-            td_print_titlebar "Prepare Release"
             ask --label "Release" --var RELEASE --default "$RELEASE" --colorize both 
             ask --label "Source directory" --var SOURCE_DIR --default "$SOURCE_DIR" --validate_fn validate_dir_exists --colorize both
             ask --label "Staging directory" --var STAGING_ROOT --default "$STAGING_ROOT" --validate_fn validate_dir_exists --colorize both
@@ -223,12 +216,15 @@ set -euo pipefail
                     ;;
                 3)
                     saydebug "Redoing input..."
+                    td_print_sectionheader --text "Redo input" --border "="
                     continue
                     ;;
                 *)
                     continue
                     ;;
             esac
+            
+
         done
     }
 
@@ -369,38 +365,85 @@ set -euo pipefail
         tar -tf "$TAR_PATH_GZ" | head -n 30
     }
 
-    
+# --- Main Sequence ---------------------------------------------------------------
+    # td_builtinarg_handler
+        # Handle framework builtin arguments after bootstrap and script setup.
+        #
+        # This function enacts standard, framework-defined command-line flags that are
+        # parsed during bootstrap and exposed as FLAG_* variables.
+        #
+        # Behavior:
+        #   - Info-only builtins (e.g. --help, --showargs) are executed and cause an
+        #     immediate exit.
+        #   - Mutating builtins (e.g. --resetstate) are executed and execution continues.
+        #   - Dry-run mode is respected where applicable.
+        #
+        # Intended usage:
+        #   Call once from the executable script, after td_bootstrap and after the script
+        #   has defined its argument specification and config/state context.
+        #
+        # Customization:
+        #   Scripts may override this function to alter or extend builtin argument
+        #   handling. If overridden, the script author is responsible for the resulting
+        #   behavior.
+    td_builtinarg_handler(){
+        # Info-only builtins: perform action and EXIT.
+        if (( FLAG_HELP )); then
+            td_showhelp
+            exit 0
+        fi
 
-# === main() must be the last function in the script ==============================
-    main() {
-    # --- Bootstrap ---------------------------------------------------------------
-            
-        td_bootstrap --state --needroot -- "$@"
-        rc=$?
+        if (( FLAG_SHOWARGS )); then
+            td_showarguments
+            exit 0
+        fi
 
-        case "$rc" in
-            0)
-                :   # continue normal execution
-                ;;
-            100)
-                saydebug "Exit after info call"
-                exit 0
-                ;;
-            *)
-                exit "$rc"
-                ;;
-        esac            
-        
-        if [[ "${FLAG_STATERESET:-0}" -eq 1 ]]; then
-            if [[ "${FLAG_DRYRUN:-0}" -eq 1 ]]; then
-                sayinfo "Would have reset state-file"
+        # Mutating builtins: perform action and CONTINUE.
+        if (( FLAG_STATERESET )); then
+            if (( FLAG_DRYRUN )); then
+                sayinfo "Would have reset state file."
             else
                 td_state_reset
                 sayinfo "State file reset as requested."
             fi
         fi
+    }
+# --- main -----------------------------------------------------------------------
+    # main MUST BE LAST function in script
+        # Main entry point for the executable script.
+        #
+        # Execution flow:
+        #   1) Invoke td_bootstrap to initialize the framework environment, parse
+        #      framework-level arguments, and optionally load UI, state, and config.
+        #   2) Abort immediately if bootstrap reports an error condition.
+        #   3) Enact framework builtin arguments (help, showargs, state reset, etc.).
+        #      Info-only builtins terminate execution; mutating builtins may continue.
+        #   4) Continue with script-specific logic.
+        #
+        # Bootstrap options used here:
+        #   --state         Load persistent state via td_state_load
+        #   --needroot     Enforce execution as root
+        #   --             End of bootstrap options; remaining args are script arguments
+        #
+        # Notes:
+        #   - Builtin argument handling is centralized in td_builtinarg_handler.
+        #   - Scripts may override builtin handling, but doing so transfers
+        #     responsibility for correct behavior to the script author.
+    main() {
+        # -- Bootstrap
+            td_bootstrap --state --needroot -- "$@"
+            rc=$?
+            if (( rc != 0 )); then
+                exit "$rc"
+            fi
 
-    # --- Main script logic here --------------------------------------------------
+            # -- Handle builtin arguments
+                td_builtinarg_handler
+
+            # -- UI
+                td_print_titlebar
+
+        # -- Main script logic
 
         __get_parameters
         __create_tar
