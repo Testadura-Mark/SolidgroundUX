@@ -686,6 +686,63 @@
         printf "%b\n" "${textclr}${line}${RESET}"
     }
 
+    # td_print_framework_cfg <sys|usr|all>
+        # Prints framework configuration globals via td_print_globals.
+    td_print_framework_cfg() {
+
+        local which="${1:-all}"
+
+        case "$which" in
+            sys|system)
+                td_print_sectionheader --text "System framework settings"
+                td_print_globals sys
+                ;;
+            usr|user)
+                td_print_sectionheader --text "User framework settings"
+                td_print_globals usr
+                ;;
+            all|"")
+                td_print_sectionheader --text "System framework settings"
+                td_print_globals sys
+                td_print
+                td_print_sectionheader --text "User framework settings"
+                td_print_globals usr
+                ;;
+            *)
+                td_print_sectionheader --text "Framework settings"
+                td_print_labeledvalue "ERROR" "Invalid selector: '$which' (use sys|usr|all)"
+                return 2
+                ;;
+        esac
+
+        return 0
+    }
+
+    # td_print_script_cfg <sys|usr|all>
+        # Prints script configuration globals via td_print_globals.
+    td_print_script_cfg() {
+
+    local which="${1:-all}"
+
+    if ! array_has_items TD_SCRIPT_SETTINGS; then
+        return 0
+    fi
+
+    case "$which" in
+        sys|system|usr|user|all|"")
+            td_print_sectionheader --text "Script settings"
+            td_print_globals script
+            ;;
+        *)
+            td_print_sectionheader --text "Script settings"
+            td_print_labeledvalue "ERROR" "Invalid selector: '$which' (use sys|usr|all)"
+            return 2
+            ;;
+    esac
+
+    return 0
+}
+
 # --- ANSI SGR helpers -----------------------------------------------------------
     # Low-level helpers for constructing ANSI Select Graphic Rendition (SGR)
     # escape sequences in a composable and declarative way.

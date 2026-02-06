@@ -14,8 +14,19 @@
 # ==================================================================================
 
 set -euo pipefail
-# -- Find bootstrapper
-    BOOTSTRAP="/usr/local/lib/testadura/common/td-bootstrap.sh"
+# --- Load bootstrapper ---------------------------------------------------------
+    _bootstrap_default="/usr/local/lib/testadura/common/td-bootstrap.sh"
+
+    # Optional non-interactive overrides (recommended)
+    # - TD_BOOTSTRAP: full path to td-bootstrap.sh
+    # - TD_FRAMEWORK_PREFIX: prefix that contains usr/local/lib/testadura/common/td-bootstrap.sh
+    if [[ -n "${TD_BOOTSTRAP:-}" ]]; then
+        BOOTSTRAP="$TD_BOOTSTRAP"
+    elif [[ -n "${TD_FRAMEWORK_PREFIX:-}" ]]; then
+        BOOTSTRAP="$TD_FRAMEWORK_PREFIX/usr/local/lib/testadura/common/td-bootstrap.sh"
+    else
+        BOOTSTRAP="$_bootstrap_default"
+    fi
 
     if [[ -r "$BOOTSTRAP" ]]; then
         # shellcheck disable=SC1091
@@ -23,30 +34,33 @@ set -euo pipefail
     else
         # Only prompt if interactive
         if [[ -t 0 ]]; then
-            printf "\n"
-            printf "Framework not installed in the default location."
+            printf "\nFramework not installed at: %s\n" "$BOOTSTRAP"
             printf "Are you developing the framework or using a custom install path?\n\n"
+            printf "Enter one of:\n"
+            printf "  - prefix (contains usr/local/...), e.g. /home/me/dev/solidgroundux/target-root\n"
+            printf "  - common dir, e.g. /home/me/dev/solidgroundux/target-root/usr/local/lib/testadura/common\n"
+            printf "  - full path to td-bootstrap.sh\n\n"
 
-            read -r -p "Enter framework root path (or leave empty to abort): " _root
+            read -r -p "Path (empty to abort): " _root
             [[ -n "$_root" ]] || exit 127
 
-            BOOTSTRAP="$_root/usr/local/lib/testadura/common/td-bootstrap.sh"
+            if [[ "$_root" == */td-bootstrap.sh ]]; then
+                BOOTSTRAP="$_root"
+            elif [[ -r "$_root/td-bootstrap.sh" ]]; then
+                BOOTSTRAP="$_root/td-bootstrap.sh"
+            else
+                BOOTSTRAP="$_root/usr/local/lib/testadura/common/td-bootstrap.sh"
+            fi
+
             if [[ ! -r "$BOOTSTRAP" ]]; then
-                printf "FATAL: No td-bootstrap.sh found at provided location: $BOOTSTRAP"
+                printf "FATAL: No td-bootstrap.sh found at: %s\n" "$BOOTSTRAP" >&2
                 exit 127
             fi
 
-            # Persist for next runs
-            CFG="$HOME/.config/testadura/bootstrap.conf"
-            mkdir -p "$(dirname "$CFG")"
-            printf 'TD_FRAMEWORK_ROOT=%q\n' "$_root" > "$CFG"
-
-            # shellcheck disable=SC1091
-            source "$CFG"
             # shellcheck disable=SC1091
             source "$BOOTSTRAP"
         else
-            printf "FATAL: Testadura framework not installed ($BOOTSTRAP missing)" >&2
+            printf "FATAL: Testadura framework not installed (missing: %s)\n" "$BOOTSTRAP" >&2
             exit 127
         fi
     fi
@@ -90,58 +104,12 @@ set -euo pipefail
     )
 
     TD_SCRIPT_EXAMPLES=(
-        "Run in dry-run mode:"
-        "  $TD_SCRIPT_NAME --dryrun"
-        ""
-        "Show arguments:"
-        "  $TD_SCRIPT_NAME --verbose"
     ) 
 
 # --- local script functions ------------------------------------------------------
 
 # --- Main Sequence ---------------------------------------------------------------
-    # td_builtinarg_handler
-        # Handle framework builtin arguments after bootstrap and script setup.
-        #
-        # This function enacts standard, framework-defined command-line flags that are
-        # parsed during bootstrap and exposed as FLAG_* variables.
-        #
-        # Behavior:
-        #   - Info-only builtins (e.g. --help, --showargs) are executed and cause an
-        #     immediate exit.
-        #   - Mutating builtins (e.g. --resetstate) are executed and execution continues.
-        #   - Dry-run mode is respected where applicable.
-        #
-        # Intended usage:
-        #   Call once from the executable script, after td_bootstrap and after the script
-        #   has defined its argument specification and config/state context.
-        #
-        # Customization:
-        #   Scripts may override this function to alter or extend builtin argument
-        #   handling. If overridden, the script author is responsible for the resulting
-        #   behavior.
-    td_builtinarg_handler(){
-        # Info-only builtins: perform action and EXIT.
-        if (( FLAG_HELP )); then
-            td_showhelp
-            exit 0
-        fi
 
-        if (( FLAG_SHOWARGS )); then
-            td_showarguments
-            exit 0
-        fi
-
-        # Mutating builtins: perform action and CONTINUE.
-        if (( FLAG_STATERESET )); then
-            if (( FLAG_DRYRUN )); then
-                sayinfo "Would have reset state file."
-            else
-                td_state_reset
-                sayinfo "State file reset as requested."
-            fi
-        fi
-    }
 # --- main -----------------------------------------------------------------------
     # main MUST BE LAST function in script
         # Main entry point for the executable script.

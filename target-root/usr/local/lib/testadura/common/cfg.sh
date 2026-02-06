@@ -85,11 +85,20 @@
 
             # If value starts with a space, keep it; we store exactly after '='.
             # Set variable safely (printf %q ensures it becomes a valid literal)
-            eval "$key=$(printf "%q" "$val")"
+            printf -v "$key" '%s' "$val"
         done < "$file"
     }
 
     # --- internal: write/update/remove a key in KEY=VALUE file --------------------
+    # __td_kv_set
+        #   Upsert KEY=VALUE into a KEY=VALUE file.
+        #   - Ensures the target directory exists.
+        #   - Removes any existing KEY=... line (simple grep-based replacement).
+        #   - Appends the new assignment at the end of the file.
+        #
+        # Notes:
+        #   - File formatting/comments are preserved except for the replaced key line.
+        #   - No quoting rules are applied; VALUE is written verbatim after '='.
     __td_kv_set() {
         local file="$1" key="$2" val="$3"
         [[ "$key" =~ ^[A-Za-z_][A-Za-z0-9_]*$ ]] || return 1
@@ -108,6 +117,10 @@
         mv -f "$tmp" "$file"
     }
 
+    # __td_kv_unset
+        #   Remove KEY from a KEY=VALUE file.
+        #   - If the file does not exist, this is a no-op.
+        #   - If removal results in an empty file, the file is deleted.
     __td_kv_unset() {
         local file="$1" key="$2"
         [[ "$key" =~ ^[A-Za-z_][A-Za-z0-9_]*$ ]] || return 1
@@ -127,6 +140,9 @@
         mv -f "$tmp" "$file"
     }
 
+    # __td_kv_reset_file
+        #   Delete the given KEY=VALUE file (hard reset).
+        #   The caller decides whether to recreate a skeleton afterwards.
     __td_kv_reset_file() {
         local file="$1"
         rm -f "$file"
@@ -159,8 +175,7 @@
         # Load TD_CFG_FILE (KEY=VALUE) into the current shell.
         # Returns 0 on success; non-zero on read/parse failure.
     td_cfg_load() {
-        local file
-        file="${TD_CFG_FILE}"
+        local file="${1:-$TD_CFG_FILE}"
         __td_kv_load_file "$file"
     }
 
@@ -172,7 +187,7 @@
         local file
         file="${TD_CFG_FILE}"
         __td_kv_set "$file" "$key" "$val"
-        eval "$key=$(printf "%q" "$val")"
+        printf -v "$key" '%s' "$val"
     }
 
     # --- td_cfg_unset --------------------------------------------------------------
@@ -232,6 +247,188 @@
 
         td_print
     }
+    # td_cfg_domain_init
+        # td_cfg_domain_init <domain> <sysfile> <usrfile> <require_sys> <enable_varname> <spec_array_name>
+        #
+        # domain        : "framework" | "script" (only for messages)
+        # sysfile/usrfile: full paths (already resolved)
+        # require_sys   : 1 => if not root and sys missing => disable domain cfg-loading
+        # enable_varname: name of flag variable to disable (e.g. FLAG_CFGLOAD / FLAG_EXECFG)
+        # spec_array_name: name of specs array (e.g. TD_FRAMEWORK_GLOBALS)
+    
+    # CFG File initialization and processing
+    td_cfg_has_audience() {
+        local spec_array_name="${1:-}"
+        local want="${2:-}"          # "system" or "user"
+        [[ -n "$spec_array_name" && -n "$want" ]] || return 1
+
+        local -n specs="$spec_array_name"
+
+        local spec audience
+        for spec in "${specs[@]}"; do
+            IFS='|' read -r audience _ _ <<< "$spec"
+            case "$audience" in
+                "$want"|both) return 0 ;;
+            esac
+        done
+
+        return 1
+    }
+
+    td_cfg_warn_missing_syscfg() {
+        local domain="${1:-}"
+        local syscfg="${2:-}"
+        local mode="${3:-script}"
+
+        [[ -n "$syscfg" ]] || return 0
+
+        : "${TD_CFG_WARNED_SYS:=}"
+        local key="${domain}|${syscfg}"
+
+        case " $TD_CFG_WARNED_SYS " in
+            *" $key "*) return 0 ;;
+        esac
+        TD_CFG_WARNED_SYS="$TD_CFG_WARNED_SYS $key"
+
+        if [[ "$mode" == "framework" ]]; then
+            saywarning "[$domain] system cfg not found: $syscfg (using default settings; installer should create it)"
+        else
+            saywarning "[$domain] system cfg not found: $syscfg (using default settings; run as root once to create it)"
+        fi
+    }
+
+
+    td_cfg_ensure_files() {
+        local domain="${1:-}"
+        local syscfg="${2:-}"
+        local usrcfg="${3:-}"
+        local spec_array_name="${4:-}"
+        local mode="${5:-script}"   # "framework" or "script"
+
+        [[ -n "$domain" && -n "$spec_array_name" ]] || return 1
+
+        local is_root=0
+        (( EUID == 0 )) && is_root=1
+
+        # --- system cfg ---
+        if td_cfg_has_audience "$spec_array_name" "system"; then
+            if [[ "$mode" == "script" ]]; then
+                if (( is_root )); then
+                    if [[ -n "$syscfg" && ! -f "$syscfg" ]]; then
+                        ensure_writable_dir "$(dirname -- "$syscfg")" || return 1
+                        td_cfg_write_skeleton_filtered "$syscfg" "system" "$spec_array_name" || return 1
+                        printf '%s\n' "INFO: [$domain] created system cfg: $syscfg"
+                    fi
+                fi
+            fi
+            # framework mode: do not create syscfg here (installer responsibility)
+        fi
+
+        # --- user cfg ---
+        if td_cfg_has_audience "$spec_array_name" "user"; then
+            if [[ -n "$usrcfg" && ! -f "$usrcfg" ]]; then
+                ensure_writable_dir "$(dirname -- "$usrcfg")" || return 1
+                td_cfg_write_skeleton_filtered "$usrcfg" "user" "$spec_array_name" || return 1
+                printf '%s\n' "INFO: [$domain] created user cfg: $usrcfg"
+            fi
+        fi
+
+        return 0
+    }
+
+    td_cfg_write_skeleton_filtered() {
+        local file="${1:-}"
+        local audience_want="${2:-}"     # "system" or "user"
+        local spec_array_name="${3:-}"
+
+        [[ -n "$file" && -n "$audience_want" && -n "$spec_array_name" ]] || return 1
+
+        local -n specs="$spec_array_name"
+
+        {
+            printf '%s\n' "# Auto-generated config ($audience_want)"
+            printf '%s\n' "# Lines must be VAR=VALUE. Other lines are ignored."
+            printf '\n'
+
+            local spec audience var desc
+            for spec in "${specs[@]}"; do
+                IFS='|' read -r audience var desc <<< "$spec"
+                [[ -n "$var" ]] || continue
+
+                case "$audience" in
+                    "$audience_want"|both)
+                        printf '# %s\n' "${desc:-$var}"
+
+                        local val
+                        val="${!var-}"          # write current default if set
+                        printf '%s=%s\n\n' "$var" "$val"
+                        ;;
+                esac
+
+            done
+        } > "$file"
+
+        return 0
+    }
+
+    td_cfg_load_file() {
+        local file="${1:-}"
+        [[ -r "$file" ]] || return 0
+
+        local line key value
+        while IFS= read -r line || [[ -n "$line" ]]; do
+            # Trim leading/trailing whitespace (basic)
+            line="${line#"${line%%[![:space:]]*}"}"
+            line="${line%"${line##*[![:space:]]}"}"
+
+            [[ -n "$line" ]] || continue
+            [[ "${line:0:1}" == "#" ]] && continue
+
+            # Must contain '=' and a non-empty key
+            [[ "$line" == *"="* ]] || continue
+            key="${line%%=*}"
+            value="${line#*=}"
+
+            # Trim key whitespace
+            key="${key#"${key%%[![:space:]]*}"}"
+            key="${key%"${key##*[![:space:]]}"}"
+            [[ -n "$key" ]] || continue
+
+            # Validate key is a shell variable name
+            [[ "$key" =~ ^[A-Za-z_][A-Za-z0-9_]*$ ]] || continue
+
+            # Set variable (value can be anything; keep literal)
+            printf -v "$key" '%s' "$value"
+        done < "$file"
+
+        return 0
+    }
+
+    td_cfg_domain_apply() {
+        local domain="${1:-}"
+        local syscfg="${2:-}"
+        local usrcfg="${3:-}"
+        local spec_array_name="${4:-}"
+        local mode="${5:-script}"   # "framework" or "script"
+
+        [[ -n "$domain" && -n "$spec_array_name" ]] || return 1
+
+        td_cfg_ensure_files "$domain" "$syscfg" "$usrcfg" "$spec_array_name" "$mode" || return 1
+
+        if td_cfg_has_audience "$spec_array_name" "system"; then
+            if [[ -r "$syscfg" ]]; then
+                td_cfg_load_file "$syscfg"
+            else
+                td_cfg_warn_missing_syscfg "$domain" "$syscfg" "$mode"
+            fi
+        fi
+
+        if td_cfg_has_audience "$spec_array_name" "user"; then
+            [[ -r "$usrcfg" ]] && td_cfg_load_file "$usrcfg"
+        fi
+
+        return 0
+    }
 
     
 # --- public: state ---------------------------------------------------------------
@@ -250,7 +447,7 @@
         saydebug "Setting state key '$key' to '$val' in file ${TD_STATE_FILE}"
 
         __td_kv_set "$TD_STATE_FILE" "$key" "$val"
-        eval "$key=$(printf "%q" "$val")"
+        printf -v "$key" '%s' "$val"
     }
 
     # --- td_state_unset ----------------------------------------------------------

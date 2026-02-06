@@ -499,7 +499,7 @@
     }
 
     saydebug() {
-        if [[ ${FLAG_VERBOSE:-0} -eq 1 ]]; then
+        if [[ ${FLAG_DEBUG:-0} -eq 1 ]]; then
             say DEBUG "$@"
         fi
         return 0

@@ -99,15 +99,22 @@
 
       local created=0
       if [[ ! -d "$dir" ]]; then
-          mkdir -p -- "$dir"
+          mkdir -p -- "$dir" || return 3
           created=1
       fi
 
-      if (( created )) && [[ -n "${SUDO_USER:-}" ]]; then
+      # If running under sudo, ensure user-owned directory for user-scoped paths
+      if [[ -n "${SUDO_USER:-}" ]]; then
           local grp
           grp="$(id -gn "$SUDO_USER" 2>/dev/null || printf '%s' "$SUDO_USER")"
-          chown "$SUDO_USER:$grp" "$dir" 2>/dev/null || true
+
+          if (( created )); then
+              chown "$SUDO_USER:$grp" "$dir" 2>/dev/null || true
+          fi
       fi
+
+      [[ -d "$dir" ]] || return 4
+      return 0
   }
 
   # exists -- test if a regular file exists.

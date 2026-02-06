@@ -2,6 +2,12 @@
 	"folders": [
 		{
 			"path": "."
+		},
+		{
+			"path": "../../.config/testadura"
+		},
+		{
+			"path": "../../../../etc/testadura"
 		}
 	],
 	"settings": {
