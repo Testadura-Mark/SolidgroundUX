@@ -52,6 +52,29 @@
     TD_COPYRIGHT="© 2025 Mark Fieten — Testadura Consultancy"
     TD_LICENSE="Testadura Non-Commercial License (TD-NC) v1.0"
 
+# --- Globals definition
+    : "${TD_LOG_MAX_BYTES:=$((25 * 1024 * 1024))}"
+    : "${TD_LOG_KEEP:=20}"
+    : "${TD_LOG_COMPRESS:=1}"
+
+    : "${TD_LOGFILE_ENABLED:=0}"
+    : "${TD_LOG_TO_CONSOLE:=1}"
+    : "${TD_CONSOLE_MSGTYPES:=STRT|WARN|FAIL|INFO|END}"
+
+    : "${TD_UI_STYLE:=default-ui-style.sh}"
+    : "${TD_UI_PALETTE:=default-ui-palette.sh}"
+
+    : "${SAY_DATE_DEFAULT:=0}"
+    : "${SAY_SHOW_DEFAULT:=label}"
+    : "${SAY_COLORIZE_DEFAULT:=label}"
+    : "${SAY_DATE_FORMAT:=%Y-%m-%d %H:%M:%S}"
+    
+    TD_SYSCFG_DIR="/etc/testadura"
+    TD_FRAMEWORK_CFG_BASENAME="td_framework_globals.cfg"
+    TD_FRAMEWORK_SYSCFG_FILE="$TD_SYSCFG_DIR/$TD_FRAMEWORK_CFG_BASENAME"
+    TD_FRAMEWORK_USRCFG_FILE="$TD_USRCFG_DIR/$TD_FRAMEWORK_CFG_BASENAME"
+
+
 # --- Framework metadata ------------------------------------------------------
     TD_FRAMEWORK_GLOBALS=(    
         "system|TD_SYSCFG_DIR|Framework-wide system configuration directory|"
@@ -87,3 +110,5 @@
         ui-ask.sh
         ui-dlg.sh
     )
+
+

@@ -32,8 +32,12 @@
 #   - User interaction unless explicitly part of a UI module
 #   - Policy decisions (libraries provide mechanisms; callers decide policy)
 # =================================================================================
-
 # --- Validate use ----------------------------------------------------------------
+    __lib_base="$(basename "${BASH_SOURCE[0]}")"
+    __lib_base="${__lib_base%.sh}"
+    __lib_base="${__lib_base//-/_}"
+    __lib_guard="TD_${__lib_base^^}_LOADED"
+
     # Refuse to execute (library only)
     [[ "${BASH_SOURCE[0]}" != "$0" ]] || {
     echo "This is a library; source it, do not execute it: ${BASH_SOURCE[0]}" >&2
@@ -41,8 +45,8 @@
     }
 
     # Load guard
-    [[ -n "${TD_<LIBNAME>_LOADED:-}" ]] && return 0
-    TD_<LIBNAME>_LOADED=1
+    [[ -n "${!__lib_guard:-}" ]] && return 0
+    printf -v "$__lib_guard" '1'
 
 # --- Internal helpers ------------------------------------------------------------
     # Prefix with __

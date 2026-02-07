@@ -108,10 +108,31 @@ set -euo pipefail
     ) 
     
     TD_SCRIPT_GLOBALS=(
+        "system|TD_SYS_STRING|System CFG string|"
+        "system|TD_SYS_INT|System CFG int|"
+        "system|TD_SYS_DATE|System CFG date|"
+
+        "user|TD_USR_STRING|User CFG string|"
+        "user|TD_USR_INT|User CFG int|"
+        "user|TD_USR_DATE|User  CFG date|"
+
+        "both|TD_COMMON_STRING|Common CFG string|"
+        "both|TD_COMMON_INT|Common CFG int|"
+        "both|TD_COMMON_DATE|Common  CFG date|"
     )
 # --- local script functions ------------------------------------------------------
-# --- Main Sequence ---------------------------------------------------------------
+# --- Vars ---------------------------------------------------------------
+        : "${TD_SYS_STRING:=system-default}"
+        : "${TD_SYS_INT:=0}"
+        : "${TD_SYS_DATE:=1970-01-01}"
 
+        : "${TD_USR_STRING:=user-default}"
+        : "${TD_USR_INT:=0}"
+        : "${TD_USR_DATE:=1970-01-01}"
+
+        : "${TD_COMMON_STRING:=common-default}"
+        : "${TD_COMMON_INT:=0}"
+        : "${TD_COMMON_DATE:=1970-01-01}"
 # --- main -----------------------------------------------------------------------
     # main MUST BE LAST function in script
         # Main entry point for the executable script.
@@ -140,11 +161,12 @@ set -euo pipefail
             if (( rc != 0 )); then
                 exit "$rc"
             fi
-
+            
             # -- Handle builtin arguments
                 td_builtinarg_handler
 
             # -- UI
+                td_update_runmode
                 td_print_titlebar
 
         # -- Main script logic

@@ -264,9 +264,9 @@
 
         local -n specs="$spec_array_name"
 
-        local spec audience
+        local spec audience var desc extra
         for spec in "${specs[@]}"; do
-            IFS='|' read -r audience _ _ <<< "$spec"
+            IFS='|' read -r audience var desc extra <<< "$spec"
             case "$audience" in
                 "$want"|both) return 0 ;;
             esac
@@ -296,7 +296,6 @@
             saywarning "[$domain] system cfg not found: $syscfg (using default settings; run as root once to create it)"
         fi
     }
-
 
     td_cfg_ensure_files() {
         local domain="${1:-}"
@@ -350,21 +349,19 @@
             printf '%s\n' "# Lines must be VAR=VALUE. Other lines are ignored."
             printf '\n'
 
-            local spec audience var desc
+            local spec audience var desc extra
             for spec in "${specs[@]}"; do
-                IFS='|' read -r audience var desc <<< "$spec"
+                IFS='|' read -r audience var desc extra <<< "$spec"
                 [[ -n "$var" ]] || continue
 
                 case "$audience" in
                     "$audience_want"|both)
                         printf '# %s\n' "${desc:-$var}"
-
                         local val
-                        val="${!var-}"          # write current default if set
+                        val="${!var-}"
                         printf '%s=%s\n\n' "$var" "$val"
                         ;;
                 esac
-
             done
         } > "$file"
 

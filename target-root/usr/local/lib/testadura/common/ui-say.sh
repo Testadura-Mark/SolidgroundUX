@@ -67,6 +67,9 @@
             # Explicit console disable
             [[ "${TD_LOG_TO_CONSOLE:-1}" -eq 0 ]] && return 1
 
+            # Allow DEBUG when debug flag is enabled
+            [[ "$type" == "DEBUG" && "${FLAG_DEBUG:-0}" -eq 1 ]] && return 0
+            
             # Type based filtering
             [[ "|$list|" == *"|$type|"* ]]
         }
