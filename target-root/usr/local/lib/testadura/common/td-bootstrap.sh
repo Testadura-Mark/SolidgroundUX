@@ -203,7 +203,7 @@ TD_BOOTSTRAP_LOADED=1
     __init_bootstrap() {
         TD_BOOTSTRAP_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
         # shellcheck source=/dev/null
-        source "$TD_BOOTSTRAP_DIR/bootstrap-env.sh"
+        source "$TD_BOOTSTRAP_DIR/td-bootstrap-env.sh"
 
         td_defaults_apply
 
@@ -322,8 +322,12 @@ TD_BOOTSTRAP_LOADED=1
             td_cfg_domain_apply "Framework" "$TD_FRAMEWORK_SYSCFG_FILE" "$TD_FRAMEWORK_USRCFG_FILE" "TD_FRAMEWORK_GLOBALS" "framework"
        
         # Parse builtin arguments early
-            td_parse_args builtins "${TD_BOOTSTRAP_REST[@]}" || __boot_fail "Error parsing builtins" $?
-            TD_BOOTSTRAP_REST=( "${TD_POSITIONAL[@]}" )
+            local -a __td_script_args
+            local -a __td_after_builtins
+            __td_script_args=( "${TD_BOOTSTRAP_REST[@]}" )
+            
+            td_parse_args builtins "${__td_script_args[@]}" || __boot_fail "Error parsing builtins" $?
+            __td_after_builtins=( "${TD_POSITIONAL[@]}" )
 
         # Final basic settings       
             td_update_runmode || __boot_fail "Error setting RUN_MODE" $?  
@@ -337,12 +341,15 @@ TD_BOOTSTRAP_LOADED=1
 
             # Root checks (after libs so need_root exists)
             if (( exe_root == 1 )); then
-                need_root "${TD_BOOTSTRAP_REST[@]}" || __boot_fail "Failed to enable need_root" $?
+                need_root "${__td_script_args[@]}" || __boot_fail "Failed to enable need_root" $?
             fi
 
             if (( exe_root == 2 )); then
-                cannot_root "${TD_BOOTSTRAP_REST[@]}" || __boot_fail "Failed to enable cannot_root" $?
+                cannot_root "${__td_script_args[@]}" || __boot_fail "Failed to enable cannot_root" $?
             fi
+            
+            # Now that we know we won't re-exec, continue with the remainder
+            TD_BOOTSTRAP_REST=( "${__td_after_builtins[@]}" )
 
             # Reset statefile before it;s loaded if requested
             if [[ "${FLAG_STATERESET:-0}" -eq 1 ]]; then

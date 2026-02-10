@@ -4,10 +4,13 @@
 			"path": "."
 		},
 		{
+			"path": "../../../../etc/testadura"
+		},
+		{
 			"path": "../../.config/testadura"
 		},
 		{
-			"path": "../../../../etc/testadura"
+			"path": "../../.state/testadura"
 		}
 	],
 	"settings": {

@@ -102,6 +102,9 @@ set -euo pipefail
     #   - After parsing you can use: FLAG_VERBOSE, VAL_CONFIG, ENUM_MODE, ...
     # ------------------------------------------------------------------------
     TD_ARGS_SPEC=(
+        "load|l|flag|FLAG_LOAD|Random argument for testing|"
+        "unload|u|flag|FLAG_UNLOAD|Random argument for testing|"
+        "exit|x|flag|FLAG_EXIT|Random argument for testing|"
     )
 
     TD_SCRIPT_EXAMPLES=(
@@ -170,6 +173,13 @@ set -euo pipefail
                 td_print_titlebar
 
         # -- Main script logic
+        STATE_VAR1="State VAR1"
+        STATE_VAR2=4
+        STATE_VAR3=2025-01-01
+        td_state_set "STATE_VAR1" "$STATE_VAR1"
+        td_state_set "STATE_VAR2" "$STATE_VAR2"
+        td_state_set "STATE_VAR3" "$STATE_VAR3"
+        printf '%s\n' "$RUN_MODE $TD_STATE_FILE"
     }
 
     # Run main with positional args only (not the options)

@@ -104,73 +104,18 @@
         (( FLAG_DRYRUN )) && printf '%s' "$TUI_DRYRUN" || printf '%s' "$TUI_COMMIT"
     }
 
-    # td_print_globals 
-        # Print framework globals (system/user/both/script) using TD_SYS_GLOBALS /
-        # TD_USR_GLOBALS / TD_SCRIPT_GLOBALS.
-        #
-        # Usage:
-        #   td_print_globals [sys|usr|both|script]
-        #
-    td_print_globals() {
-        local which="${1:-both}"
-        local name
-        local -A usr_seen=()
-
-        case "$which" in
-            sys)
-                for name in "${TD_SYS_GLOBALS[@]:-}"; do
-                    __td_print_global "$name"
-                done
-                ;;
-
-            usr)
-                for name in "${TD_USR_GLOBALS[@]:-}"; do
-                    __td_print_global "$name"
-                done
-                ;;
-
-            script)
-                for name in "${TD_SCRIPT_SETTINGS[@]:-}"; do
-                    __td_print_global "$name"
-                done
-                ;;
-
-            both)
-                # Mark user globals
-                for name in "${TD_USR_GLOBALS[@]:-}"; do
-                    usr_seen["$name"]=1
-                done
-
-                # Print system globals EXCEPT those overridden by user
-                for name in "${TD_SYS_GLOBALS[@]:-}"; do
-                    [[ -n "${usr_seen[$name]:-}" ]] && continue
-                    __td_print_global "$name"
-                done
-
-                # Then print user globals
-                for name in "${TD_USR_GLOBALS[@]:-}"; do
-                    __td_print_global "$name"
-                done
-                ;;
-
-            *)
-                printf 'td_print_globals: invalid selector: %s\n' "$which" >&2
-                return 2
-                ;;
-        esac
-    }
-
-    # td_print_labeledvalue 
-        # Print a single "label : value" line with optional width/sep/colors.
-        # Usage:
-        #   td_print_labeledvalue "Label" "Value"
-        #   td_print_labeledvalue --label "Label" --value "Value" --sep ":" --width 22
+    # td_print_labeledvalue
+    # Print a single "label : value" line with optional width/sep/colors.
+    # Usage:
+    #   td_print_labeledvalue "Label" "Value"
+    #   td_print_labeledvalue --label "Label" --value "Value" --sep ":" --width 22 --pad 4
     td_print_labeledvalue() {
         local label=""
         local value=""
 
         local sep=":"
         local width=22
+        local pad=0
         local labelclr="${TUI_LABEL}"
         local valueclr="${TUI_VALUE}"
 
@@ -191,6 +136,10 @@
                     ;;
                 --width)
                     width="$2"
+                    shift 2
+                    ;;
+                --pad)
+                    pad="$2"
                     shift 2
                     ;;
                 --labelclr)
@@ -219,16 +168,17 @@
 
         [[ -z "$label" ]] && return 0
 
-        # Width safety
-        if [[ ! "$width" =~ ^[0-9]+$ ]]; then
-            width=22
-        fi
+        # Width / pad safety
+        [[ "$width" =~ ^[0-9]+$ ]] || width=22
+        [[ "$pad"   =~ ^[0-9]+$ ]] || pad=4
 
-        printf ' %s %s %s\n' \
+        printf '%*s%s %s %s\n' \
+            "$pad" "" \
             "${labelclr}$(printf "%-*.*s" "$width" "$width" "$label")${RESET}" \
             "$sep" \
             "${valueclr}${value}${RESET}"
     }
+
 
     # td_print_fill
         # Print one line with left/right content separated by a fill region.
@@ -686,62 +636,7 @@
         printf "%b\n" "${textclr}${line}${RESET}"
     }
 
-    # td_print_framework_cfg <sys|usr|all>
-        # Prints framework configuration globals via td_print_globals.
-    td_print_framework_cfg() {
 
-        local which="${1:-all}"
-
-        case "$which" in
-            sys|system)
-                td_print_sectionheader --text "System framework settings"
-                td_print_globals sys
-                ;;
-            usr|user)
-                td_print_sectionheader --text "User framework settings"
-                td_print_globals usr
-                ;;
-            all|"")
-                td_print_sectionheader --text "System framework settings"
-                td_print_globals sys
-                td_print
-                td_print_sectionheader --text "User framework settings"
-                td_print_globals usr
-                ;;
-            *)
-                td_print_sectionheader --text "Framework settings"
-                td_print_labeledvalue "ERROR" "Invalid selector: '$which' (use sys|usr|all)"
-                return 2
-                ;;
-        esac
-
-        return 0
-    }
-
-    # td_print_script_cfg <sys|usr|all>
-        # Prints script configuration globals via td_print_globals.
-    td_print_script_cfg() {
-
-    local which="${1:-all}"
-
-    if ! array_has_items TD_SCRIPT_SETTINGS; then
-        return 0
-    fi
-
-    case "$which" in
-        sys|system|usr|user|all|"")
-            td_print_sectionheader --text "Script settings"
-            td_print_globals script
-            ;;
-        *)
-            td_print_sectionheader --text "Script settings"
-            td_print_labeledvalue "ERROR" "Invalid selector: '$which' (use sys|usr|all)"
-            return 2
-            ;;
-    esac
-
-    return 0
-}
 
 # --- ANSI SGR helpers -----------------------------------------------------------
     # Low-level helpers for constructing ANSI Select Graphic Rendition (SGR)

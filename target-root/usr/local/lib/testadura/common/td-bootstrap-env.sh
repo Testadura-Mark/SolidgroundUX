@@ -53,7 +53,7 @@
     TD_LICENSE="Testadura Non-Commercial License (TD-NC) v1.0"
 
 # --- Framework metadata ------------------------------------------------------
-   TD_FRAMEWORK_GLOBALS=(
+    TD_FRAMEWORK_GLOBALS=(
         "system|TD_SYSCFG_DIR|Framework-wide system configuration directory|"
 
         "system|TD_LOGFILE_ENABLED|Enable or disable logfile output|"
@@ -79,6 +79,7 @@
 
     TD_CORE_LIBS=(
         args.sh
+        framework-info.sh
         cfg.sh
         core.sh
         ui.sh
@@ -138,7 +139,7 @@
         TD_COMMON_LIB="$TD_FRAMEWORK_ROOT/usr/local/lib/testadura/common"
         TD_SYSCFG_DIR="$TD_APPLICATION_ROOT/etc/testadura"
         TD_USRCFG_DIR="$TD_USER_HOME/.config/testadura"
-        TD_STATE_DIR="$TD_APPLICATION_ROOT/var/lib/testadura"
+        TD_STATE_DIR="$TD_USER_HOME/.state/testadura"
         TD_STYLE_DIR="$TD_COMMON_LIB/styles"
 
         # logs (paths only)

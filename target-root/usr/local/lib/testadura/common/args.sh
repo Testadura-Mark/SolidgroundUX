@@ -323,15 +323,16 @@
         "help||flag|FLAG_HELP|Show command-line help and exit|"
         "showargs||flag|FLAG_SHOWARGS|Print parsed arguments and exit|"
         "showcfg||flag|FLAG_SHOWCFG|Print configuration values and exit|"
+        "showenv||flag|FLAG_SHOWENV|Print all info (args, cfg, state) and exit|"
         "showstate||flag|FLAG_SHOWSTATE|Print state values and exit|"
         "statereset||flag|FLAG_STATERESET|Reset the state file|"
         "verbose||flag|FLAG_VERBOSE|Enable verbose output|"
-        "version||flag|FLAG_VERSION|Print version information and exit|"
+        "version||flag|FLAG_VERSION|Shows framework version and exit|"
     )
     TD_BUILTIN_EXAMPLES=(
         "  $TD_SCRIPT_NAME --dryrun --verbose --initcfg"
     ) 
-   td_parse_args() {
+    td_parse_args() {
         local source="${1:-both}"
         shift || true
 
@@ -444,7 +445,6 @@
         return 0
     }
 
-
     # td_builtinarg_handler
         # Handle framework builtin arguments after bootstrap and script setup.
         #
@@ -473,7 +473,26 @@
         fi
 
         if (( FLAG_SHOWARGS )); then
-            td_showarguments
+            td_print_args
+            exit 0
+        fi
+
+        if (( FLAG_VERSION )); then
+            td_print_framework_metadata
+            exit 0
+        fi
+
+        
+        if (( FLAG_SHOWCFG )); then
+            td_print_sectionheader --text "Script configuration ($TD_SCRIPT_NAME.cfg)"
+            td_print_cfg TD_SCRIPT_GLOBALS both
+            td_print_sectionheader --border "-" --text "Framework configuration ($TD_FRAMEWORK_CFG_BASENAME)"
+            td_print_cfg TD_FRAMEWORK_GLOBALS both
+            exit 0
+        fi
+
+        if (( FLAG_SHOWENV )); then
+            td_showenvironment
             exit 0
         fi
 
@@ -487,165 +506,8 @@
             fi
         fi
     }
-    # td_showarguments [fw_sel] [script_sel]
-        # fw_sel / script_sel: sys|usr|all  (default: all)
-        #
-        # Shows: script info, framework info, selected cfg sections, arguments, positional args.
-    td_showarguments_new() {
-        
-        local fw_sel="${1:-all}"
-        local sc_sel="${2:-all}"
 
-        td_print
-        td_print_sectionheader --text "Configuration data" --border "="
 
-        # --- Script info --------------------------------------------------------
-        td_print_sectionheader --text "Script info ($RUN_MODE)"
-        td_print_labeledvalue "File"               "$TD_SCRIPT_FILE"
-        td_print_labeledvalue "Script"             "$TD_SCRIPT_NAME"
-        td_print_labeledvalue "Script description" "$TD_SCRIPT_DESC"
-        td_print_labeledvalue "Script dir"         "$TD_SCRIPT_DIR"
-        td_print_labeledvalue "Script version"     "$TD_SCRIPT_VERSION (build $TD_SCRIPT_BUILD)"
-        td_print
 
-        # --- Framework info -----------------------------------------------------
-        td_print_sectionheader --text "Framework info"
-        td_print_labeledvalue "Product"      "$TD_PRODUCT"
-        td_print_labeledvalue "Version"      "$TD_VERSION"
-        td_print_labeledvalue "Release date" "$TD_VERSION_DATE"
-        td_print_labeledvalue "Company"      "$TD_COMPANY"
-        td_print_labeledvalue "Copyright"    "$TD_COPYRIGHT"
-        td_print_labeledvalue "License"      "$TD_LICENSE"
-        td_print
 
-        # --- CFG sections (delegated) ------------------------------------------
-        td_print_framework_cfg "$fw_sel"
-        td_print
 
-        td_print_script_cfg "$sc_sel"
-        td_print
-
-        # --- Arguments / Flags --------------------------------------------------
-        td_print_sectionheader --text "Arguments / Flags"
-
-        local -a args=()
-        if declare -p TD_BUILTIN_ARGS >/dev/null 2>&1; then
-            args+=( "${TD_BUILTIN_ARGS[@]}" )
-        fi
-        if declare -p TD_ARGS_SPEC >/dev/null 2>&1; then
-            args+=( "${TD_ARGS_SPEC[@]}" )
-        fi
-
-        local entry name short type varname help choices
-        local label value
-
-        for entry in "${args[@]}"; do
-            IFS='|' read -r name short type varname help choices <<<"$entry"
-
-            if [[ -n "${short:-}" ]]; then
-                label="--$name (-$short)"
-            else
-                label="--$name"
-            fi
-
-            if [[ -n "${varname:-}" ]]; then
-                value="${varname} = ${!varname-<unset>}"
-            else
-                value="<no var>"
-            fi
-
-            td_print_labeledvalue "$label" "$value"
-        done
-
-        # --- Positional ---------------------------------------------------------
-        if declare -p TD_POSITIONAL >/dev/null 2>&1 && (( ${#TD_POSITIONAL[@]} > 0 )); then
-            td_print
-            td_print_sectionheader --text "Positional arguments"
-            local i
-            for i in "${!TD_POSITIONAL[@]}"; do
-                td_print_labeledvalue "Arg[$i]" "${TD_POSITIONAL[$i]}"
-            done
-        fi
-
-        td_print_sectionheader --border "="
-        td_print
-        return 0
-    }
-
-    td_showarguments() {
-        _borderclr=${TUI_BORDER}
-        td_print
-        td_print_sectionheader --text "Configuration data" --border "=" 
-        td_print_sectionheader --text "Script info ($RUN_MODE)"
-        td_print_labeledvalue "File" "$TD_SCRIPT_FILE"
-        td_print_labeledvalue "Script" "$TD_SCRIPT_NAME"
-        td_print_labeledvalue "Script description" "$TD_SCRIPT_DESC"
-        td_print_labeledvalue "Script dir" "$TD_SCRIPT_DIR"
-        td_print_labeledvalue "Script version" "$TD_SCRIPT_VERSION (build $TD_SCRIPT_BUILD)"
-        td_print
-        
-        td_print_sectionheader --text "Framework info"
-        td_print_labeledvalue "Product"      "$TD_PRODUCT"
-        td_print_labeledvalue "Version"      "$TD_VERSION"
-        td_print_labeledvalue "Release date" "$TD_VERSION_DATE"
-        td_print_labeledvalue "Company"      "$TD_COMPANY"
-        td_print_labeledvalue "Copyright"    "$TD_COPYRIGHT"
-        td_print_labeledvalue "License"      "$TD_LICENSE"
-        td_print
-
-        td_print_sectionheader --text "System framework settings"
-        td_print_globals sys
-        td_print
-
-        td_print_sectionheader --text "User framework settings"
-        td_print_globals usr
-        td_print
-
-        if array_has_items TD_SCRIPT_SETTINGS; then
-            td_print_sectionheader --text "Script settings"
-            td_print_globals script
-            td_print
-        fi
-        
-        td_print_sectionheader --text "Arguments / Flags:"
-
-        # Always include framework builtins
-        if declare -p TD_BUILTIN_ARGS >/dev/null 2>&1; then
-            args+=( "${TD_BUILTIN_ARGS[@]}" )
-        fi
-
-        # Include script args if present
-        if declare -p TD_ARGS_SPEC >/dev/null 2>&1; then
-            args+=( "${TD_ARGS_SPEC[@]}" )
-        fi
-        local entry varname
-        for entry in "${args[@]:-}"; do
-            IFS='|' read -r name short type var help choices <<< "$entry"
-            varname="${var:-}"
-
-            if [[ -n "${short:-}" ]]; then
-                label="--$name (-$short)"
-            else
-                label="--$name"
-            fi
-
-            if [[ -n "$varname" ]]; then
-                value="$varname = ${!varname-<unset>}"
-            else
-                value="<no var>"
-            fi
-
-            td_print_labeledvalue "$label" "$value"
-        done
-
-        if declare -p TD_POSITIONAL >/dev/null 2>&1 && (( ${#TD_POSITIONAL[@]} > 0 )); then
-            td_print_sectionheader --text "Positional arguments:"
-            local i
-            for i in "${!TD_POSITIONAL[@]}"; do
-                td_print_labeledvalue "Arg[$i]" "${TD_POSITIONAL[$i]}"
-            done
-        fi
-
-        td_print_sectionheader --border "=" 
-        td_print
-    }

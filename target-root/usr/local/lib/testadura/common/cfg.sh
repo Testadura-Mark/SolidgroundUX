@@ -103,18 +103,45 @@
         local file="$1" key="$2" val="$3"
         [[ "$key" =~ ^[A-Za-z_][A-Za-z0-9_]*$ ]] || return 1
 
-        mkdir -p "$(dirname "$file")"
+        local dir
+        dir="$(dirname -- "$file")" || return 1
+
+        # Decide who should own the file
+        local uid gid
+        if [[ ${EUID:-0} -eq 0 && -n "${SUDO_UID:-}" && -n "${SUDO_GID:-}" ]]; then
+            uid="$SUDO_UID"
+            gid="$SUDO_GID"
+        else
+            uid="$(id -u)"
+            gid="$(id -g)"
+        fi
+
+        # Ensure directory exists (state dir should typically be private)
+        mkdir -p -- "$dir" || return 1
 
         local tmp
-        tmp="$(mktemp)"
+        tmp="$(mktemp)" || return 1
 
         if [[ -f "$file" ]]; then
-            # keep all lines except existing key=
             grep -v -E "^[[:space:]]*${key}[[:space:]]*=" "$file" > "$tmp" || true
         fi
 
-        printf "%s=%s\n" "$key" "$val" >> "$tmp"
-        mv -f "$tmp" "$file"
+        printf "%s=%s\n" "$key" "$val" >> "$tmp" || { rm -f -- "$tmp"; return 1; }
+
+        if [[ ${EUID:-0} -eq 0 && -n "${SUDO_UID:-}" && -n "${SUDO_GID:-}" ]]; then
+            # Create final file with correct owner/group/mode immediately
+            install -o "$uid" -g "$gid" -m 600 -T -- "$tmp" "$file" || { rm -f -- "$tmp"; return 1; }
+            # Also ensure directory is owned by the user (optional but usually desired)
+            chown "$uid:$gid" -- "$dir" || true
+            chmod 700 -- "$dir" || true
+        else
+            # Normal user path
+            install -m 600 -T -- "$tmp" "$file" || { rm -f -- "$tmp"; return 1; }
+            chmod 700 -- "$dir" || true
+        fi
+
+        rm -f -- "$tmp"
+        return 0
     }
 
     # __td_kv_unset
@@ -441,7 +468,7 @@
         # Usage: td_state_set KEY VALUE
     td_state_set() {
         local key="$1" val="$2"
-        saydebug "Setting state key '$key' to '$val' in file ${TD_STATE_FILE}"
+        saydebug '%s\n' "Setting state key '$key' to '$val' in file ${TD_STATE_FILE}"
 
         __td_kv_set "$TD_STATE_FILE" "$key" "$val"
         printf -v "$key" '%s' "$val"
