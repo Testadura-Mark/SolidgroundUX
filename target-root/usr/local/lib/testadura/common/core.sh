@@ -164,6 +164,32 @@
       printf '%s' "$s"
   }
 
+  # __td_hash_sha256_file
+    #   Print SHA256 hash of a file to stdout.
+    #   Returns non-zero if no hashing tool is available.
+  td_hash_sha256_file() {
+      local file="$1"
+
+      [[ -r "$file" ]] || return 2
+
+      if command -v sha256sum >/dev/null 2>&1; then
+          # sha256sum prints: "<hash>  filename"
+          local out
+          out="$(sha256sum "$file")" || return 3
+          printf '%s\n' "${out%% *}"
+          return 0
+      fi
+
+      if command -v shasum >/dev/null 2>&1; then
+          local out
+          out="$(shasum -a 256 "$file")" || return 3
+          printf '%s\n' "${out%% *}"
+          return 0
+      fi
+
+      return 127
+  }
+
 # --- Systeminfo ------------------------------------------------------------------
   get_primary_nic() {
       ip route show default 2>/dev/null | awk 'NR==1 {print $5}'

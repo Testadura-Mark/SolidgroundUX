@@ -325,16 +325,18 @@
         # ------------------------------------------------------------------------------
    
     TD_BUILTIN_ARGS=(
-        "dryrun||flag|FLAG_DRYRUN|Emulate only; do not perform actions|"
+        "dryrun|D|flag|FLAG_DRYRUN|Emulate only; do not perform actions|"
         'debug||flag|FLAG_DEBUG|Show debug messages'
-        "help||flag|FLAG_HELP|Show command-line help and exit|"
-        "showargs||flag|FLAG_SHOWARGS|Print parsed arguments and exit|"
-        "showcfg||flag|FLAG_SHOWCFG|Print configuration values and exit|"
-        "showenv||flag|FLAG_SHOWENV|Print all info (args, cfg, state) and exit|"
-        "showmeta||flag|FLAG_SHOWMETA|Shows framework and script metadata and exit|"
-        "showstate||flag|FLAG_SHOWSTATE|Print state values and exit|"
-        "statereset||flag|FLAG_STATERESET|Reset the state file|"
-        "verbose||flag|FLAG_VERBOSE|Enable verbose output|"
+        "help|H|flag|FLAG_HELP|Show command-line help and exit|"
+        "showargs|A|flag|FLAG_SHOWARGS|Print parsed arguments and exit|"
+        "showcfg|C|flag|FLAG_SHOWCFG|Print configuration values and exit|"
+        "showenv|E|flag|FLAG_SHOWENV|Print all info (args, cfg, state) and exit|"
+        "showmeta|M|flag|FLAG_SHOWMETA|Shows framework and script metadata and exit|"
+        "showstate|S|flag|FLAG_SHOWSTATE|Print state values and exit|"
+        "showlicense|L|flag|FLAG_SHOWLICENSE|Show framework license and exit|"
+        "showreadme||flag|FLAG_SHOWREADME|Show framework README and exit|"
+        "statereset|R|flag|FLAG_STATERESET|Reset the state file|"
+        "verbose|V|flag|FLAG_VERBOSE|Enable verbose output|"
     )
     TD_BUILTIN_EXAMPLES=(
         "  $TD_SCRIPT_NAME --dryrun --verbose --initcfg"
@@ -506,6 +508,18 @@
 
         if (( FLAG_SHOWENV )); then
             td_showenvironment
+            exit 0
+        fi
+
+        if (( FLAG_SHOWLICENSE )); then
+            saydebug "Showing license as requested"
+            td_print_license
+            exit 0
+        fi
+
+        if (( FLAG_SHOWREADME )); then
+            saydebug "Showing README as requested"
+            td_print_readme
             exit 0
         fi
 

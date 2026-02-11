@@ -250,6 +250,36 @@
         }
     }
 
+    td_print_license() {
+        
+        local license_file="$TD_DOCS_DIR/$TD_LICENSE_FILE"
+        local status_text="${TUI_INVALID}NOT ACCEPTED${RESET}"
+        if (( TD_LICENSE_ACCEPTED )); then
+            status_text="${TUI_VALID}[ACCEPTED]${RESET}"
+        fi
+
+        saydebug "td_print_license: license status is: %s" "$status_text"
+
+        saydebug "td_print_license: looking for license file at: " "$license_file"
+        if [[ -r "$license_file" ]]; then
+            saydebug "td_print_license: found license file, printing"
+            td_print
+            td_print_sectionheader --text "$TD_PRODUCT license $status_text" --padleft "$__section_indent"
+            td_print
+            td_print_file "$license_file"
+            td_print
+            td_print_sectionheader --border "-"
+        else
+            saydebug "td_print_license: license file not found or not readable: %s" "$license_file"
+        fi
+    }
+
+    td_print_readme() {
+        local license_file="$TD_DOCS_DIR/README.md"
+        if [[ -r "$license_file" ]]; then
+            td_print_file "$license_file"
+        fi
+    }
     # td_showenvironment
         #   Print a full diagnostic snapshot of the current script/framework context.
         #
@@ -266,7 +296,6 @@
         # Returns:
         #   0 always (display function; does not enforce state).
     td_showenvironment() {
-        
         td_print_titlebar    
         td_print
 

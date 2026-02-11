@@ -51,11 +51,14 @@
     TD_COMPANY="Testadura Consultancy"
     TD_COPYRIGHT="© 2025 Mark Fieten — Testadura Consultancy"
     TD_LICENSE="Testadura Non-Commercial License (TD-NC) v1.0"
+    TD_LICENSE_FILE="LICENSE"
+    TD_LICENSE_ACCEPTED=0
+    TD_README_FILE="README.md"
 
 # --- Framework metadata ------------------------------------------------------
     TD_FRAMEWORK_GLOBALS=(
         "system|TD_SYSCFG_DIR|Framework-wide system configuration directory|"
-
+        "system|TD_DOCS_DIR|Framework-wide documentation directory|"
         "system|TD_LOGFILE_ENABLED|Enable or disable logfile output|"
         "both|TD_CONSOLE_MSGTYPES|Console message types to display|"          # <- both
         "system|TD_LOG_PATH|Primary log file or directory path|"
@@ -141,6 +144,7 @@
         TD_USRCFG_DIR="$TD_USER_HOME/.config/testadura"
         TD_STATE_DIR="$TD_USER_HOME/.state/testadura"
         TD_STYLE_DIR="$TD_COMMON_LIB/styles"
+        TD_DOCS_DIR="$TD_FRAMEWORK_ROOT/usr/local/share/solidgroundux"   # Optional, may not exist
 
         # logs (paths only)
         TD_LOG_PATH="$TD_FRAMEWORK_ROOT/var/log/testadura/solidgroundux.log"

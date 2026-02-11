@@ -635,6 +635,72 @@
         printf "%b\n" "${textclr}${line}${RESET}"
     }
 
+    # td_print_file
+        #   Print a text file to stdout (paged when interactive).
+        #   - If *.md, tries to render using an available markdown viewer.
+        #   - Falls back to plain view (cat/less).
+    td_print_file() {
+        saydebug "td_print_file: called with args: %s" "$*"
+        local file="$1"
+        
+        [[ -n "${file:-}" ]] || { printf "ERROR: td_print_file: missing file\n" >&2; return 2; }
+        [[ -r "$file" ]]      || { printf "ERROR: td_print_file: not readable: %s\n" "$file" >&2; return 2; }
+
+        
+        local ext="${file##*.}"
+        local is_tty=0
+        [[ -t 1 ]] && is_tty=1
+
+        # Pager (only if interactive)
+        local pager_cmd=()
+        if (( is_tty )); then
+            if command -v less >/dev/null 2>&1; then
+                pager_cmd=( less -FRSX )
+            fi
+        fi
+
+        # Markdown render if possible
+        if [[ "${ext,,}" == "md" ]]; then
+            if command -v glow >/dev/null 2>&1; then
+                # glow pages itself; use -p for pager mode
+                glow -p "$file"
+                return $?
+            fi
+
+            if command -v mdcat >/dev/null 2>&1; then
+                if (( is_tty )) && ((${#pager_cmd[@]})); then
+                    mdcat "$file" | "${pager_cmd[@]}"
+                else
+                    mdcat "$file"
+                fi
+                return $?
+            fi
+
+            if command -v bat >/dev/null 2>&1; then
+                # bat handles paging/highlighting nicely
+                bat --language=md --style=plain --paging=auto "$file"
+                return $?
+            fi
+
+            if command -v pandoc >/dev/null 2>&1; then
+                # Render to plain text
+                if (( is_tty )) && ((${#pager_cmd[@]})); then
+                    pandoc -t plain "$file" | "${pager_cmd[@]}"
+                else
+                    pandoc -t plain "$file"
+                fi
+                return $?
+            fi
+        fi
+
+        # Plain text fallback
+        if (( is_tty )) && ((${#pager_cmd[@]})); then
+            "${pager_cmd[@]}" "$file"
+        else
+            cat -- "$file"
+        fi
+    }
+
 # --- ANSI SGR helpers -----------------------------------------------------------
     # Low-level helpers for constructing ANSI Select Graphic Rendition (SGR)
     # escape sequences in a composable and declarative way.

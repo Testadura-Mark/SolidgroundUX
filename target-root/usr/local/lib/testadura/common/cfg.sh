@@ -510,7 +510,7 @@
             return 1
         }   
 
-        saydebug '%s\n' "Setting state key '$key' to '$val' in file ${TD_STATE_FILE}"
+        saydebug "Setting state key '$key' to '$val' in file ${TD_STATE_FILE}\n"
 
         __td_kv_set "$TD_STATE_FILE" "$key" "$val"
         printf -v "$key" '%s' "$val"
@@ -536,7 +536,7 @@
         # Reset TD_STATE_FILE to an empty/default file (implementation-defined).
     td_state_reset() {
         [[ -n "$TD_STATE_FILE" ]] || return 0
-        saydebug "Deleting statefile %s" "$TD_STATE_FILE"
+        saydebug "Deleting statefile $TD_STATE_FILE"
         __td_kv_reset_file "$TD_STATE_FILE"
     }
 

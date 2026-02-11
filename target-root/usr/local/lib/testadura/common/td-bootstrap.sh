@@ -161,6 +161,62 @@ TD_BOOTSTRAP_LOADED=1
         done
     }
 
+    td_check_license() {
+        local license_file="$TD_DOCS_DIR/$TD_LICENSE_FILE"
+        local accepted_file="$TD_STATE_DIR/$TD_LICENSE_FILE.accepted"
+        local isaccepted=0
+        local wasaccepted=0
+        local current_hash
+
+        if ! current_hash="$(td_hash_sha256_file "$license_file")"; then
+            saywarning "td_check_license: could not compute hash"
+            current_hash=""
+        fi
+
+        if [[ -r "$accepted_file" ]]; then
+
+            local stored_hash
+            stored_hash="$(cat "$accepted_file" 2>/dev/null)"
+
+            if [[ "$stored_hash" == "$current_hash" ]]; then
+                sayinfo "td_check_license: accepted state matches current license hash"
+                isaccepted=1
+            else
+                sayinfo "td_check_license: accepted state hash does NOT match current license hash"
+            fi
+        else
+            sayinfo "td_check_license: no accepted state file found at: $accepted_file"
+        fi
+
+        if (( isaccepted == 0 )); then
+            local question_text
+            if (( ${wasaccepted:-0} == 1 )); then
+                question_text="The license has been updated since you last accepted it. Do you accept the new license terms?"
+            else
+                question_text="Do you accept these license terms? \n (You must accept to use this software.)"
+            fi
+
+            td_print_license 
+
+            if ask_yesno "$question_text"; then
+                echo "$current_hash" > "$accepted_file"
+            else
+                saywarning "Cancelled by user."
+                exit 0
+            fi
+                       
+            sayinfo "td_check_license: license not accepted; prompting user"
+        fi
+
+        sayinfo "License acceptance status: $(
+            [[ $isaccepted -eq 1 ]] \
+            && echo "${TUI_VALID}ACCEPTED${RESET}" \
+            || echo "${TUI_INVALID}NOT ACCEPTED${RESET}"
+        )"
+
+        TD_LICENSE_ACCEPTED=$isaccepted
+    }
+
     # __init_bootstrap
         # Initialize the SolidgroundUX bootstrap environment.
         #
@@ -209,8 +265,7 @@ TD_BOOTSTRAP_LOADED=1
 
         td_load_bootstrap_cfg
         td_rebase_directories
-        td_rebase_framework_cfg_paths        
-
+        td_rebase_framework_cfg_paths   
     }
 
     td_load_ui_style() {
@@ -334,10 +389,6 @@ TD_BOOTSTRAP_LOADED=1
      
         saydebug "Applying options"
         # Options
-            # If you want ui, init after libs (unless ui_init is dependency-free)
-            if (( exe_ui )); then
-                ui_init || __boot_fail "ui_init failed" $?
-            fi
 
             # Root checks (after libs so need_root exists)
             if (( exe_root == 1 )); then
@@ -347,6 +398,9 @@ TD_BOOTSTRAP_LOADED=1
             if (( exe_root == 2 )); then
                 cannot_root "${__td_script_args[@]}" || __boot_fail "Failed to enable cannot_root" $?
             fi
+            
+            # Now the root/non-root debate has been settled, check license acceptance.
+            td_check_license || __boot_fail "License acceptance check failed" $?
             
             # Now that we know we won't re-exec, continue with the remainder
             TD_BOOTSTRAP_REST=( "${__td_after_builtins[@]}" )
