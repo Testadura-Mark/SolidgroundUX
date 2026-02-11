@@ -114,7 +114,7 @@
         local value=""
 
         local sep=":"
-        local width=22
+        local width=25
         local pad=0
         local labelclr="${TUI_LABEL}"
         local valueclr="${TUI_VALUE}"
@@ -178,7 +178,6 @@
             "$sep" \
             "${valueclr}${value}${RESET}"
     }
-
 
     # td_print_fill
         # Print one line with left/right content separated by a fill region.
@@ -470,7 +469,7 @@
         local textclr="${TUI_TEXT:-}"
         local wrap=0
         local wrap_explicit=0
-        local pad=4
+        local padleft=0
         local rightmargin=0
         local justify="L"   # L = left, C = center, R = right
         local maxwidth=80
@@ -482,7 +481,7 @@
                 --textclr)      textclr="$2"; shift 2 ;;
                 --justify)      justify="${2^^}"; shift 2 ;;
                 --wrap)         wrap="$2"; wrap_explicit=1; shift 2 ;;
-                --pad)          pad="$2"; shift 2 ;;
+                --padleft)      padleft="$2"; shift 2 ;;
                 --rightmargin)  rightmargin="$2"; shift 2 ;;
                 --maxwidth)     maxwidth="$2"; shift 2 ;;
                 --) shift; break ;;
@@ -500,12 +499,12 @@
         fi
 
         # --- Safety defaults ------------------------------------------------------
-        (( pad < 0 )) && pad=0
+        (( padleft < 0 )) && padleft=0
         (( rightmargin < 0 )) && rightmargin=0
         (( maxwidth < 1 )) && maxwidth=80
 
         # --- Available width for auto-wrap decision -------------------------------
-        local avail=$(( maxwidth - (pad * 2) - rightmargin ))
+        local avail=$(( maxwidth - (padleft * 2) - rightmargin ))
         (( avail < 1 )) && avail=1
 
         # --- Auto-wrap if not explicitly specified --------------------------------
@@ -522,7 +521,7 @@
                 td_print_single \
                     --text "$line" \
                     --textclr "$textclr" \
-                    --pad "$pad" \
+                    --padleft "$padleft" \
                     --justify "$justify" \
                     --maxwidth "$mw_eff"
             done < <(td_wrap_words --width "$avail" --text "$text")
@@ -530,7 +529,7 @@
             td_print_single \
                 --text "$text" \
                 --textclr "$textclr" \
-                --pad "$pad" \
+                --padleft "$padleft" \
                 --justify "$justify" \
                 --maxwidth "$maxwidth"
         fi
@@ -572,7 +571,7 @@
     td_print_single() {
         local text=""
         local textclr="${TUI_TEXT:-}"
-        local pad=4
+        local pad=0
         local justify="L"
         local maxwidth=80
 
@@ -635,8 +634,6 @@
 
         printf "%b\n" "${textclr}${line}${RESET}"
     }
-
-
 
 # --- ANSI SGR helpers -----------------------------------------------------------
     # Low-level helpers for constructing ANSI Select Graphic Rendition (SGR)

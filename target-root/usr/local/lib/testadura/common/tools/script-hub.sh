@@ -510,7 +510,7 @@ set -euo pipefail
                     if td_menu_is_disabled "$flags"; then
                         td_print_fill --left "${key}) ${label}" --leftclr "$TUI_DISABLED" --padleft "$_tpad"
                     else
-                        td_print --text "${key}) ${label}" --pad "$_tpad"
+                        td_print --text "${key}) ${label}" --padleft "$_tpad"
                     fi
                 done
                 if [[ "$g" == "Run modes" && "${key^^}" == "X" ]]; then

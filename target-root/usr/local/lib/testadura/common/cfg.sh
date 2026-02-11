@@ -197,6 +197,41 @@
         [[ -n "$file" && -n "$key" ]] || return 2
         grep -q -E "^${key}=" -- "$file" 2>/dev/null
     }
+
+    # --- internal: list key|value pairs from KEY=VALUE file ------------------------
+        # __td_kv_list_keys
+        #   Emit all KEY=VALUE pairs as 'key|value' lines.
+        #   - Ignores blank lines and comments.
+        #   - Preserves empty values.
+        #   - Order is preserved.
+        #
+        # Usage:
+        #   __td_kv_list_keys FILE
+    __td_kv_list_keys() {
+        local file="$1"
+        [[ -r "$file" ]] || return 1
+
+        local line key val
+
+        while IFS= read -r line || [[ -n "$line" ]]; do
+            # skip blanks and comments
+            [[ -z "$line" || "$line" =~ ^[[:space:]]*# ]] && continue
+
+            # split on first '=' only
+            key="${line%%=*}"
+            val="${line#*=}"
+
+            # trim surrounding whitespace from key
+            key="${key#"${key%%[![:space:]]*}"}"
+            key="${key%"${key##*[![:space:]]}"}"
+
+            # basic identifier sanity (optional but recommended)
+            [[ "$key" =~ ^[A-Za-z_][A-Za-z0-9_]*$ ]] || continue
+
+            printf '%s|%s\n' "$key" "$val"
+        done < "$file"
+    }
+
 # --- public: config --------------------------------------------------------------
     # --- td_cfg_load -----------------------------------------------------------------
         # Load TD_CFG_FILE (KEY=VALUE) into the current shell.
@@ -454,7 +489,9 @@
         return 0
     }
 
-    
+    __td_is_ident() {
+        [[ "${1:-}" =~ ^[A-Za-z_][A-Za-z0-9_]*$ ]]
+    }
 # --- public: state ---------------------------------------------------------------
     # --- td_state_load -----------------------------------------------------------
         # Load TD_STATE_FILE (KEY=VALUE) into the current shell.
@@ -468,6 +505,11 @@
         # Usage: td_state_set KEY VALUE
     td_state_set() {
         local key="$1" val="$2"
+        __td_is_ident "$key" || {
+            saywarning "Skipping invalid state key: '$key'"
+            return 1
+        }   
+
         saydebug '%s\n' "Setting state key '$key' to '$val' in file ${TD_STATE_FILE}"
 
         __td_kv_set "$TD_STATE_FILE" "$key" "$val"
@@ -479,7 +521,13 @@
         # Usage: td_state_unset KEY
     td_state_unset() {
         local key="$1"
+        __td_is_ident "$key" || {
+            saywarning "Skipping invalid state key: '$key'"
+            return 1
+        }   
+
         saydebug "Unsetting state key '$key' in file ${TD_STATE_FILE}"
+
         __td_kv_unset "$TD_STATE_FILE" "$key"
         unset "$key" || true
     }
@@ -497,6 +545,10 @@
         # Returns 0 if found, 1 if missing.
     td_state_get() {
         local key="$1"
+        __td_is_ident "$key" || {
+                saywarning "Skipping invalid state key: '$key'"
+                continue
+        }
         __td_kv_get "$TD_STATE_FILE" "$key"
     }
 
@@ -504,6 +556,11 @@
         # Return 0 if KEY exists in TD_STATE_FILE (even if empty).
     td_state_has() {
         local key="$1"
+        __td_is_ident "$key" || {
+                saywarning "Skipping invalid state key: '$key'"
+                continue
+        }
+        
         __td_kv_has "$TD_STATE_FILE" "$key"
     }
 
@@ -512,6 +569,10 @@
     td_state_save_keys() {
         local key val
         for key in "$@"; do
+            __td_is_ident "$key" || {
+                saywarning "Skipping invalid state key: '$key'"
+                continue
+            }
             val="${!key}"
             td_state_set "$key" "$val"
         done
@@ -523,32 +584,21 @@
     td_state_load_keys() {
         local key val
         for key in "$@"; do
+             __td_is_ident "$key" || {
+                saywarning "Skipping invalid state key: '$key'"
+                continue
+            }
+
             if val="$(td_state_get "$key")"; then
                 printf -v "$key" '%s' "$val"
             fi
         done
     }
 
-    # --- td_state_show_keys ----------------------------------------------------------
-        # Show state keys and their values (reads from file).
         # Usage: td_state_show_keys KEY1 [KEY2 ...]
-    td_state_show_keys() {
-        local key val
-
-        td_print_sectionheader --text "STATE" --pad 2 --padend 1
-
-        for key in "$@"; do
-            if td_state_has "$key"; then
-                val="$(td_state_get "$key")" || val=""
-                if [[ -z "$val" ]]; then
-                    td_print_fill --left "$key" --right '""' --pad 2
-                else
-                    td_print_fill --left "$key" --right "$val" --pad 2
-                fi
-            else
-                td_print_fill --left "$key" --right "<unset>" --pad 2
-            fi
-        done
-
-        td_print
+    # --- td_state_list_keys ---------------------------------------------------------
+    # List keys currently present in TD_STATE_FILE (one per line).
+    td_state_list_keys() {
+        [[ -r "${TD_STATE_FILE:-}" ]] || return 0
+        __td_kv_list_keys "$TD_STATE_FILE"
     }

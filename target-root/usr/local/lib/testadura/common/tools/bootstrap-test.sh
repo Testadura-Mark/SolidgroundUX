@@ -108,6 +108,7 @@ set -euo pipefail
     )
 
     TD_SCRIPT_EXAMPLES=(
+        "$TD_SCRIPT_NAME --load --verbose  #Some example usage"
     ) 
     
     TD_SCRIPT_GLOBALS=(
@@ -136,7 +137,11 @@ set -euo pipefail
         : "${TD_COMMON_STRING:=common-default}"
         : "${TD_COMMON_INT:=0}"
         : "${TD_COMMON_DATE:=1970-01-01}"
-# --- main -----------------------------------------------------------------------
+
+        : "${STATE_VAR1=State VAR1}"
+        : "${STATE_VAR2=4}"
+        : "${STATE_VAR3=2025-01-01}"
+ # --- main -----------------------------------------------------------------------
     # main MUST BE LAST function in script
         # Main entry point for the executable script.
         #
@@ -173,9 +178,7 @@ set -euo pipefail
                 td_print_titlebar
 
         # -- Main script logic
-        STATE_VAR1="State VAR1"
-        STATE_VAR2=4
-        STATE_VAR3=2025-01-01
+        saydebug "Setting state vars"
         td_state_set "STATE_VAR1" "$STATE_VAR1"
         td_state_set "STATE_VAR2" "$STATE_VAR2"
         td_state_set "STATE_VAR3" "$STATE_VAR3"

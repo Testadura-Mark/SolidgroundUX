@@ -173,6 +173,9 @@
         td_print_labeledvalue "$name" "$value"
     }
 # --- Public API ------------------------------------------------------------------
+    __header_indent=2
+    __text_indent=3
+    
     # td_showhelp
         # Generate and print command-line help text derived from TD_ARGS_SPEC, with an
         # optional builtins section derived from TD_BUILTIN_ARGS.
@@ -191,12 +194,15 @@
     td_showhelp() {
         local include_builtins="${1:-1}"
         local script_name="${TD_SCRIPT_NAME:-$(basename "${TD_SCRIPT_FILE:-$0}")}"
+        local spaces="   "
 
-        td_print_sectionheader --text $script_name
-        td_print "Usage: \n\t $script_name [options] [--] [args...]\n"
-        td_print "Description:\n\t${TD_SCRIPT_DESC:-No description available}\n"
+        td_print_sectionheader --text "$script_name" 
+        td_print "${spaces}Usage:" 
+        td_print "\t$script_name [options] [--] [args...]\n" 
+        td_print "${spaces}Description:" 
+        td_print "\t${TD_SCRIPT_DESC:-No description available}\n" 
 
-        td_print_sectionheader --text "Script options:"
+        td_print_sectionheader --text "Script options:" --padleft "$__header_indent"
 
         if declare -p TD_ARGS_SPEC >/dev/null 2>&1; then
             local spec opt meta
@@ -210,7 +216,7 @@
                 if [[ -n "${__td_short:-}" ]]; then
                     opt="-$__td_short, --$__td_name"
                 else
-                    opt="    --$__td_name"
+                    opt="--$__td_name"
                 fi
 
                 meta=""
@@ -220,14 +226,14 @@
                     flag)  meta="" ;;
                 esac
 
-                printf '  %-20s %s\n' "$opt$meta" "${__td_help:-}"
+                td_print_labeledvalue "$opt$meta" "${__td_help:-}" --pad "$__text_indent" --textclr "$RESET" --valueclr "$RESET" --width 18
             done
         fi
 
         if (( include_builtins )); then
             if declare -p TD_BUILTIN_ARGS >/dev/null 2>&1; then
                 td_print
-                td_print_sectionheader --text "Builtins options:"
+                td_print_sectionheader --text "Builtin options:" --padleft "$__header_indent"
 
                 local spec opt meta
 
@@ -245,7 +251,7 @@
                     if [[ -n "${__td_short:-}" ]]; then
                         opt="-$__td_short, --$__td_name"
                     else
-                        opt="    --$__td_name"
+                        opt="--$__td_name"
                     fi
 
                     meta=""
@@ -255,23 +261,24 @@
                         flag)  meta="" ;;
                     esac
 
-                    printf '  %-20s %s\n' "$opt$meta" "${__td_help:-}"
+                    td_print_labeledvalue "$opt$meta" "${__td_help:-}" --pad "$__text_indent" --textclr "$RESET" --valueclr "$RESET" --width 18
                 done
             fi
         fi
 
         if declare -p TD_SCRIPT_EXAMPLES >/dev/null 2>&1; then
             td_print
-            td_print_sectionheader "Examples:"
+            td_print_sectionheader "Examples:" --padleft "$__header_indent"
             local ex
             for ex in "${TD_SCRIPT_EXAMPLES[@]}"; do
-                printf '  %s\n' "$ex"
+                td_print "$spaces$ex"
             done
         fi
         
         td_print
         td_print_sectionheader
     }
+
 
     # td_parse_args
         # Parse command-line arguments according to TD_ARGS_SPEC.
@@ -324,10 +331,10 @@
         "showargs||flag|FLAG_SHOWARGS|Print parsed arguments and exit|"
         "showcfg||flag|FLAG_SHOWCFG|Print configuration values and exit|"
         "showenv||flag|FLAG_SHOWENV|Print all info (args, cfg, state) and exit|"
+        "showmeta||flag|FLAG_SHOWMETA|Shows framework and script metadata and exit|"
         "showstate||flag|FLAG_SHOWSTATE|Print state values and exit|"
         "statereset||flag|FLAG_STATERESET|Reset the state file|"
         "verbose||flag|FLAG_VERBOSE|Enable verbose output|"
-        "version||flag|FLAG_VERSION|Shows framework version and exit|"
     )
     TD_BUILTIN_EXAMPLES=(
         "  $TD_SCRIPT_NAME --dryrun --verbose --initcfg"
@@ -477,17 +484,23 @@
             exit 0
         fi
 
-        if (( FLAG_VERSION )); then
+        if (( FLAG_SHOWMETA )); then
+            td_print_metadata
+            td_print
             td_print_framework_metadata
             exit 0
         fi
-
         
         if (( FLAG_SHOWCFG )); then
             td_print_sectionheader --text "Script configuration ($TD_SCRIPT_NAME.cfg)"
             td_print_cfg TD_SCRIPT_GLOBALS both
             td_print_sectionheader --border "-" --text "Framework configuration ($TD_FRAMEWORK_CFG_BASENAME)"
             td_print_cfg TD_FRAMEWORK_GLOBALS both
+            exit 0
+        fi
+
+        if (( FLAG_SHOWSTATE )); then
+            td_print_state
             exit 0
         fi
 

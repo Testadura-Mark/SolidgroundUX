@@ -130,30 +130,30 @@ set -euo pipefail
     
         td_print_titlebar --text "Clone configuration menu" --textclr "$_titlecolor"
 
-        td_print_sectionheader --text "Core setup" --padend 1 --pad "$_pad" --prefix 2
-        td_print --text "1) Setup Machine ID" --pad "$_tpad" 
-        td_print --text "2) Configure Hostname and Network" --pad "$_tpad"
-        td_print --text "3) Enable SSH and set authorized keys" --pad "$_tpad"
+        td_print_sectionheader --text "Core setup" --padend 1 --padleft "$_pad" --prefix 2
+        td_print --text "1) Setup Machine ID" --padleft "$_tpad" 
+        td_print --text "2) Configure Hostname and Network" --padleft "$_tpad"
+        td_print --text "3) Enable SSH and set authorized keys" --padleft "$_tpad"
         td_print
 
-        td_print_sectionheader --text "Operations" --textclr "$_itemcolor" --padend 0 --pad "$_pad"
-        td_print --text "4) Download and Install SolidgroundUX" --pad "$_tpad"
-        td_print --text "5) Join Domain" --pad "$_tpad"
+        td_print_sectionheader --text "Operations" --textclr "$_itemcolor" --padend 0 --padleft "$_pad"
+        td_print --text "4) Download and Install SolidgroundUX" --padleft "$_tpad"
+        td_print --text "5) Join Domain" --padleft "$_tpad"
         td_print_fill --left "6) Prepare template for next clone" --padleft "$_tpad"\
                       --right "State Altering" --rightclr "$_rcolor"
         td_print
 
-        td_print_sectionheader --text "Server roles" --textclr "$_itemcolor" --padend 0 --pad "$_pad"
-        td_print --text "7) Provision Samba AD DC" --pad "$_tpad"
-        td_print --text "8) Provision Samba SMB Fileserver" --pad "$_tpad"
+        td_print_sectionheader --text "Server roles" --textclr "$_itemcolor" --padend 0 --padleft "$_pad"
+        td_print --text "7) Provision Samba AD DC" --padleft "$_tpad"
+        td_print --text "8) Provision Samba SMB Fileserver" --padleft "$_tpad"
         td_print
 
-        td_print_sectionheader --text "Run modes" --textclr "$_itemcolor" --padend 0 --pad "$_pad"
-        td_print --text "V) Toggle Verbose mode ($_verb)" --pad "$_tpad"
-        td_print --text "D) Toggle Dry-Run mode ($_dry)" --pad "$_tpad"
+        td_print_sectionheader --text "Run modes" --textclr "$_itemcolor" --padend 0 --padleft "$_pad"
+        td_print --text "V) Toggle Verbose mode ($_verb)" --padleft "$_tpad"
+        td_print --text "D) Toggle Dry-Run mode ($_dry)" --padleft "$_tpad"
         td_print
 
-        td_print --text "X) Exit" --pad "$_tpad"
+        td_print --text "X) Exit" --padleft "$_tpad"
         td_print_sectionheader --borderclr $_barcolor
     }
 
