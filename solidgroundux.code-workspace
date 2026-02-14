@@ -11,6 +11,9 @@
 		},
 		{
 			"path": "../../.state/testadura"
+		},
+		{
+			"path": "../../../../usr/local/share/solidgroundux"
 		}
 	],
 	"settings": {

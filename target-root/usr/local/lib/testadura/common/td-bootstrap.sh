@@ -31,17 +31,25 @@
 #   - Configuration loading (handled by cfg/state layer)
 #   - Script execution or control flow (entry scripts/applications own this)
 # =================================================================================
+# --- Library guard ----------------------------------------------------------------
+    # Derive a unique per-library guard variable from the filename:
+    #   ui.sh        -> TD_UI_LOADED
+    #   ui-sgr.sh    -> TD_UI_SGR_LOADED
+    #   foo-bar.sh   -> TD_FOO_BAR_LOADED
+    __lib_base="$(basename "${BASH_SOURCE[0]}")"
+    __lib_base="${__lib_base%.sh}"
+    __lib_base="${__lib_base//-/_}"
+    __lib_guard="TD_${__lib_base^^}_LOADED"
 
-# --- Validate use ----------------------------------------------------------------
-# Refuse to execute (library only)
-[[ "${BASH_SOURCE[0]}" != "$0" ]] || {
-  echo "This is a library; source it, do not execute it: ${BASH_SOURCE[0]}" >&2
-  exit 2
-}
+    # Refuse to execute (library only)
+    [[ "${BASH_SOURCE[0]}" != "$0" ]] || {
+        echo "This is a library; source it, do not execute it: ${BASH_SOURCE[0]}" >&2
+        exit 2
+    }
 
-# Load guard
-[[ -n "${TD_BOOTSTRAP_LOADED:-}" ]] && return 0
-TD_BOOTSTRAP_LOADED=1
+    # Load guard (safe under set -u)
+    [[ -n "${!__lib_guard-}" ]] && return 0
+    printf -v "$__lib_guard" '1'
 
 # Minimal colors
     MSG_CLR_INFO=$'\e[38;5;250m'
@@ -138,7 +146,6 @@ TD_BOOTSTRAP_LOADED=1
             #   - Bootstrap parsing is intentionally permissive to allow scripts to define
             #     their own argument syntax without interference.
     __parse_bootstrap_args() {
-        exe_ui=0
         exe_libs=1
         exe_state=0
         exe_cfg=0
@@ -149,7 +156,6 @@ TD_BOOTSTRAP_LOADED=1
 
         while [[ $# -gt 0 ]]; do
             case "$1" in
-                --ui)        exe_ui=1; shift ;;
                 --state)     exe_state=1; shift ;;
                 --needroot)  exe_root=1; shift ;;
                 --cannotroot)exe_root=2; shift ;;

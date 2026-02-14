@@ -42,17 +42,26 @@
 #   - Rich form UIs (menus, curses layouts, etc.)
 #   - Centralized logging/formatting policy beyond minimal prompting
 # ==================================================================================
+# --- Library guard ----------------------------------------------------------------
+    # Derive a unique per-library guard variable from the filename:
+    #   ui.sh        -> TD_UI_LOADED
+    #   ui-sgr.sh    -> TD_UI_SGR_LOADED
+    #   foo-bar.sh   -> TD_FOO_BAR_LOADED
+    __lib_base="$(basename "${BASH_SOURCE[0]}")"
+    __lib_base="${__lib_base%.sh}"
+    __lib_base="${__lib_base//-/_}"
+    __lib_guard="TD_${__lib_base^^}_LOADED"
 
-# --- Validate use ----------------------------------------------------------------
     # Refuse to execute (library only)
     [[ "${BASH_SOURCE[0]}" != "$0" ]] || {
         echo "This is a library; source it, do not execute it: ${BASH_SOURCE[0]}" >&2
         exit 2
     }
 
-    # Load guard
-    [[ -n "${TD_UIASK_LOADED:-}" ]] && return 0
-    TD_UIASK_LOADED=1
+    # Load guard (safe under set -u)
+    [[ -n "${!__lib_guard-}" ]] && return 0
+    printf -v "$__lib_guard" '1'
+    
 # --- Helpers ---------------------------------------------------------------------
     # __expand_choices
         #
@@ -156,8 +165,8 @@
         # Notes / Caveats:
         #   - For "stdin-independent" behavior in piped scripts, this function should
         #     read from the controlling terminal (/dev/tty) rather than stdin.
-        #     (Current implementation uses `read` without -u; update if strict TTY
-        #     independence is required.)
+        #   - Implementation reads from /dev/tty (via read -u), so it is stdin-independent
+        #     and safe to use in piped/redirected scripts.
         #   - Validation retry currently uses recursion; keep retry depth small or
         #     convert to a loop if you expect repeated failures.
         #   - When both --var and --echo are omitted, the value is not returned/printed.
@@ -211,7 +220,6 @@
         fi
 
         # ---- use bash readline pre-fill (-i) -----------------------------------
-        local value ok
         local value ok
         local tty_fd
         exec {tty_fd}</dev/tty || { printf "%bNo TTY available%b\n" "$TUI_INVALID" "$RESET"; return 2; }
@@ -437,7 +445,9 @@
         #   sayinfo "Continuing..."
     ask_continue() {
         local prompt="${1:-Press Enter to continue...}"
-        read -rp "$prompt" _
+        local tty_fd
+        exec {tty_fd}</dev/tty || return 0
+        IFS= read -u "$tty_fd" -r -p "$prompt" _
     }
 
     # ask_autocontinue

@@ -54,17 +54,25 @@
     #   - Conditional/computed defaults (beyond spec initialization)
     #   - UI formatting beyond basic help text
 # ==================================================================================
+# --- Library guard ----------------------------------------------------------------
+    # Derive a unique per-library guard variable from the filename:
+    #   ui.sh        -> TD_UI_LOADED
+    #   ui-sgr.sh    -> TD_UI_SGR_LOADED
+    #   foo-bar.sh   -> TD_FOO_BAR_LOADED
+    __lib_base="$(basename "${BASH_SOURCE[0]}")"
+    __lib_base="${__lib_base%.sh}"
+    __lib_base="${__lib_base//-/_}"
+    __lib_guard="TD_${__lib_base^^}_LOADED"
 
-# --- Validate use ----------------------------------------------------------------
     # Refuse to execute (library only)
     [[ "${BASH_SOURCE[0]}" != "$0" ]] || {
-    echo "This is a library; source it, do not execute it: ${BASH_SOURCE[0]}" >&2
-    exit 2
+        echo "This is a library; source it, do not execute it: ${BASH_SOURCE[0]}" >&2
+        exit 2
     }
 
-    # Load guard
-    [[ -n "${TD_ARG_LOADED:-}" ]] && return 0
-    TD_ARG_LOADED=1
+    # Load guard (safe under set -u)
+    [[ -n "${!__lib_guard-}" ]] && return 0
+    printf -v "$__lib_guard" '1'
 
 # --- Helper functions -------------------------------------------------------------
     # Split spec into internal temp variables

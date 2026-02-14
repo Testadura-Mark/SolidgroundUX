@@ -34,17 +34,25 @@
 #   - User input or dialogs (see ui-ask.sh)
 #   - Application-specific message policy beyond type filtering
 # =================================================================================
+# --- Library guard ----------------------------------------------------------------
+    # Derive a unique per-library guard variable from the filename:
+    #   ui.sh        -> TD_UI_LOADED
+    #   ui-sgr.sh    -> TD_UI_SGR_LOADED
+    #   foo-bar.sh   -> TD_FOO_BAR_LOADED
+    __lib_base="$(basename "${BASH_SOURCE[0]}")"
+    __lib_base="${__lib_base%.sh}"
+    __lib_base="${__lib_base//-/_}"
+    __lib_guard="TD_${__lib_base^^}_LOADED"
 
-# --- Validate use ----------------------------------------------------------------
     # Refuse to execute (library only)
     [[ "${BASH_SOURCE[0]}" != "$0" ]] || {
-    echo "This is a library; source it, do not execute it: ${BASH_SOURCE[0]}" >&2
-    exit 2
+        echo "This is a library; source it, do not execute it: ${BASH_SOURCE[0]}" >&2
+        exit 2
     }
 
-    # Load guard
-    [[ -n "${TD_UISAY_LOADED:-}" ]] && return 0
-    TD_UISAY_LOADED=1
+    # Load guard (safe under set -u)
+    [[ -n "${!__lib_guard-}" ]] && return 0
+    printf -v "$__lib_guard" '1'
 
 # --- Global defaults -------------------------------------------------------------
     # Can be overridden in:
@@ -310,102 +318,131 @@
         esac
 
         if [[ "$type" != "EMPTY" ]]; then
-            # Resolve maps via namerefs
-            #   Expects LBL_<TYPE>, ICO_<TYPE>, SYM_<TYPE>, CLR_<TYPE>
-            wrk="LBL_${type}"
+        # Resolve maps via namerefs (safe under set -u)
+            # Expects: LBL_<TYPE>, ICO_<TYPE>, SYM_<TYPE>, MSG_CLR_<TYPE>
+
+        # Label
+        wrk="LBL_${type}"
+        if declare -p "$wrk" >/dev/null 2>&1; then
             declare -n lbl="$wrk"
-            wrk="ICO_${type}"
+        else
+            LBL_FALLBACK="${type}"
+            declare -n lbl="LBL_FALLBACK"
+        fi
+
+        # Icon
+        wrk="ICO_${type}"
+        if declare -p "$wrk" >/dev/null 2>&1; then
             declare -n icn="$wrk"
-            wrk="SYM_${type}"
+        else
+            ICO_FALLBACK=""
+            declare -n icn="ICO_FALLBACK"
+        fi
+
+        # Symbol
+        wrk="SYM_${type}"
+        if declare -p "$wrk" >/dev/null 2>&1; then
             declare -n smb="$wrk"
-            wrk="MSG_CLR_${type}"
-        
+        else
+            SYM_FALLBACK=""
+            declare -n smb="SYM_FALLBACK"
+        fi
+
+        # Color
+        wrk="MSG_CLR_${type}"
+        if declare -p "$wrk" >/dev/null 2>&1; then
             declare -n clr="$wrk"
+        else
+            MSG_CLR_FALLBACK=""
+            declare -n clr="MSG_CLR_FALLBACK"
+        fi
         
-            # Decode --show (supports "label,icon", "label+symbol", "all")
-            local sel p
-            IFS=',+' read -r -a sel <<<"$show"
-            if [[ "${#sel[@]}" -eq 0 ]]; then sel=(label); fi
+        declare -n clr="$wrk"
+    
+        # Decode --show (supports "label,icon", "label+symbol", "all")
+        local sel p
+        IFS=',+' read -r -a sel <<<"$show"
+        if [[ "${#sel[@]}" -eq 0 ]]; then sel=(label); fi
 
-            for p in "${sel[@]}"; do
-                case "${p,,}" in
-                    label)  s_label=1
-                            prefixlength=$((prefixlength + 8));;
-                    icon)   s_icon=1  
-                            prefixlength=$((prefixlength + 1));;
-                    symbol) s_symbol=1 
-                            prefixlength=$((prefixlength + 3))
-                    ;;
-                    all)
-                    s_label=1
-                    s_icon=1
-                    s_symbol=1
-                    prefixlength=$((prefixlength + 16))
-                    ;;
-                esac
-            done
-
-            # default: at least label
-            if (( s_label + s_icon + s_symbol == 0 )); then
-            s_label=1
-            prefixlength=$((prefixlength + 8))
-            fi
-
-            # Decode colorize: none|label|msg|date|both|all
-            local c_label=0 c_msg=0 c_date=0
-
-            case "${colorize,,}" in
-                none)
-                    # all stay 0
-                    ;;
-                label)
-                    c_label=1
-                    ;;
-                msg)
-                    c_msg=1
-                    ;;
-                date)
-                    c_date=1
-                    ;;
-                both|all)
-                    c_label=1
-                    c_msg=1
-                    c_date=1
-                    ;;
-                *)
-                    # default to 'label'
-                    c_label=1
-                    ;;
+        for p in "${sel[@]}"; do
+            case "${p,,}" in
+                label)  s_label=1
+                        prefixlength=$((prefixlength + 8));;
+                icon)   s_icon=1  
+                        prefixlength=$((prefixlength + 1));;
+                symbol) s_symbol=1 
+                        prefixlength=$((prefixlength + 3))
+                ;;
+                all)
+                s_label=1
+                s_icon=1
+                s_symbol=1
+                prefixlength=$((prefixlength + 16))
+                ;;
             esac
+        done
 
-            # Build final line
-            local fnl=""
-            local date_str=""
-            local prefix_parts=()
-            local rst="${RESET:-}"
+        # default: at least label
+        if (( s_label + s_icon + s_symbol == 0 )); then
+        s_label=1
+        prefixlength=$((prefixlength + 8))
+        fi
+
+        # Decode colorize: none|label|msg|date|both|all
+        local c_label=0 c_msg=0 c_date=0
+
+        case "${colorize,,}" in
+            none)
+                # all stay 0
+                ;;
+            label)
+                c_label=1
+                ;;
+            msg)
+                c_msg=1
+                ;;
+            date)
+                c_date=1
+                ;;
+            both|all)
+                c_label=1
+                c_msg=1
+                c_date=1
+                ;;
+            *)
+                # default to 'label'
+                c_label=1
+                ;;
+        esac
+
+        # Build final line
+        local fnl=""
+        local date_str=""
+        local prefix_parts=()
+        local rst="${RESET:-}"
 
 
-            # timestamp
-            if (( add_date )); then
-                date_str="$(date "+${SAY_DATE_FORMAT}")"
-                if (( c_date )); then
-                    prefix_parts+=("${clr}${date_str}${rst}")
-                else
-                    prefix_parts+=("$date_str")
-                fi
+        # timestamp
+        if (( add_date )); then
+            date_str="$(date "+${SAY_DATE_FORMAT}")"
+            if (( c_date )); then
+                prefix_parts+=("${clr}${date_str}${rst}")
+            else
+                prefix_parts+=("$date_str")
             fi
+        fi
 
-            l_len=$(visible_len "$lbl")
-            pad=""
+        l_len=$(visible_len "$lbl")
+        pad=""
 
-            if (( l_len < 8 )); then
-                printf -v pad '%*s' $((8 - l_len)) ''
-            fi
+        if (( l_len < 8 )); then
+            printf -v pad '%*s' $((8 - l_len)) ''
+        fi
 
-            lbl="${lbl}${pad}"
-        
-            # label / icon / symbol
-            if (( s_label )); then
+        lbl="${lbl}${pad}"
+    
+        # label / icon / symbol
+        if (( s_label )); then
             if (( c_label )); then
                     prefix_parts+=("${clr}${lbl}${rst}")
                 else
