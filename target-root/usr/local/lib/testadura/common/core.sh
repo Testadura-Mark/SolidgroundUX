@@ -33,6 +33,9 @@
     #   ui.sh        -> TD_UI_LOADED
     #   ui-sgr.sh    -> TD_UI_SGR_LOADED
     #   foo-bar.sh   -> TD_FOO_BAR_LOADED
+    # Note:
+    #   Guard variables (__lib_*) are internal globals by convention; they are not part
+    #   of the public API and may change without notice.
     __lib_base="$(basename "${BASH_SOURCE[0]}")"
     __lib_base="${__lib_base%.sh}"
     __lib_base="${__lib_base//-/_}"
@@ -91,6 +94,38 @@
   need_systemd(){ have systemctl || { _sh_err "Systemd not available."; exit 1; }; }
 
 # --- Filesystem Helpers ----------------------------------------------------------
+  # td_can_append PATH
+      #   Returns 0 if PATH can be appended to.
+      #   Conditions:
+      #     - If file exists: must be regular file and writable.
+      #     - If file does not exist: parent directory must be writable
+      #       or creatable via mkdir -p.
+      #   Does not create the file; only ensures writability conditions.
+  td_can_append() {
+      # Returns 0 if we can append to $1 (file exists and writable, or dir writable to create)
+      local f="$1"
+      local d
+
+      [[ -n "$f" ]] || return 1
+      d="$(dirname -- "$f")"
+
+      # Existing file must be writable
+      if [[ -e "$f" ]]; then
+          [[ -f "$f" && -w "$f" ]] || return 1
+          return 0
+      fi
+
+      # Non-existing file: directory must exist and be writable, OR be creatable (mkdir -p)
+      if [[ -d "$d" ]]; then
+          [[ -w "$d" ]] || return 1
+          return 0
+      fi
+
+      # Try to create directory path (silently)
+      mkdir -p -- "$d" 2>/dev/null || return 1
+      [[ -w "$d" ]] || return 1
+      return 0
+  }
   # ensure_dir -- create directory (including parents) if it does not exist.
   ensure_dir() {
       local dir="${1:-}"

@@ -42,6 +42,9 @@
     #   ui.sh        -> TD_UI_LOADED
     #   ui-sgr.sh    -> TD_UI_SGR_LOADED
     #   foo-bar.sh   -> TD_FOO_BAR_LOADED
+    # Note:
+    #   Guard variables (__lib_*) are internal globals by convention; they are not part
+    #   of the public API and may change without notice.
     __lib_base="$(basename "${BASH_SOURCE[0]}")"
     __lib_base="${__lib_base%.sh}"
     __lib_base="${__lib_base//-/_}"
@@ -58,15 +61,13 @@
     printf -v "$__lib_guard" '1'
 
 # --- Internal helpers ------------------------------------------------------------
-    # __dlg_keymap CHOICES
-        #
-        #   Build a human-readable key legend for the current dialog state.
-        #
-        # Usage:
-        #   __dlg_keymap CHOICES PAUSED        
+    # __dlg_keymap
+        # Build a human-readable key legend for the current dialog state.
+        # Usage: __dlg_keymap CHOICES PAUSED     
     __dlg_keymap(){
         local choices="$1"
         local keymap=""
+        local paused="${2:-0}"
 
         [[ "$choices" == *"E"* ]] && keymap+="Enter=continue; "
         [[ "$choices" == *"R"* ]] && keymap+="R=redo; "
@@ -82,10 +83,11 @@
                 keymap+="P/Space=pause; "
             fi
         fi
-            # Trim trailing "; "
-            keymap="${keymap%; }"
 
-            printf '%s' "$keymap"
+        # Trim trailing "; "
+        keymap="${keymap%; }"
+
+        printf '%s' "$keymap"
     }
 # --- Public API ------------------------------------------------------------------
     # td_dlg_autocontinue 
@@ -111,7 +113,7 @@
         #       10 for the first custom key, 11 for the second, etc.
         #
         # Returns:
-        #   0 = continue (Enter / allowed key)
+        #   0 = continue (Enter, any-key if A enabled, or allowed continue keys)
         #   1 = auto-continued (timeout)
         #   2 = cancel
         #   3 = redo
@@ -121,12 +123,10 @@
         local seconds="${1:-5}"
         local msg="${2:-}"
         local dlgchoices="${3:-AERCPQ}"
+        dlgchoices="${dlgchoices^^}"
 
         local tty="/dev/tty"
-        [[ -e "$tty" ]] || return 0
-        if [[ ! -t 0 && ! -t 1 ]]; then
-            return 0
-        fi
+        [[ -r "$tty" && -w "$tty" ]] || return 0
 
         # --- Helpers ---------------------------------------------------------------
         # Reserved keys are matched case-insensitively.
@@ -142,7 +142,7 @@
         for (( i=0; i<${#dlgchoices}; i++ )); do
             _ch="${dlgchoices:i:1}"
             # Normalize to uppercase for reserved detection
-            if [[ "${reserved}" == *"${_ch^^}"* ]]; then
+            if [[ "$reserved" == *"$_ch"* ]]; then
                 continue
             fi
             # Skip duplicates
@@ -178,7 +178,7 @@
             return 1
         }
 
-        # --- Existing state --------------------------------------------------------
+        # --- Runtime state --------------------------------------------------------
         local paused=0
         local key=""
         local got=0
@@ -196,6 +196,9 @@
             ((lines++))
         fi
 
+        local clr
+        clr="$(td_sgr "$WHITE" "$FX_ITALIC")"
+
         while true; do
             local line_keymap
             line_keymap="$(__dlg_keymap "$dlgchoices" "$paused")"
@@ -209,10 +212,6 @@
             if (( ! hide_keymap )); then
                 printf '\r\e[K%s\n' "${TUI_TEXT}${line_keymap}${RESET}" >"$tty"
             fi
-
-            # Status line (no newline; we keep cursor on this line)
-           local clr
-           clr="$(td_color "$WHITE" "" "$FX_ITALIC")"
 
             if (( paused )); then
                 printf '\r\e[K%sPaused... Press P or Space to resume countdown%s' \
@@ -234,6 +233,7 @@
             # Move cursor back up to redraw block next iteration (IMPORTANT: to tty)
                 # We move (lines-1) lines up (to the start of the block) and return to column 0,
                 # so the next print redraws the block in place.
+                # Assumes the block is exactly 'lines' lines tall (message + optional keymap + countdown)
             if (( lines > 1 )); then
                 printf '\e[%dA' "$((lines-1))" >"$tty"
             fi
@@ -248,26 +248,33 @@
                         (( paused )) && paused=0 || paused=1
                         continue
                         ;;
+
                     r|R)
-                        [[ "$dlgchoices" == *"R"* || "$dlgchoices" == *"A"* ]] || continue
-                        printf '\n' >"$tty"
+                        [[ "$dlgchoices" == *"R"* ]] || continue
+                        printf '\r\e[%dB\n' "$((lines-1))" >"$tty"
                         return 3
                         ;;
+
                     c|C|$'\e')
-                        [[ "$dlgchoices" == *"C"* || "$dlgchoices" == *"A"* ]] || continue
+                        [[ "$dlgchoices" == *"C"* ]] || continue
                         printf '\r\e[%dB\n' "$((lines-1))" >"$tty"
                         return 2
                         ;;
+
                     q|Q)
-                        [[ "$dlgchoices" == *"Q"* || "$dlgchoices" == *"A"* ]] || continue
-                        printf '\n' >"$tty"
+                        [[ "$dlgchoices" == *"Q"* ]] || continue
+                        printf '\r\e[%dB\n' "$((lines-1))" >"$tty"
                         return 4
                         ;;
+
                     $'\n'|$'\r')
-                        [[ "$dlgchoices" == *"E"* || "$dlgchoices" == *"A"* ]] || continue
+                        [[ "$dlgchoices" == *"E"* ]] || continue
+                        # If you want Enter to count as "any key", use:
+                        # [[ "$dlgchoices" == *"E"* || "$dlgchoices" == *"A"* ]] || continue
                         printf '\r\e[%dB\n' "$((lines-1))" >"$tty"
                         return 0
                         ;;
+
                     *)
                         # 1) Custom key? return 10+
                         local rc=""
@@ -285,10 +292,11 @@
                 esac
             fi
 
+
             if (( ! paused )); then
                 ((seconds--))
                 if (( seconds <= 0 )); then
-                    printf '\n' >"$tty"
+                    printf '\r\e[%dB\n' "$((lines-1))" >"$tty"
                     return 1
                 fi
             fi

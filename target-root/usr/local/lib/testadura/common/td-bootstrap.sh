@@ -36,6 +36,9 @@
     #   ui.sh        -> TD_UI_LOADED
     #   ui-sgr.sh    -> TD_UI_SGR_LOADED
     #   foo-bar.sh   -> TD_FOO_BAR_LOADED
+    # Note:
+    #   Guard variables (__lib_*) are internal globals by convention; they are not part
+    #   of the public API and may change without notice.
     __lib_base="$(basename "${BASH_SOURCE[0]}")"
     __lib_base="${__lib_base%.sh}"
     __lib_base="${__lib_base//-/_}"

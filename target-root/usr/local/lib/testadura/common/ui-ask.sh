@@ -47,6 +47,9 @@
     #   ui.sh        -> TD_UI_LOADED
     #   ui-sgr.sh    -> TD_UI_SGR_LOADED
     #   foo-bar.sh   -> TD_FOO_BAR_LOADED
+    # Note:
+    #   Guard variables (__lib_*) are internal globals by convention; they are not part
+    #   of the public API and may change without notice.
     __lib_base="$(basename "${BASH_SOURCE[0]}")"
     __lib_base="${__lib_base%.sh}"
     __lib_base="${__lib_base//-/_}"
@@ -230,6 +233,7 @@
         else
             IFS= read -u "$tty_fd" -e -p "$prompt" value
         fi
+        exec {tty_fd}<&-
 
         # reset color after the line, so the rest of the script isn't tinted
         printf "%b" "$RESET"
@@ -245,15 +249,16 @@
         fi
 
         # ---- echo with ✓ / ✗ ----------------------------------------------------
+        # echo result to TTY (keep stdout clean) with colorized ✓/✗ feedback on validation
         if (( echo_input )); then
             if (( ok )); then
                 printf "  %b%s%b %b✓%b\n" \
                     "$input_color" "$value" "$RESET" \
-                    "$TUI_VALID" "$RESET"
+                    "$TUI_VALID" "$RESET" >/dev/tty
             else
                 printf "  %b%s%b %b✗%b\n" \
                     "$TUI_INPUT" "$value" "$RESET" \
-                    "$TUI_INVALID" "$RESET"
+                    "$TUI_INVALID" "$RESET" >/dev/tty
             fi
         fi
 
@@ -448,6 +453,7 @@
         local tty_fd
         exec {tty_fd}</dev/tty || return 0
         IFS= read -u "$tty_fd" -r -p "$prompt" _
+        exec {tty_fd}<&-
     }
 
     # ask_autocontinue
@@ -489,13 +495,15 @@
 
         local paused=0
         local key=""
+        local clr
+        clr="$(td_sgr "$WHITE" "$FX_ITALIC")"
 
         while true; do
             if (( paused )); then
-                printf "%s\nPaused. Press any key to continue, or 'c' to cancel...%s" "$(td_color "$WHITE" "" "$FX_ITALIC")" "${RESET}"
+                printf "%s\nPaused. Press any key to continue, or 'c' to cancel...%s" "$clr" "$RESET"
                 IFS= read -r -n 1 -s key
             else
-                printf "\r\033[K%sContinuing in %ds… (any key=now, p=pause, c=cancel)%s" "$(td_color "$WHITE" "" "$FX_ITALIC")" "$seconds" "${RESET}"
+                printf "\r\033[K%sContinuing in %ds… (any key=now, p=pause, c=cancel)%s" "$clr" "$seconds" "$RESET"
                 IFS= read -r -n 1 -s -t 1 key || key=""
             fi
 
