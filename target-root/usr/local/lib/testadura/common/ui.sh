@@ -179,6 +179,20 @@
     }
 
 # --- Public API ------------------------------------------------------------------
+ # -- Public helpers --------------------------------------------------------------
+  # td_strip_ansi
+    # Strip ANSI SGR color sequences (ESC[...m)
+  td_strip_ansi() {
+    sed -r $'s/\x1B\\[[0-9;?]*[[:alpha:]]//g' <<<"$1"
+  }
+  # td_visible_len
+    # Visible length of a string (after stripping ANSI SGR codes)
+    # Usage: td_visible_len "text"
+  td_visible_len() {
+      local plain
+      plain="$(td_strip_ansi "$1")"
+      printf '%s' "${#plain}"
+  }
  # -- Theme loading ---------------------------------------------------------------
     # td_ui_set_theme
         #   Load a UI palette and UI style (in that order).
@@ -1151,6 +1165,7 @@
         printf '%s%*s' "$s" "$pad" ""
     }
 
+ # -- Externals -------------------------------------------------------------------
  # -- Sample/demo renderers -------------------------------------------------------
     # td_color_samples
         #   Print a demo table of available foreground colors, related variants, and

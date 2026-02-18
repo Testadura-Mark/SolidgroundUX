@@ -28,7 +28,7 @@
 #   - Safe to use during early bootstrap and in isolation
 # 
 # =================================================================================
-# --- Library guard ----------------------------------------------------------------
+# --- Library guard ---------------------------------------------------------------
     # Derive a unique per-library guard variable from the filename:
     #   ui.sh        -> TD_UI_LOADED
     #   ui-sgr.sh    -> TD_UI_SGR_LOADED
@@ -55,16 +55,19 @@
   # _sh_err -- print an error message to stderr (internal, minimal).
   _sh_err(){ printf '%s\n' "${*:-(no message)}" >&2; }
 
+# --- Requirement checks ----------------------------------------------------------
+  # td_have
+    # Test if a command exists in PATH.
+  td_have(){ command -v "$1" >/dev/null 2>&1; }
 
-# --- Privilege & Command Checks --------------------------------------------------
-  # have -- test if a command exists in PATH.
-  have(){ command -v "$1" >/dev/null 2>&1; }
+ # -- Posibly exiting requirement checks -----------------------------------------
+  # td_need_cmd
+    # require a command to exist or exit with error.
+  td_need_cmd(){ td_have "$1" || { _sh_err "Missing required command: $1"; exit 1; }; }
 
-  # need_cmd -- require a command to exist or exit with error.
-  need_cmd(){ have "$1" || { _sh_err "Missing required command: $1"; exit 1; }; }
-
-  # need_root -- require the script to run as root, re-exec with sudo if not.
-  need_root() {
+  # td_need_root 
+    # require the script to run as root, re-exec with sudo if not.
+  td_need_root() {
       if [[ ${EUID:-$(id -u)} -ne 0 && -z "${TD_ALREADY_ROOT:-}" ]]; then
           exec sudo \
               --preserve-env=TD_FRAMEWORK_ROOT,TD_APPLICATION_ROOT,PATH \
@@ -72,26 +75,39 @@
       fi
   }
 
-
-  # cannot_root -- require normal session
-  cannot_root() {
+  # td_cannot_root
+    # require normal session
+  td_cannot_root() {
       if [[ ${EUID:-$(id -u)} -eq 0 ]]; then
           _sh_err "Do not run this script as root."
           exit 1
       fi
   }
 
-  # need_bash -- require Bash (optionally minimum major version) or exit.
-  need_bash(){ (( BASH_VERSINFO[0] >= ${1:-4} )) || { _sh_err "Bash ${1:-4}+ required."; exit 1; }; }
+  # td_need_bash
+    # require Bash (optionally minimum major version) or exit.
+  td_need_bash(){ (( BASH_VERSINFO[0] >= ${1:-4} )) || { _sh_err "Bash ${1:-4}+ required."; exit 1; }; }
 
-  # need_tty -- require an attached TTY on stdout, return 1 otherwise.
-  need_tty(){ [[ -t 1 ]] || { _sh_err "No TTY attached."; return 1; }; }
+  # need_env
+    # Require a named environment variable to be non-empty or exit.
+  td_need_env(){ [[ -n "${!1:-}" ]] || { _sh_err "Missing env var: $1"; exit 1; }; }
 
-  # is_active -- check if a systemd unit is active.
-  is_active(){ systemctl is-active --quiet "$1"; }
+  # td_need_systemd
+    # require systemd (systemctl available) or exit.
+  td_need_systemd(){ td_have systemctl || { _sh_err "Systemd not available."; exit 1; }; }
 
-  # need_systemd -- require systemd (systemctl available) or exit.
-  need_systemd(){ have systemctl || { _sh_err "Systemd not available."; exit 1; }; }
+  # td_need_writable
+    #require a path to be writable or exit.
+  td_need_writable(){ [[ -w "$1" ]] || { _sh_err "Not writable: $1"; exit 1; }; }
+
+ # -- Non lethal requirement checks (return 1 on failure, do not exit) ------------
+  # td_need_tty
+    # require an attached TTY on stdout, return 1 otherwise.
+  td_need_tty(){ [[ -t 1 ]] || { _sh_err "No TTY attached."; return 1; }; }
+
+  # td_is_active
+    # check if a systemd unit is active.
+  td_is_active(){ systemctl is-active --quiet "$1"; }
 
 # --- Filesystem Helpers ----------------------------------------------------------
   # td_can_append PATH
@@ -126,17 +142,18 @@
       [[ -w "$d" ]] || return 1
       return 0
   }
-  # ensure_dir -- create directory (including parents) if it does not exist.
-  ensure_dir() {
+  # td_ensure_dir
+    # Create directory (including parents) if it does not exist.
+  td_ensure_dir() {
       local dir="${1:-}"
       [[ -n "$dir" ]] || return 2
       [[ -d "$dir" ]] || mkdir -p -- "$dir"
   }
 
-  # ensure_writable_dir
+  # td_ensure_writable_dir
     # Create directory (including parents) if it does not exist.
     # If running via sudo, assign ownership to the invoking user (dev convenience).
-  ensure_writable_dir() {
+  td_ensure_writable_dir() {
       local dir="${1:-}"
       [[ -n "$dir" ]] || return 2
 
@@ -160,28 +177,32 @@
       return 0
   }
 
-  # exists -- test if a regular file exists.
-  exists(){ [[ -f "$1" ]]; }
+  # td_exists
+    # Test if a regular file exists.
+  td_exists(){ [[ -f "$1" ]]; }
 
-  # is_dir -- test if a directory exists.
-  is_dir(){ [[ -d "$1" ]]; }
+  # td_is_dir
+    # Test if a directory exists.
+  td_is_dir(){ [[ -d "$1" ]]; }
 
-  # is_nonempty -- test if a file exists and is non-empty.
-  is_nonempty(){ [[ -s "$1" ]]; }
+  # td_is_nonempty 
+    # Test if a file exists and is non-empty.
+  td_is_nonempty(){ [[ -s "$1" ]]; }
 
-  # need_writable -- require a path to be writable or exit.
-  need_writable(){ [[ -w "$1" ]] || { _sh_err "Not writable: $1"; exit 1; }; }
+  # td_abs_path
+    # Resolve an absolute canonical path using readlink/realpath.
+  td_abs_path(){ readlink -f "$1" 2>/dev/null || realpath "$1"; }
 
-  # abs_path -- resolve an absolute canonical path using readlink/realpath.
-  abs_path(){ readlink -f "$1" 2>/dev/null || realpath "$1"; }
+  # td_mktemp_dir
+    # Create a temporary directory, return its path.
+  td_mktemp_dir(){ mktemp -d 2>/dev/null || TMPDIR=${TMPDIR:-/tmp} mktemp -d "${TMPDIR%/}/XXXXXX"; }
 
-  # mktemp_dir -- create a temporary directory, return its path.
-  mktemp_dir(){ mktemp -d 2>/dev/null || TMPDIR=${TMPDIR:-/tmp} mktemp -d "${TMPDIR%/}/XXXXXX"; }
+  # td_mktemp_file
+    # Create a temporary file, return its path.
+  td_mktemp_file(){ TMPDIR=${TMPDIR:-/tmp} mktemp "${TMPDIR%/}/XXXXXX"; }
 
-  # mktemp_file -- create a temporary file, return its path.
-  mktemp_file(){ TMPDIR=${TMPDIR:-/tmp} mktemp "${TMPDIR%/}/XXXXXX"; }
-
-  # td_slugify -- sanitize filenames
+  # td_slugify
+    # sanitize filenames
   td_slugify() {
       # Usage: td_slugify "Some Title!!"
       # Output: some-title
@@ -207,7 +228,7 @@
       printf '%s' "$s"
   }
 
-  # __td_hash_sha256_file
+  # td_hash_sha256_file
     #   Print SHA256 hash of a file to stdout.
     #   Returns non-zero if no hashing tool is available.
   td_hash_sha256_file() {
@@ -234,84 +255,98 @@
   }
 
 # --- Systeminfo ------------------------------------------------------------------
-  get_primary_nic() {
+  td_get_primary_nic() {
       ip route show default 2>/dev/null | awk 'NR==1 {print $5}'
   }
 # --- Network Helpers -------------------------------------------------------------
-  # ping_ok -- return 0 if host responds to a single ping.
-  ping_ok(){ ping -c1 -W1 "$1" &>/dev/null; }
+  # td_ping_ok
+    # Return 0 if host responds to a single ping.
+  td_ping_ok(){ ping -c1 -W1 "$1" &>/dev/null; }
 
-  # port_open -- test if TCP port on host is open (nc preferred, /dev/tcp fallback).
-  port_open(){
+  # td_port_open
+    # Test if TCP port on host is open (nc preferred, /dev/tcp fallback).
+  td_port_open(){
     local h="$1" p="$2"
-    if have nc; then nc -z "$h" "$p" &>/dev/null; else
+    if td_have nc; then nc -z "$h" "$p" &>/dev/null; else
       (exec 3<>"/dev/tcp/$h/$p") &>/dev/null
     fi
   }
 
-  # get_ip -- return first non-loopback IP address of this host.
-  get_ip(){ hostname -I 2>/dev/null | awk '{print $1}'; }
+  # td_get_ip
+    # Return first non-loopback IP address of this host.
+  td_get_ip(){ hostname -I 2>/dev/null | awk '{print $1}'; }
 
 # --- Argument & Environment Helpers-----------------------------------------------
-  # is_set -- test if a variable name is defined (set) in the environment.
-  is_set(){ [[ -v "$1" ]]; }
+  # td_is_set
+    # Test if a variable name is defined (set) in the environment.
+  td_is_set(){ [[ -v "$1" ]]; }
 
-  # need_env -- require a named environment variable to be non-empty or exit.
-  need_env(){ [[ -n "${!1:-}" ]] || { _sh_err "Missing env var: $1"; exit 1; }; }
+  # td_default
+    # Set VAR to VALUE if VAR is unset or empty.
+  td_default(){ eval "${1}=\${${1}:-$2}"; }
 
-  # default -- set VAR to VALUE if VAR is unset or empty.
-  default(){ eval "${1}=\${${1}:-$2}"; }
+  # td_is_number
+    # Test if value consists only of digits.
+  td_is_number(){ [[ "$1" =~ ^[0-9]+$ ]]; }
 
-  # is_number -- test if value consists only of digits.
-  is_number(){ [[ "$1" =~ ^[0-9]+$ ]]; }
+  # td_is_bool
+    # Test if value is a common boolean-like token.
+  td_is_bool(){ [[ "$1" =~ ^(true|false|yes|no|on|off|1|0)$ ]]; }
 
-  # is_bool -- test if value is a common boolean-like token.
-  is_bool(){ [[ "$1" =~ ^(true|false|yes|no|on|off|1|0)$ ]]; }
+  # td_array_has_items
+    # Test if an array variable has any items.
+  td_array_has_items(){
+    declare -p "$1" &>/dev/null || return 1
+    local -n _arr="$1"
+    (( ${#_arr[@]} > 0 ))
+  }
 
-  # confirm -- ask a yes/no question, return 0 on [Yy].
-  confirm(){ read -rp "${1:-Are you sure?} [y/N]: " _a; [[ "$_a" =~ ^[Yy]$ ]]; }
+  # td_is_true
+    # Test if value is a common "true" token (case-insensitive).
+  td_is_true() {
+    case "${1,,}" in
+        y|yes|1|true) return 0 ;;
+        *)            return 1 ;;
+    esac
+  }
 
 # --- Process & State Helpers -----------------------------------------------------
   # proc_exists -- check if a process with given name is running.
-  proc_exists(){ pgrep -x "$1" &>/dev/null; }
+  td_proc_exists(){ pgrep -x "$1" &>/dev/null; }
 
   # wait_for_exit -- block until a named process is no longer running.
-  wait_for_exit(){ while proc_exists "$1"; do sleep 0.5; done; }
+  td_wait_for_exit(){ while td_proc_exists "$1"; do sleep 0.5; done; }
 
   # kill_if_running -- terminate processes by name if they are running.
-  kill_if_running(){ pkill -x "$1" &>/dev/null || true; }
-
+  td_kill_if_running(){ pkill -x "$1" &>/dev/null || true; }
 
 # --- Version & OS Helpers --------------------------------------------------------
-  # get_os -- return OS ID from /etc/os-release (e.g. ubuntu, debian).
-  get_os(){ grep -E '^ID=' /etc/os-release | cut -d= -f2 | tr -d '"' ; }
+  # td_get_os
+    # Return OS ID from /etc/os-release (e.g. ubuntu, debian).
+  td_get_os(){ grep -E '^ID=' /etc/os-release | cut -d= -f2 | tr -d '"' ; }
 
-  # get_os_version -- return OS VERSION_ID from /etc/os-release.
-  get_os_version(){ grep -E '^VERSION_ID=' /etc/os-release | cut -d= -f2 | tr -d '"' ; }
+  # td_get_os_version
+    # Return OS VERSION_ID from /etc/os-release.
+  td_get_os_version(){ grep -E '^VERSION_ID=' /etc/os-release | cut -d= -f2 | tr -d '"' ; }
 
-  # version_ge -- return 0 if version A >= version B (natural sort -V).
-  # usage: version_ge "1.4" "1.3"
-  version_ge(){ [[ "$(printf '%s\n' "$2" "$1" | sort -V | head -n1)" == "$2" ]]; }
-
-  show_script_version() {
-    printf '%s\n' "SolidgroundUX : $SGND_VERSION ($SGND_VERSION_DATE)"
-    printf '%s\n' "Script        : ${SCRIPT_VERSION:-<none>} ${SCRIPT_VERSION_STATUS:-}"
-    [[ -n "$SCRIPT_VERSION_DATE" ]] && justsay "Script Date            : $SCRIPT_VERSION_DATE"
-  }
+  # td_version_ge
+    # Return 0 if version A >= version B (natural sort -V).
+    # usage: version_ge "1.4" "1.3"
+  td_version_ge(){ [[ "$(printf '%s\n' "$2" "$1" | sort -V | head -n1)" == "$2" ]]; }
 
 # --- Misc Utilities --------------------------------------------------------------
-  # join_by -- join arguments with a separator.
-  join_by(){ local IFS="$1"; shift; echo "$*"; }
+  # td_join_by
+    # Join arguments with a separator.
+  td_join_by(){ local IFS="$1"; shift; echo "$*"; }
 
-  # trim -- remove leading/trailing whitespace.
-  trim(){ local v="${*:-}"; v="${v#"${v%%[![:space:]]*}"}"; echo "${v%"${v##*[![:space:]]}"}"; }
+    # td_timestamp
+    # Return current time as "YYYY-MM-DD HH:MM:SS".
+  td_timestamp(){ date +"%Y-%m-%d %H:%M:%S"; }
 
-  # timestamp -- return current time as "YYYY-MM-DD HH:MM:SS".
-  timestamp(){ date +"%Y-%m-%d %H:%M:%S"; }
-
-  # retry -- retry command N times with DELAY seconds between attempts.
-  # usage: retry 5 2 cmd arg1 arg2
-  retry(){
+  # td_retry
+    # Retry command N times with DELAY seconds between attempts.
+    # usage: retry 5 2 cmd arg1 arg2
+  td_retry(){
     local n="$1" d="$2"; shift 2
     local i
     for ((i=1;i<=n;i++)); do
@@ -320,31 +355,15 @@
     done
     return 1
   }
-  
-  # Strip ANSI SGR color sequences (ESC[...m)
-  strip_ansi() {
-    sed -r $'s/\x1B\\[[0-9;?]*[[:alpha:]]//g' <<<"$1"
-  }
-  # Visible length of a string (after stripping ANSI SGR codes)
-  # Usage: VisibleLen "text"
-  visible_len() {
+# --- Text functions --------------------------------------------------------------
+  # td_trim
+    # Remove leading/trailing whitespace.
+  td_trim(){ local v="${*:-}"; v="${v#"${v%%[![:space:]]*}"}"; echo "${v%"${v##*[![:space:]]}"}"; }
 
-      local plain
-      plain="$(strip_ansi "$1")"
-      printf '%s' "${#plain}"
-  }
-  array_has_items(){
-    declare -p "$1" &>/dev/null || return 1
-    local -n _arr="$1"
-    (( ${#_arr[@]} > 0 ))
-  }
-  is_true() {
-    case "${1,,}" in
-        y|yes|1|true) return 0 ;;
-        *)            return 1 ;;
-    esac
-  }
-  string_repeat() {
+  # td_string_repeat
+     # Repeat a string N times.
+     # Usage: td_string_repeat "abc" 3  # outputs "abcabcabc"
+   td_string_repeat() {
         local s="$1"
         local n="$2"
         local out=""
@@ -358,10 +377,10 @@
         printf '%s' "$out"
   }
 
-    # td_wrap_words
-      # Wrap a text to a given width (word-boundary wrap).
-      # Usage: td_wrap_words --width 60 --text "hello world ..."
-    td_wrap_words() {
+  # td_wrap_words
+    # Wrap a text to a given width (word-boundary wrap).
+    # Usage: td_wrap_words --width 60 --text "hello world ..."
+  td_wrap_words() {
         local width=80 text=""
         while [[ $# -gt 0 ]]; do
             case "$1" in
@@ -392,35 +411,12 @@
 
         [[ -n "$line" ]] && printf '%s\n' "$line"
     }
-
-    # td_open_editor
-      # Open a file for editing using the user's preferred editor.
-      # Uses sudo only if the file is not writable.
-    td_open_editor() {
-        local file="$1"
-        [[ -n "$file" ]] || return 1
-
-        local editor=""
-
-        if [[ -n "${EDITOR:-}" ]]; then
-            editor="$EDITOR"
-        elif [[ -n "${VISUAL:-}" ]]; then
-            editor="$VISUAL"
-        else
-            editor="nano"
-        fi
-
-        if [[ -w "$file" ]]; then
-            $editor "$file"
-        else
-            sudo $editor "$file"
-        fi
-    }
 # --- Die and exit  handlers ------------------------------------------------------
-    die(){ local code="${2:-1}"; _sh_err "${1:-fatal error}"; exit "$code"; }
+    td_die(){ local code="${2:-1}"; _sh_err "${1:-fatal error}"; exit "$code"; }
 
-    # on_exit -- append command to existing EXIT trap if set.
-    on_exit(){
+    # td_on_exit
+      # Append command to existing EXIT trap if set.
+    td_on_exit(){
       local new="$1" old
       old="$(trap -p EXIT | sed -n "s/^trap -- '\(.*\)' EXIT$/\1/p")"
       if [[ -n "$old" ]]; then
@@ -430,23 +426,25 @@
       fi
     }
 
-
 # --- Argument & Environment Validators -------------------------------------------
-  # validate_int -- return 0 if value is an integer (optional +/- sign).
-  validate_int() 
+  # td_validate_int
+    # Return 0 if value is an integer (optional +/- sign).
+  td_validate_int() 
   {
     [[ "$1" =~ ^[+-]?[0-9]+$ ]]
   }
 
-  # validate_decimal -- return 0 if value is a decimal number (int or int.frac, optional +/-).
-  validate_decimal() 
+  # td_validate_decimal
+    # Return 0 if value is a decimal number (int or int.frac, optional +/-).
+  td_validate_decimal() 
   {
 
     [[ "$1" =~ ^[+-]?[0-9]+(\.[0-9]+)?$ ]]
   }
 
-  # validate_ipv4 -- return 0 if value is a valid IPv4 address (0–255 per octet).
-  validate_ipv4() 
+  # td_validate_ipv4
+    # Return 0 if value is a valid IPv4 address (0–255 per octet).
+  td_validate_ipv4() 
   {
     local ip="$1" IFS='.' octets o
     IFS='.' read -r -a octets <<<"$ip"
@@ -458,8 +456,9 @@
     return 0
   }
 
-  # validate_yesno -- return 0 if value is single-char Y/y/N/n.
-  validate_yesno() 
+  # td_validate_yesno
+    # Return 0 if value is single-char Y/y/N/n.
+  td_validate_yesno() 
   {
     [[ "$1" =~ ^[YyNn]$ ]]
   }

@@ -1,37 +1,38 @@
 # =================================================================================
-# Testadura Consultancy — lib-template.sh
+# Testadura — td-bootstrap-env.sh
 # ---------------------------------------------------------------------------------
-# Purpose    : Template for Testadura Bash libraries (header + guards + structure)
+# Purpose    : Bootstrap environment primitives (defaults, roots, derived paths)
 # Author     : Mark Fieten
 #
 # © 2025 Mark Fieten — Testadura Consultancy
 # Licensed under the Testadura Non-Commercial License (TD-NC) v1.0.
 # ---------------------------------------------------------------------------------
 # Description:
-#   Provides a standard skeleton for Testadura framework libraries, including:
-#   - Canonical header sections (purpose/description/contracts)
-#   - "library only" execution guard (must be sourced, never executed)
-#   - Load guard for idempotent sourcing
-#   - Suggested naming conventions for internal/public functions
+#   Provides the earliest bootstrap environment layer used by td-bootstrap.sh.
+#   Responsibilities:
+#   - Defines framework identity metadata (product/version/license filenames)
+#   - Defines the framework-global cfg metadata specs (TD_FRAMEWORK_GLOBALS)
+#   - Defines core library load order (TD_CORE_LIBS)
+#   - Establishes default values (td_defaults_apply / td_defaults_reset)
+#   - Derives standard directory and file paths from root settings
+#   - Locates and sources the bootstrap cfg (solidgroundux.cfg), supporting dev-tree
 #
 # Assumptions:
-#   - None by default. Each library should explicitly document:
-#       - Whether it is a CORE lib (no framework deps), or
-#       - A FRAMEWORK lib (may assume framework/theme primitives exist).
+#   - Minimal shell environment; safe to source early in bootstrap.
+#   - Caller may be running under sudo; TD_USER_HOME is derived accordingly.
 #
-# Design rules:
-#   - Libraries define functions and constants only.
-#   - No auto-execution (must be sourced).
-#   - No `set -euo pipefail` or persistent shell-option changes.
-#   - No path detection or root resolution (bootstrap owns path resolution).
-#   - No global behavior changes (UI routing, logging policy, shell options).
+# Design rules / Contract:
+#   - No user interaction (no prompts/dialogs).
+#   - No persistent shell-option changes (no set -euo pipefail; no shopt).
 #   - Safe to source multiple times (idempotent load guard).
+#   - Path derivation is purely from current globals (roots/user home/script name).
 #
 # Non-goals:
-#   - Executable scripts (use /bin tools or applets for entry points)
-#   - User interaction unless explicitly part of a UI module
-#   - Policy decisions (libraries provide mechanisms; callers decide policy)
+#   - Argument parsing (handled by bootstrap + args layer)
+#   - Configuration domain application (handled by cfg/state layer)
+#   - Logging/UI policy decisions (handled by ui-say/ui modules)
 # =================================================================================
+
 # --- Library guard ----------------------------------------------------------------
     # Derive a unique per-library guard variable from the filename:
     #   ui.sh        -> TD_UI_LOADED
@@ -55,7 +56,8 @@
     [[ -n "${!__lib_guard-}" ]] && return 0
     printf -v "$__lib_guard" '1'
 
-# --- Framework info ---------------------------------------------------------------
+# --- Framework identity -----------------------------------------------------------
+    # Product/branding metadata used by framework-info, logging headers, and about text.
     TD_PRODUCT="SolidgroundUX"
     TD_VERSION="1.0-R2-beta"
     TD_VERSION_DATE="2026-01-08"
@@ -67,6 +69,9 @@
     TD_README_FILE="README.md"
 
 # --- Framework metadata ------------------------------------------------------
+    # TD_FRAMEWORK_GLOBALS spec format:
+        #   audience|VARNAME|Human-readable description|extra
+        # Where audience is one of: system | user | both
     TD_FRAMEWORK_GLOBALS=(
         "system|TD_SYSCFG_DIR|Framework-wide system configuration directory|"
         "system|TD_DOCS_DIR|Framework-wide documentation directory|"
@@ -90,7 +95,8 @@
         "user|SAY_DATE_FORMAT|Default date/time format for console output|"
     )
 
-
+    # TD_CORE_LIBS:
+        #   Core libraries sourced by td-bootstrap in this exact order.
     TD_CORE_LIBS=(
         args.sh
         framework-info.sh
@@ -103,7 +109,18 @@
     )
 
 # --- Public API ------------------------------------------------------------------
-    # --- Defaults ---------------------------------------------------------------------
+    # td_defaults_apply
+        # Apply default values for bootstrap globals if they are currently unset.
+        #
+        # Notes:
+        #   - Does not overwrite values already set by the caller or bootstrap cfg.
+        #   - Derives TD_USER_HOME from SUDO_USER when available.
+        #
+        # Outputs (globals):
+        #   Sets default values for logging, UI style/palette, and framework cfg basename.
+        #
+        # Returns:
+        #   Always 0.
     td_defaults_apply() {
         : "${TD_FRAMEWORK_ROOT:=/}"
         : "${TD_APPLICATION_ROOT:=/}"
@@ -134,6 +151,16 @@
 
     }
 
+    # td_defaults_reset
+        # Clear all variables declared in TD_FRAMEWORK_GLOBALS, then re-apply defaults.
+        #
+        # Notes:
+        #   - Uses TD_FRAMEWORK_GLOBALS as the authoritative list of resettable globals.
+        #   - Intended for development/testing and controlled reinitialization.
+        #
+        # Returns:
+        #   Always 0.
+
     td_defaults_reset() {
         local spec audience var desc extra
         for spec in "${TD_FRAMEWORK_GLOBALS[@]}"; do
@@ -146,16 +173,29 @@
         td_defaults_apply
     }
 
-    # --- Rebase directories ----------------------------------------------------------
-        # Compute all directory and file path globals from the current root settings.
-        # Call this after TD_FRAMEWORK_ROOT / TD_APPLICATION_ROOT / TD_USER_HOME are set.
+    # td_rebase_directories
+        # Derive standard directory and file paths from current root settings.
+        #
+        # Call after:
+        #   - TD_FRAMEWORK_ROOT / TD_APPLICATION_ROOT are set (bootstrap cfg)
+        #   - TD_USER_HOME is set (td_defaults_apply)
+        #   - TD_SCRIPT_NAME is set (entry script), if script-scoped files are desired
+        #
+        # Outputs (globals):
+        #   Directories:
+        #     TD_COMMON_LIB, TD_SYSCFG_DIR, TD_USRCFG_DIR, TD_STATE_DIR,
+        #     TD_STYLE_DIR, TD_DOCS_DIR
+        #   Logging paths:
+        #     TD_LOG_PATH, TD_ALTLOG_PATH
+        #   Script-scoped paths (only if TD_SCRIPT_NAME is set):
+        #     TD_SYSCFG_FILE, TD_USRCFG_FILE, TD_STATE_FILE
     td_rebase_directories() {
         TD_COMMON_LIB="$TD_FRAMEWORK_ROOT/usr/local/lib/testadura/common"
         TD_SYSCFG_DIR="$TD_APPLICATION_ROOT/etc/testadura"
         TD_USRCFG_DIR="$TD_USER_HOME/.config/testadura"
         TD_STATE_DIR="$TD_USER_HOME/.state/testadura"
         TD_STYLE_DIR="$TD_COMMON_LIB/styles"
-        TD_DOCS_DIR="$TD_FRAMEWORK_ROOT/usr/local/share/solidgroundux"   # Optional, may not exist
+        TD_DOCS_DIR="$TD_FRAMEWORK_ROOT/usr/local/share/solidgroundux"   # May be absent in dev/minimal installs
 
         # logs (paths only)
         TD_LOG_PATH="$TD_FRAMEWORK_ROOT/var/log/testadura/solidgroundux.log"
@@ -168,10 +208,12 @@
             TD_STATE_FILE="$TD_STATE_DIR/$TD_SCRIPT_NAME.state"
         fi
     }
+
     # td_rebase_framework_cfg_paths
-        #   Derive the framework-global cfg file paths from the already rebased cfg dirs.
+        #   Derive the framework-global cfg file paths from the current cfg dirs.
         #   These cfg files are framework-scoped (not script-scoped) and always use the
         #   fixed basename $TD_FRAMEWORK_CFG_BASENAME.
+
         #
         # Outputs (globals):
         #   TD_FRAMEWORK_SYSCFG_FILE
@@ -182,20 +224,21 @@
     }
 
     # td_load_bootstrap_cfg
-    # Locate, optionally create, and source the bootstrap configuration file.
-    #
-    # Purpose:
-    #   - Establish TD_FRAMEWORK_ROOT and TD_APPLICATION_ROOT early
-    #   - Support dev-tree (target-root) execution without installer
-    #
+        # Locate, optionally create, and source the bootstrap configuration file.
+        #
+        # Purpose:
+        #   - Establish TD_FRAMEWORK_ROOT and TD_APPLICATION_ROOT early
+        #   - Support dev-tree (target-root) execution without installer
+        #
     td_load_bootstrap_cfg() {
         local self_path
         local target_root
         local cfg
 
+        # BASH_SOURCE[1] is the caller (typically td-bootstrap.sh), not this library.
         self_path="$(readlink -f "${BASH_SOURCE[1]}")"
 
-        # --- Dev-tree detection (target-root) -------------------------------
+        # Dev-tree detection (target-root) -------------------------------
         if [[ "$self_path" == */target-root/* ]]; then
             target_root="${self_path%%/target-root/*}/target-root"
         elif [[ "$self_path" == */target-root ]]; then

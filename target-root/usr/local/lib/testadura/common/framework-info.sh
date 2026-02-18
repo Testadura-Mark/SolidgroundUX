@@ -1,5 +1,5 @@
 # =================================================================================
-# Testadura Consultancy — framework-info.sh
+# Testadura — framework-info.sh
 # ---------------------------------------------------------------------------------
 # Purpose    : Container for framework and environment info functions
 # Author     : Mark Fieten
@@ -25,12 +25,17 @@
 #   - Metadata: TD_SCRIPT_*, TD_PRODUCT, TD_VERSION, TD_VERSION_DATE, TD_COMPANY, ...
 #   - Arg specs: TD_ARGS_SPEC, TD_BUILTIN_ARGS, TD_POSITIONAL, and the FLAG_*/VALUE_*
 #   - Config specs: TD_SCRIPT_GLOBALS, TD_FRAMEWORK_GLOBALS (pipe-separated entries)
+#   - Layout: __section_indent, __items_indent (provided by ui layer)
 #
 # Provides:
 #   - td_showenvironment
 #   - td_print_metadata
 #   - td_print_framework_metadata
 #   - td_print_args
+#   - td_print_cfg
+#   - td_print_state
+#   - td_print_license
+#   - td_print_readme
 # =================================================================================
 # --- Library guard ----------------------------------------------------------------
     # Derive a unique per-library guard variable from the filename:
@@ -65,6 +70,7 @@
         #
         # Notes:
         #   - This is a display helper only; it does not parse args.
+        #   - Indentation is controlled via $__items_indent.
     __td_print_arg_spec_entry() {
         local entry="$1"
 
@@ -97,6 +103,8 @@
         #
         # Behavior:
         #   - If the array is undefined or empty, prints nothing.
+        #   - Section header indentation is controlled internally via $__section_indent.
+        #   - Entry indentation is controlled via $__items_indent.
     __td_print_arg_spec_list() {
         local header="$1"
         local array_name="$2"
@@ -105,8 +113,6 @@
 
         local -n specs_ref="$array_name"
         (( ${#specs_ref[@]} > 0 )) || return 0
-
-       
 
         local entry
         local _printed_header=0
@@ -125,7 +131,7 @@
         #     - User globals  : entries with scope 'user' (or 'usr') or 'both'
         #
         #   The spec array items are pipe-separated:
-        #     scope|VARNAME|description|default
+        #     scope|VARNAME|description|default_or_extra
         #
         #   Scope semantics:
         #     system : system-level cfg (e.g. /etc)
@@ -219,25 +225,36 @@
 
         # Script args first
         td_print
-        __td_print_arg_spec_list "Script arguments" "TD_ARGS_SPEC" --padleft "$__section_indent"
+        __td_print_arg_spec_list "Script arguments" "TD_ARGS_SPEC"
 
         # Builtins last
         td_print
-        __td_print_arg_spec_list "Framework arguments" "TD_BUILTIN_ARGS" --padleft "$__section_indent"
+        __td_print_arg_spec_list "Framework arguments" "TD_BUILTIN_ARGS" 
 
         # Positional
         if declare -p TD_POSITIONAL >/dev/null 2>&1 && (( ${#TD_POSITIONAL[@]} > 0 )); then
             td_print
-            td_print_sectionheader --text "Positional arguments" --padleft "$__section_indent"
+            td_print_sectionheader --text "Positional arguments" 
 
             local i
             for i in "${!TD_POSITIONAL[@]}"; do
-                td_print_labeledvalue "Arg[$i]" "${TD_POSITIONAL[$i]}" --pad "$__items_indent"
+                td_print_labeledvalue "Arg[$i]" "${TD_POSITIONAL[$i]}"
             done
         fi
         td_print
     }
 
+    # td_print_state
+        # Print the current persistent state key/value pairs.
+        #
+        # Reads:
+        #   - td_state_list_keys output (expected format: key|value per line)
+        #
+        # Behavior:
+        #   - Prints nothing if no keys are returned.
+        #
+        # Returns:
+        #   0 always (display helper).
     td_print_state(){
         
         td_state_list_keys | {
@@ -252,7 +269,20 @@
             td_print
         }
     }
-
+    # td_print_license
+        # Print the framework license file with an acceptance status indicator.
+        #
+        # Inputs (globals):
+        #   - TD_DOCS_DIR, TD_LICENSE_FILE, TD_PRODUCT
+        #   - TD_LICENSE_ACCEPTED, TUI_VALID, TUI_INVALID, RESET
+        #
+        # Behavior:
+        #   - If the license file is readable, prints it using td_print_file with
+        #     a section header that includes acceptance status.
+        #   - If not readable, prints a debug message only.
+        #
+        # Returns:
+        #   0 always (display helper).
     td_print_license() {
         
         local license_file="$TD_DOCS_DIR/$TD_LICENSE_FILE"
@@ -261,9 +291,9 @@
             status_text="${TUI_VALID}[ACCEPTED]${RESET}"
         fi
 
-        saydebug "td_print_license: license status is: %s" "$status_text"
+        saydebug "td_print_license: license status is: $status_text"
+        saydebug "td_print_license: looking for license file at: $license_file"
 
-        saydebug "td_print_license: looking for license file at: " "$license_file"
         if [[ -r "$license_file" ]]; then
             saydebug "td_print_license: found license file, printing"
             td_print
@@ -273,16 +303,25 @@
             td_print
             td_print_sectionheader --border "-"
         else
-            saydebug "td_print_license: license file not found or not readable: %s" "$license_file"
+            saydebug "td_print_license: license file not found or not readable: $license_file"
         fi
     }
 
+    # td_print_readme
+        # Print the framework README file (if present).
+        #
+        # Inputs (globals):
+        #   - TD_DOCS_DIR
+        #
+        # Returns:
+        #   0 always (display helper).
     td_print_readme() {
-        local license_file="$TD_DOCS_DIR/README.md"
-        if [[ -r "$license_file" ]]; then
-            td_print_file "$license_file"
+        local readme_file="$TD_DOCS_DIR/README.md"
+        if [[ -r "$readme_file" ]]; then
+            td_print_file "$readme_file"
         fi
     }
+
     # td_showenvironment
         #   Print a full diagnostic snapshot of the current script/framework context.
         #
@@ -292,6 +331,7 @@
         #   - script configuration globals (system/user)
         #   - framework metadata
         #   - framework configuration globals (system/user)
+        #   - persistent state variables
         #
         # Typical use:
         #   - invoked by a bootstrap flag such as --showenv
