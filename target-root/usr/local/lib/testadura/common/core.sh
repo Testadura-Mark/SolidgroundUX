@@ -60,13 +60,13 @@
     # Test if a command exists in PATH.
   td_have(){ command -v "$1" >/dev/null 2>&1; }
 
- # -- Posibly exiting requirement checks -----------------------------------------
+ # -- Possibly exiting requirement checks -----------------------------------------
   # td_need_cmd
-    # require a command to exist or exit with error.
+    # Require a command to exist or exit with error.
   td_need_cmd(){ td_have "$1" || { _sh_err "Missing required command: $1"; exit 1; }; }
 
   # td_need_root 
-    # require the script to run as root, re-exec with sudo if not.
+    # Require the script to run as root, re-exec with sudo if not.
   td_need_root() {
       if [[ ${EUID:-$(id -u)} -ne 0 && -z "${TD_ALREADY_ROOT:-}" ]]; then
           exec sudo \
@@ -88,25 +88,25 @@
     # require Bash (optionally minimum major version) or exit.
   td_need_bash(){ (( BASH_VERSINFO[0] >= ${1:-4} )) || { _sh_err "Bash ${1:-4}+ required."; exit 1; }; }
 
-  # need_env
+  # td_need_env
     # Require a named environment variable to be non-empty or exit.
   td_need_env(){ [[ -n "${!1:-}" ]] || { _sh_err "Missing env var: $1"; exit 1; }; }
 
   # td_need_systemd
-    # require systemd (systemctl available) or exit.
+    # Require systemd (systemctl available) or exit.
   td_need_systemd(){ td_have systemctl || { _sh_err "Systemd not available."; exit 1; }; }
 
   # td_need_writable
-    #require a path to be writable or exit.
+    # Require a path to be writable or exit.
   td_need_writable(){ [[ -w "$1" ]] || { _sh_err "Not writable: $1"; exit 1; }; }
 
  # -- Non lethal requirement checks (return 1 on failure, do not exit) ------------
   # td_need_tty
-    # require an attached TTY on stdout, return 1 otherwise.
+    # Require an attached TTY on stdout, return 1 otherwise.
   td_need_tty(){ [[ -t 1 ]] || { _sh_err "No TTY attached."; return 1; }; }
 
   # td_is_active
-    # check if a systemd unit is active.
+    # Check if a systemd unit is active.
   td_is_active(){ systemctl is-active --quiet "$1"; }
 
 # --- Filesystem Helpers ----------------------------------------------------------
@@ -202,7 +202,7 @@
   td_mktemp_file(){ TMPDIR=${TMPDIR:-/tmp} mktemp "${TMPDIR%/}/XXXXXX"; }
 
   # td_slugify
-    # sanitize filenames
+    # Sanitize a string into a filename-safe "slug".
   td_slugify() {
       # Usage: td_slugify "Some Title!!"
       # Output: some-title
@@ -311,13 +311,16 @@
   }
 
 # --- Process & State Helpers -----------------------------------------------------
-  # proc_exists -- check if a process with given name is running.
+  # td_proc_exists
+    # Check if a process with given name is running.
   td_proc_exists(){ pgrep -x "$1" &>/dev/null; }
 
-  # wait_for_exit -- block until a named process is no longer running.
+  # td_wait_for_exit
+    # Block until a named process is no longer running.
   td_wait_for_exit(){ while td_proc_exists "$1"; do sleep 0.5; done; }
 
-  # kill_if_running -- terminate processes by name if they are running.
+  # td_kill_if_running
+    # Terminate processes by name if they are running.
   td_kill_if_running(){ pkill -x "$1" &>/dev/null || true; }
 
 # --- Version & OS Helpers --------------------------------------------------------
@@ -339,7 +342,7 @@
     # Join arguments with a separator.
   td_join_by(){ local IFS="$1"; shift; echo "$*"; }
 
-    # td_timestamp
+  # td_timestamp
     # Return current time as "YYYY-MM-DD HH:MM:SS".
   td_timestamp(){ date +"%Y-%m-%d %H:%M:%S"; }
 
@@ -411,7 +414,7 @@
 
         [[ -n "$line" ]] && printf '%s\n' "$line"
     }
-# --- Die and exit  handlers ------------------------------------------------------
+# --- Die and exit handlers ------------------------------------------------------
     td_die(){ local code="${2:-1}"; _sh_err "${1:-fatal error}"; exit "$code"; }
 
     # td_on_exit
