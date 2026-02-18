@@ -11,16 +11,33 @@
 #   module-template with some sample functions for learning/testing
 # =================================================================================
 
-# --- Validate use ----------------------------------------------------------------
-    # Refuse to execute (library only)
-    [[ "${BASH_SOURCE[0]}" != "$0" ]] || {
-    echo "This is a library; source it, do not execute it: ${BASH_SOURCE[0]}" >&2
-    exit 2
+# --- Library guard ----------------------------------------------------------------
+    # Library-only: must be sourced, never executed.
+    # Uses a per-file guard variable derived from the filename, e.g.:
+    #   ui.sh      -> TD_UI_LOADED
+    #   foo-bar.sh -> TD_FOO_BAR_LOADED
+    __td_lib_guard() {
+        local lib_base
+        local guard
+
+        lib_base="$(basename "${BASH_SOURCE[0]}")"
+        lib_base="${lib_base%.sh}"
+        lib_base="${lib_base//-/_}"
+        guard="TD_${lib_base^^}_LOADED"
+
+        # Refuse to execute (library only)
+        [[ "${BASH_SOURCE[0]}" != "$0" ]] || {
+            echo "This is a library; source it, do not execute it: ${BASH_SOURCE[0]}" >&2
+            exit 2
+        }
+
+        # Load guard (safe under set -u)
+        [[ -n "${!guard-}" ]] && return 0
+        printf -v "$guard" '1'
     }
 
-    # Load guard
-    [[ -n "${TD_SAMPLEMOD_LOADED:-}" ]] && return 0
-    TD_SAMPLEMOD_LOADED=1
+    __td_lib_guard
+    unset -f __td_lib_guard
 
 # --- Module identity ------------------------------------------------------------
     # Keep names unique + grep-friendly.

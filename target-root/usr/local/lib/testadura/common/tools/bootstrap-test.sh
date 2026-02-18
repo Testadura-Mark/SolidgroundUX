@@ -125,7 +125,7 @@ set -euo pipefail
         "both|TD_COMMON_DATE|Common  CFG date|"
     )
 # --- local script functions ------------------------------------------------------
-# --- Vars ---------------------------------------------------------------
+    # Declarations
         : "${TD_SYS_STRING:=system-default}"
         : "${TD_SYS_INT:=0}"
         : "${TD_SYS_DATE:=1970-01-01}"

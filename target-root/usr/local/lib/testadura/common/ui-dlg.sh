@@ -37,28 +37,34 @@
 #   - Typed/structured message output (see ui-say.sh)
 #   - Full-screen UI frameworks (alternate screen, panes, widgets)
 # =================================================================================
-# --- Library guard ----------------------------------------------------------------
-    # Derive a unique per-library guard variable from the filename:
-    #   ui.sh        -> TD_UI_LOADED
-    #   ui-sgr.sh    -> TD_UI_SGR_LOADED
-    #   foo-bar.sh   -> TD_FOO_BAR_LOADED
-    # Note:
-    #   Guard variables (__lib_*) are internal globals by convention; they are not part
-    #   of the public API and may change without notice.
-    __lib_base="$(basename "${BASH_SOURCE[0]}")"
-    __lib_base="${__lib_base%.sh}"
-    __lib_base="${__lib_base//-/_}"
-    __lib_guard="TD_${__lib_base^^}_LOADED"
 
-    # Refuse to execute (library only)
-    [[ "${BASH_SOURCE[0]}" != "$0" ]] || {
-        echo "This is a library; source it, do not execute it: ${BASH_SOURCE[0]}" >&2
-        exit 2
+# --- Library guard ---------------------------------------------------------------
+    # Library-only: must be sourced, never executed.
+    # Uses a per-file guard variable derived from the filename, e.g.:
+    #   ui.sh      -> TD_UI_LOADED
+    #   foo-bar.sh -> TD_FOO_BAR_LOADED
+    __td_lib_guard() {
+        local lib_base
+        local guard
+
+        lib_base="$(basename "${BASH_SOURCE[0]}")"
+        lib_base="${lib_base%.sh}"
+        lib_base="${lib_base//-/_}"
+        guard="TD_${lib_base^^}_LOADED"
+
+        # Refuse to execute (library only)
+        [[ "${BASH_SOURCE[0]}" != "$0" ]] || {
+            echo "This is a library; source it, do not execute it: ${BASH_SOURCE[0]}" >&2
+            exit 2
+        }
+
+        # Load guard (safe under set -u)
+        [[ -n "${!guard-}" ]] && return 0
+        printf -v "$guard" '1'
     }
 
-    # Load guard (safe under set -u)
-    [[ -n "${!__lib_guard-}" ]] && return 0
-    printf -v "$__lib_guard" '1'
+    __td_lib_guard
+    unset -f __td_lib_guard
 
 # --- Internal helpers ------------------------------------------------------------
     # __dlg_keymap

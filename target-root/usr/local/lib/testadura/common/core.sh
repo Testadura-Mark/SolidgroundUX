@@ -28,28 +28,34 @@
 #   - Safe to use during early bootstrap and in isolation
 # 
 # =================================================================================
-# --- Library guard ---------------------------------------------------------------
-    # Derive a unique per-library guard variable from the filename:
-    #   ui.sh        -> TD_UI_LOADED
-    #   ui-sgr.sh    -> TD_UI_SGR_LOADED
-    #   foo-bar.sh   -> TD_FOO_BAR_LOADED
-    # Note:
-    #   Guard variables (__lib_*) are internal globals by convention; they are not part
-    #   of the public API and may change without notice.
-    __lib_base="$(basename "${BASH_SOURCE[0]}")"
-    __lib_base="${__lib_base%.sh}"
-    __lib_base="${__lib_base//-/_}"
-    __lib_guard="TD_${__lib_base^^}_LOADED"
 
-    # Refuse to execute (library only)
-    [[ "${BASH_SOURCE[0]}" != "$0" ]] || {
-        echo "This is a library; source it, do not execute it: ${BASH_SOURCE[0]}" >&2
-        exit 2
+# --- Library guard ----------------------------------------------------------------
+    # Library-only: must be sourced, never executed.
+    # Uses a per-file guard variable derived from the filename, e.g.:
+    #   ui.sh      -> TD_UI_LOADED
+    #   foo-bar.sh -> TD_FOO_BAR_LOADED
+    __td_lib_guard() {
+        local lib_base
+        local guard
+
+        lib_base="$(basename "${BASH_SOURCE[0]}")"
+        lib_base="${lib_base%.sh}"
+        lib_base="${lib_base//-/_}"
+        guard="TD_${lib_base^^}_LOADED"
+
+        # Refuse to execute (library only)
+        [[ "${BASH_SOURCE[0]}" != "$0" ]] || {
+            echo "This is a library; source it, do not execute it: ${BASH_SOURCE[0]}" >&2
+            exit 2
+        }
+
+        # Load guard (safe under set -u)
+        [[ -n "${!guard-}" ]] && return 0
+        printf -v "$guard" '1'
     }
 
-    # Load guard (safe under set -u)
-    [[ -n "${!__lib_guard-}" ]] && return 0
-    printf -v "$__lib_guard" '1'
+    __td_lib_guard
+    unset -f __td_lib_guard
 
 # --- Internals -------------------------------------------------------------------
   # _sh_err -- print an error message to stderr (internal, minimal).
@@ -360,69 +366,53 @@
   }
 
   # td_array_union
-    # Create a stable union of two arrays.
+    # Create a stable union of N arrays (unique values, order preserved).
     #
     # Usage:
-    #   td_array_union DEST SRC_A SRC_B [mode]
+    #   td_array_union DEST_ARRAY SRC_ARRAY_1 [SRC_ARRAY_2 ... SRC_ARRAY_N]
     #
     # Parameters:
-    #   DEST  : destination array name (overwritten)
-    #   SRC_A : first source array name
-    #   SRC_B : second source array name
-    #   mode  : "unique" (default) or "all"
+    #   DEST_ARRAY    : name of destination array (will be overwritten)
+    #   SRC_ARRAY_*   : one or more source array names
     #
     # Behavior:
-    #   - Preserves order (A first, then B)
-    #   - "unique" removes duplicates (default)
-    #   - "all" keeps duplicates (concatenation)
+    #   - Preserves order (SRC1 first, then SRC2, ...)
+    #   - Removes duplicates
     #   - Ignores empty elements
     #
-    # Requires: bash 4+ (associative arrays for unique mode)
+    # Requires: bash 4+ (namerefs + associative arrays)
   td_array_union() {
       local dest_name="$1"
-      local src_a_name="$2"
-      local src_b_name="$3"
-      local mode="${4:-unique}"
+      shift || true
 
-      [[ -n "$dest_name" && -n "$src_a_name" && -n "$src_b_name" ]] || return 1
+      [[ -n "${dest_name:-}" && $# -ge 1 ]] || return 1
 
       local -n __dest="$dest_name"
-      local -n __a="$src_a_name"
-      local -n __b="$src_b_name"
-
+      local -A __seen=()
       __dest=()
 
+      local src_name
       local item
 
-      if [[ "$mode" == "all" ]]; then
-          for item in "${__a[@]:-}" "${__b[@]:-}"; do
+      for src_name in "$@"; do
+          [[ -n "${src_name:-}" ]] || continue
+
+          # If source array doesn't exist, skip it quietly
+          declare -p "$src_name" >/dev/null 2>&1 || continue
+
+          local -n __src="$src_name"
+          for item in "${__src[@]:-}"; do
               [[ -n "${item:-}" ]] || continue
-              __dest+=( "$item" )
+              if [[ -z "${__seen[$item]+x}" ]]; then
+                  __dest+=( "$item" )
+                  __seen["$item"]=1
+              fi
           done
-          return 0
-      fi
-
-      # Default: unique mode
-      local -A __seen=()
-
-      for item in "${__a[@]:-}"; do
-          [[ -n "${item:-}" ]] || continue
-          if [[ -z "${__seen[$item]+x}" ]]; then
-              __dest+=( "$item" )
-              __seen["$item"]=1
-          fi
-      done
-
-      for item in "${__b[@]:-}"; do
-          [[ -n "${item:-}" ]] || continue
-          if [[ -z "${__seen[$item]+x}" ]]; then
-              __dest+=( "$item" )
-              __seen["$item"]=1
-          fi
       done
 
       return 0
   }
+
 
 # --- Text functions --------------------------------------------------------------
   # td_trim
