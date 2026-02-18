@@ -8,52 +8,52 @@
 # Licensed under the Testadura Non-Commercial License (TD-NC) v1.0.
 # ----------------------------------------------------------------------------------
 # Description:
-    #   Provides a minimal, deterministic argument parser driven by TD_ARGS_SPEC.
-    #   The parser initializes option variables strictly from the spec and returns:
-    #     HELP_REQUESTED  : 0|1
-    #     TD_POSITIONAL   : array of remaining (non-option) arguments
-    #
-    #   Includes a basic help generator (td_show_help) based on TD_ARGS_SPEC.
-    #
+#   Provides a minimal, deterministic argument parser driven by TD_ARGS_SPEC.
+#   The parser initializes option variables strictly from the spec and returns:
+#     TD_POSITIONAL   : array of remaining (non-option) arguments
+#
+#   Includes a basic help generator (td_show_help) based on TD_ARGS_SPEC.
+#
 # Assumptions:
-    #   - This is a FRAMEWORK library (may depend on the framework as it exists).
-    #   - TD_ARGS_SPEC is defined by the caller before td_parse_args is invoked.
-    #   - Option variables are created/initialized strictly from TD_ARGS_SPEC.
-    #
+#   - This is a FRAMEWORK library (may depend on the framework as it exists).
+#   - TD_ARGS_SPEC is defined by the caller before td_parse_args is invoked.
+#   - Option variables are created/initialized strictly from TD_ARGS_SPEC.
+#
 # Rules / Contract:
-    #   - Library-only: must be sourced, never executed.
-    #   - No global shell-option changes (no set -euo pipefail).
-    #   - Parsing is deterministic and explicit: only the outputs listed above plus
-    #     spec-defined option variables are produced.
-    #   - No UI behavior beyond basic help text (formatting belongs in ui layer).
-    #   - No config loading, runtime detection, or application policy decisions.
-    #
+#   - Library-only: must be sourced, never executed.
+#   - No global shell-option changes (no set -euo pipefail).
+#   - Parsing is deterministic and explicit: only the outputs listed above plus
+#     spec-defined option variables are produced.
+#   - No UI behavior beyond basic help text (formatting belongs in ui layer).
+#   - No config loading, runtime detection, or application policy decisions.
+#
 # TD_ARGS_SPEC format (array of strings, one per option):
 #   "name|short|type|var|help|choices"
-    #
-    # Fields:
-    #   name    : long option name WITHOUT leading "--" (e.g. "config")
-    #   short   : short option WITHOUT leading "-" (e.g. "c") or empty
-    #   type    : flag | value | enum
-    #   var     : variable name to set (e.g. "CFG_FILE")
-    #   help    : help text for td_show_help()
-    #   choices : enum only: comma-separated allowed values (e.g. "dev,prd")
-    #             for flag/value: leave empty (keep trailing '|')
-    #
+#
+# Fields:
+#   name    : long option name WITHOUT leading "--" (e.g. "config")
+#   short   : short option WITHOUT leading "-" (e.g. "c") or empty
+#   type    : flag | value | enum
+#   var     : variable name to set (e.g. "CFG_FILE")
+#   help    : help text for td_show_help()
+#   choices : enum only: comma-separated allowed values (e.g. "dev,prd")
+#             for flag/value: leave empty (keep trailing '|')
+#
 # Conventions:
-    #   - flag  -> default 0, set to 1 if present
-    #   - value -> consumes next token
-    #   - enum  -> consumes next token and validates against choices
-    #
+#   - flag  -> default 0, set to 1 if present
+#   - value -> consumes next token
+#   - enum  -> consumes next token and validates against choices
+#
 # Public API:
-    #   td_parse_args "$@"
-    #   td_show_help
-    #
+#   td_parse_args "$@"
+#   td_show_help
+#
 # Non-goals:
-    #   - Subcommands or nested argument trees
-    #   - Conditional/computed defaults (beyond spec initialization)
-    #   - UI formatting beyond basic help text
+#   - Subcommands or nested argument trees
+#   - Conditional/computed defaults (beyond spec initialization)
+#   - UI formatting beyond basic help text
 # ==================================================================================
+
 # --- Library guard ----------------------------------------------------------------
     # Derive a unique per-library guard variable from the filename:
     #   ui.sh        -> TD_UI_LOADED
@@ -78,16 +78,18 @@
     printf -v "$__lib_guard" '1'
 
 # --- Helper functions -------------------------------------------------------------
-    # Split spec into internal temp variables
+    # __td_arg_split
+        # Split spec into internal temp variables
     __td_arg_split() {
         local spec="$1"
         IFS='|' read -r __td_name __td_short __td_type __td_var __td_help __td_choices <<< "$spec"
     }
 
-    # Find the matching spec line for a given option token.
-    # wanted:
-    #   "config" (from --config) OR "c" (from -c)
-    # Prints the full spec line to stdout if found.
+    # __td_arg_find_spec
+        # Find the matching spec line for a given option token.
+        # wanted:
+        #   "config" (from --config) OR "c" (from -c)
+        # Prints the full spec line to stdout if found.
     __td_arg_find_spec() {
         local wanted="$1"
         local spec
@@ -103,8 +105,9 @@
         return 1
     }
     
-    # Validate an enum value against a comma-separated choices string.
-    # Returns 0 if ok, 1 if not.
+    # __td_arg_validate_enum
+        # Validate an enum value against a comma-separated choices string.
+        # Returns 0 if ok, 1 if not.
     __td_arg_validate_enum() {
         local value="$1"
         local choices_csv="$2"
@@ -124,8 +127,9 @@
         [[ "$ok" -eq 1 ]]
     }
 
-    # Initialize option variables from ARGS_SPEC.
-    # (idempotent: re-running sets them back to defaults)
+    # __td_arg_init_defaults
+        # Initialize option variables from ARGS_SPEC.
+        # (idempotent: re-running sets them back to defaults)
     __td_arg_init_defaults() {
         local source="${1:-both}"
         local -a args=()
@@ -166,33 +170,35 @@
         TD_EFFECTIVE_ARGS_SPEC=( "${args[@]}" )
     }
 
-        # Print a key-value pair
-    __td_print_global() {
-        local name="$1"
-        local value
-
-        [[ -z "$name" ]] && return 0
-
-        # Optional safety check
-        if [[ ! "$name" =~ ^[a-zA-Z_][a-zA-Z0-9_]*$ ]]; then
-            td_print_labeledvalue "$name" "<invalid name>"
-            return 0
-        fi
-
-        # Safe under set -u
-        value="${!name-<unset>}"
-        td_print_labeledvalue "$name" "$value"
-    }
 # --- Public API ------------------------------------------------------------------
     __header_indent=2
     __text_indent=3
-    
-    # td_showhelp
+
+    # Global Arrays
+    TD_BUILTIN_ARGS=(
+        "dryrun|D|flag|FLAG_DRYRUN|Emulate only; do not perform actions|"
+        "debug||flag|FLAG_DEBUG|Show debug messages|"
+        "help|H|flag|FLAG_HELP|Show command-line help and exit|"
+        "showargs|A|flag|FLAG_SHOWARGS|Print parsed arguments and exit|"
+        "showcfg|C|flag|FLAG_SHOWCFG|Print configuration values and exit|"
+        "showenv|E|flag|FLAG_SHOWENV|Print all info (args, cfg, state) and exit|"
+        "showmeta|M|flag|FLAG_SHOWMETA|Shows framework and script metadata and exit|"
+        "showstate|S|flag|FLAG_SHOWSTATE|Print state values and exit|"
+        "showlicense|L|flag|FLAG_SHOWLICENSE|Show framework license and exit|"
+        "showreadme||flag|FLAG_SHOWREADME|Show framework README and exit|"
+        "statereset|R|flag|FLAG_STATERESET|Reset the state file|"
+        "verbose|V|flag|FLAG_VERBOSE|Enable verbose output|"
+    )
+    TD_BUILTIN_EXAMPLES=(
+        "  $TD_SCRIPT_NAME --dryrun --verbose --initcfg"
+    ) 
+
+    # td_show_help
         # Generate and print command-line help text derived from TD_ARGS_SPEC, with an
         # optional builtins section derived from TD_BUILTIN_ARGS.
         #
         # Usage:
-        #   td_showhelp [include_builtins]
+        #   td_show_help [include_builtins]
         #
         # Parameters:
         #   include_builtins : 1 to include framework builtins (default), 0 to omit.
@@ -202,7 +208,7 @@
         #   - Script options come from TD_ARGS_SPEC.
         #   - Builtin options (if enabled) come from TD_BUILTIN_ARGS and are shown in a
         #     separate section to clearly distinguish framework flags from script flags.
-    td_showhelp() {
+    td_show_help() {
         local include_builtins="${1:-1}"
         local script_name="${TD_SCRIPT_NAME:-$(basename "${TD_SCRIPT_FILE:-$0}")}"
         local spaces="   "
@@ -274,14 +280,27 @@
 
                     td_print_labeledvalue "$opt$meta" "${__td_help:-}" --pad "$__text_indent" --textclr "$RESET" --valueclr "$RESET" --width 18
                 done
-            fi
+            fi 
         fi
 
-        if declare -p TD_SCRIPT_EXAMPLES >/dev/null 2>&1; then
+        local -a examples=()
+
+        if (( include_builtins )) && 
+            declare -p TD_BUILTIN_EXAMPLES >/dev/null 2>&1 && 
+            declare -p TD_SCRIPT_EXAMPLES  >/dev/null 2>&1; then
+                td_array_union examples TD_SCRIPT_EXAMPLES TD_BUILTIN_EXAMPLES
+        elif (( include_builtins )) && declare -p TD_BUILTIN_EXAMPLES >/dev/null 2>&1; then
+            examples=( "${TD_BUILTIN_EXAMPLES[@]}" )
+        elif declare -p TD_SCRIPT_EXAMPLES >/dev/null 2>&1; then
+           examples=( "${TD_SCRIPT_EXAMPLES[@]}" )
+        fi
+
+        if (( ${#examples[@]} > 0 )); then
             td_print
-            td_print_sectionheader "Examples:" --padleft "$__header_indent"
+            td_print_sectionheader --text "Examples:" --padleft "$__header_indent"
+
             local ex
-            for ex in "${TD_SCRIPT_EXAMPLES[@]}"; do
+            for ex in "${examples[@]}"; do
                 td_print "$spaces$ex"
             done
         fi
@@ -290,13 +309,12 @@
         td_print_sectionheader
     }
 
-
     # td_parse_args
         # Parse command-line arguments according to TD_ARGS_SPEC.
         #
         # Summary:
         #   Parses CLI arguments using a declarative specification and produces a
-        #   deterministic set of outputs: option variables, HELP_REQUESTED, and
+        #   deterministic set of outputs: option variables, and
         #   TD_POSITIONAL.
         #
         # Usage:
@@ -309,7 +327,6 @@
         #   TD_ARGS_SPEC[]       : Argument specification array
         #
         # Outputs (globals):
-        #   HELP_REQUESTED       : 0|1 (set when -h/--help encountered)
         #   TD_POSITIONAL[]      : Remaining non-option arguments
         #   <option vars>        : Variables defined by TD_ARGS_SPEC (initialized)
         #
@@ -333,31 +350,10 @@
         #   - Option clustering (-abc)
         #   - Implicit defaults beyond spec initialization
         #   - UI formatting or help display
-        # ------------------------------------------------------------------------------
-   
-    TD_BUILTIN_ARGS=(
-        "dryrun|D|flag|FLAG_DRYRUN|Emulate only; do not perform actions|"
-        'debug||flag|FLAG_DEBUG|Show debug messages'
-        "help|H|flag|FLAG_HELP|Show command-line help and exit|"
-        "showargs|A|flag|FLAG_SHOWARGS|Print parsed arguments and exit|"
-        "showcfg|C|flag|FLAG_SHOWCFG|Print configuration values and exit|"
-        "showenv|E|flag|FLAG_SHOWENV|Print all info (args, cfg, state) and exit|"
-        "showmeta|M|flag|FLAG_SHOWMETA|Shows framework and script metadata and exit|"
-        "showstate|S|flag|FLAG_SHOWSTATE|Print state values and exit|"
-        "showlicense|L|flag|FLAG_SHOWLICENSE|Show framework license and exit|"
-        "showreadme||flag|FLAG_SHOWREADME|Show framework README and exit|"
-        "statereset|R|flag|FLAG_STATERESET|Reset the state file|"
-        "verbose|V|flag|FLAG_VERBOSE|Enable verbose output|"
-    )
-    TD_BUILTIN_EXAMPLES=(
-        "  $TD_SCRIPT_NAME --dryrun --verbose --initcfg"
-    ) 
     td_parse_args() {
-        local source="${1:-both}"
-        shift || true
+        local source="${TD_ARGS_SOURCE:-both}"
 
         TD_POSITIONAL=()
-
         __td_arg_init_defaults "$source"
 
         while [[ $# -gt 0 ]]; do
@@ -415,6 +411,7 @@
                 -?*)
                     local sopt spec
                     sopt="${1#-}"
+                    [[ "${#sopt}" -eq 1 ]] || { echo "Unknown option: $1" >&2; return 1; }
 
                     spec="$(__td_arg_find_spec "$sopt" || true)"
 
@@ -465,6 +462,7 @@
         return 0
     }
 
+
     # td_builtinarg_handler
         # Handle framework builtin arguments after bootstrap and script setup.
         #
@@ -488,7 +486,7 @@
     td_builtinarg_handler(){
         # Info-only builtins: perform action and EXIT.
         if (( FLAG_HELP )); then
-            td_showhelp
+            td_show_help
             exit 0
         fi
 

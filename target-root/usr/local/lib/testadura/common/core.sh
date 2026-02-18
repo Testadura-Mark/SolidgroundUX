@@ -358,6 +358,72 @@
     done
     return 1
   }
+
+  # td_array_union
+    # Create a stable union of two arrays.
+    #
+    # Usage:
+    #   td_array_union DEST SRC_A SRC_B [mode]
+    #
+    # Parameters:
+    #   DEST  : destination array name (overwritten)
+    #   SRC_A : first source array name
+    #   SRC_B : second source array name
+    #   mode  : "unique" (default) or "all"
+    #
+    # Behavior:
+    #   - Preserves order (A first, then B)
+    #   - "unique" removes duplicates (default)
+    #   - "all" keeps duplicates (concatenation)
+    #   - Ignores empty elements
+    #
+    # Requires: bash 4+ (associative arrays for unique mode)
+  td_array_union() {
+      local dest_name="$1"
+      local src_a_name="$2"
+      local src_b_name="$3"
+      local mode="${4:-unique}"
+
+      [[ -n "$dest_name" && -n "$src_a_name" && -n "$src_b_name" ]] || return 1
+
+      local -n __dest="$dest_name"
+      local -n __a="$src_a_name"
+      local -n __b="$src_b_name"
+
+      __dest=()
+
+      local item
+
+      if [[ "$mode" == "all" ]]; then
+          for item in "${__a[@]:-}" "${__b[@]:-}"; do
+              [[ -n "${item:-}" ]] || continue
+              __dest+=( "$item" )
+          done
+          return 0
+      fi
+
+      # Default: unique mode
+      local -A __seen=()
+
+      for item in "${__a[@]:-}"; do
+          [[ -n "${item:-}" ]] || continue
+          if [[ -z "${__seen[$item]+x}" ]]; then
+              __dest+=( "$item" )
+              __seen["$item"]=1
+          fi
+      done
+
+      for item in "${__b[@]:-}"; do
+          [[ -n "${item:-}" ]] || continue
+          if [[ -z "${__seen[$item]+x}" ]]; then
+              __dest+=( "$item" )
+              __seen["$item"]=1
+          fi
+      done
+
+      return 0
+  }
+
 # --- Text functions --------------------------------------------------------------
   # td_trim
     # Remove leading/trailing whitespace.
