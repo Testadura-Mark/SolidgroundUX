@@ -33,7 +33,7 @@
 #   - Logging/UI policy decisions (handled by ui-say/ui modules)
 # =================================================================================
 
-# --- Library guard ----------------------------------------------------------------
+# --- Library guard ---------------------------------------------------------------
     # Derive a unique per-library guard variable from the filename:
     #   ui.sh        -> TD_UI_LOADED
     #   ui-sgr.sh    -> TD_UI_SGR_LOADED
@@ -56,7 +56,7 @@
     [[ -n "${!__lib_guard-}" ]] && return 0
     printf -v "$__lib_guard" '1'
 
-# --- Framework identity -----------------------------------------------------------
+# --- Framework identity ----------------------------------------------------------
     # Product/branding metadata used by framework-info, logging headers, and about text.
     TD_PRODUCT="SolidgroundUX"
     TD_VERSION="1.0-R2-beta"
@@ -68,7 +68,7 @@
     TD_LICENSE_ACCEPTED=0
     TD_README_FILE="README.md"
 
-# --- Framework metadata ------------------------------------------------------
+# --- Framework metadata ----------------------------------------------------------
     # TD_FRAMEWORK_GLOBALS spec format:
         #   audience|VARNAME|Human-readable description|extra
         # Where audience is one of: system | user | both

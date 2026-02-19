@@ -29,7 +29,7 @@
 # 
 # =================================================================================
 
-# --- Library guard ----------------------------------------------------------------
+# --- Library guard ---------------------------------------------------------------
     # Library-only: must be sourced, never executed.
     # Uses a per-file guard variable derived from the filename, e.g.:
     #   ui.sh      -> TD_UI_LOADED
@@ -470,7 +470,7 @@
 
         [[ -n "$line" ]] && printf '%s\n' "$line"
     }
-# --- Die and exit handlers ------------------------------------------------------
+# --- Die and exit handlers -------------------------------------------------------
     td_die(){ local code="${2:-1}"; _sh_err "${1:-fatal error}"; exit "$code"; }
 
     # td_on_exit

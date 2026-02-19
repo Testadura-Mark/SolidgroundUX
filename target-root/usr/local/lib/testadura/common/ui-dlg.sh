@@ -98,7 +98,6 @@
 # --- Public API ------------------------------------------------------------------
     # td_dlg_autocontinue 
         # Interactive auto-continue dialog with countdown and key controls.
-        #
         # Usage:
         #   td_dlg_autocontinue [SECONDS] [MESSAGE] [CHOICES]
         #
@@ -308,7 +307,6 @@
             fi
         done
     }
-
 
 
 

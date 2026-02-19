@@ -367,7 +367,7 @@
         td_print
     }
 
-# --- Bootstrap/advanced: cfg domain loading
+# --- Bootstrap/advanced: cfg domain loading ---------------------------------------
     # These helpers implement "system + user cfg" behavior driven by a specs array.
     # Intended for bootstrap; stable but not part of the minimal surface area.
 

@@ -62,7 +62,7 @@
     __td_lib_guard
     unset -f __td_lib_guard
 
-# --- Minimal fallback UI (overridden by ui.sh when sourced) ----------------------
+# --- Minimal fallback UI (will be overridden by ui.sh when sourced) --------------
     #   Bootstrap must be able to report failures before core libraries (ui/say/log)
     #   are available. These definitions are intentionally minimal and will be
     #   overridden once ui.sh (or equivalent) is sourced.
