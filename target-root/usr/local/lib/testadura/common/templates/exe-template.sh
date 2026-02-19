@@ -17,9 +17,10 @@ set -euo pipefail
 # --- Load bootstrapper ---------------------------------------------------------
     _bootstrap_default="/usr/local/lib/testadura/common/td-bootstrap.sh"
 
-    # Optional non-interactive overrides (recommended)
+    # Optional non-interactive overrides (useful for CI/dev installs)
     # - TD_BOOTSTRAP: full path to td-bootstrap.sh
-    # - TD_FRAMEWORK_PREFIX: prefix that contains usr/local/lib/testadura/common/td-bootstrap.sh
+    # - TD_FRAMEWORK_PREFIX: sysroot/prefix that contains usr/local/lib/testadura/common/td-bootstrap.sh
+
     if [[ -n "${TD_BOOTSTRAP:-}" ]]; then
         BOOTSTRAP="$TD_BOOTSTRAP"
     elif [[ -n "${TD_FRAMEWORK_PREFIX:-}" ]]; then
@@ -38,7 +39,7 @@ set -euo pipefail
             printf "Are you developing the framework or using a custom install path?\n\n"
             printf "Enter one of:\n"
             printf "  - prefix (contains usr/local/...), e.g. /home/me/dev/solidgroundux/target-root\n"
-            printf "  - common dir, e.g. /home/me/dev/solidgroundux/target-root/usr/local/lib/testadura/common\n"
+            printf "  - common dir (the folder that contains td-bootstrap.sh), e.g. /home/me/dev/solidgroundux/target-root/usr/local/lib/testadura/common\n"
             printf "  - full path to td-bootstrap.sh\n\n"
 
             read -r -p "Path (empty to abort): " _root
@@ -65,7 +66,8 @@ set -euo pipefail
         fi
     fi
 
-# --- Script metadata -------------------------------------------------------------
+
+# --- Script metadata (identity) ------------------------------------------------
     TD_SCRIPT_FILE="$(readlink -f "${BASH_SOURCE[0]}")"
     TD_SCRIPT_DIR="$(cd -- "$(dirname -- "$TD_SCRIPT_FILE")" && pwd)"
     TD_SCRIPT_BASE="$(basename -- "$TD_SCRIPT_FILE")"
@@ -78,75 +80,84 @@ set -euo pipefail
     TD_SCRIPT_COPYRIGHT="© 2025 Mark Fieten — Testadura Consultancy"
     TD_SCRIPT_LICENSE="Testadura Non-Commercial License (TD-NC) v1.0"
 
-# --- Using / imports -------------------------------------------------------------
+# --- Script metadata (framework integration) -----------------------------------    
     # Libraries to source from TD_COMMON_LIB
+    # Leave empty if no extra libs are needed.
     TD_USING=(
     )
 
-# --- Argument specification and processing ---------------------------------------
-    # --- Example: Arguments -------------------------------------------------------
-    # Each entry:
-    #   "name|short|type|var|help|choices"
-    #
-    #   name    = long option name WITHOUT leading --
-    #   short   - short option name WITHOUT leading -
-    #   type    = flag | value | enum
-    #   var     = shell variable that will be set
-    #   help    = help string for auto-generated --help output
-    #   choices = for enum: comma-separated values (e.g. fast,slow,auto)
-    #             for flag/value: leave empty
-    #
-    # Notes:
-    #   - -h / --help is built in, you don't need to define it here.
-    #   - After parsing you can use: FLAG_VERBOSE, VAL_CONFIG, ENUM_MODE, ...
-    # ------------------------------------------------------------------------
+    # TD_ARGS_SPEC (script-specific arguments; optional)
+        # --- Example: Arguments
+        # Each entry:
+        #   "name|short|type|var|help|choices"
+        #
+        #   name    = long option name WITHOUT leading --
+        #   short   - short option name WITHOUT leading -
+        #   type    = flag | value | enum
+        #   var     = shell variable that will be set
+        #   help    = help string for auto-generated --help output
+        #   choices = for enum: comma-separated values (e.g. fast,slow,auto)
+        #             for flag/value: leave empty
+        #
+        # Notes:
+        #   - -h / --help is built in, you don't need to define it here.
+        #   - After parsing you can use: FLAG_VERBOSE, VAL_CONFIG, ENUM_MODE, ...
     TD_ARGS_SPEC=(
     )
 
     TD_SCRIPT_EXAMPLES=(
     ) 
+    
+    TD_SCRIPT_GLOBALS=(
+    )
+# --- Local script functions ----------------------------------------------------
+    # Declarations (defaults for script-level variables; keep above main)
 
-# --- local script functions ------------------------------------------------------
-
-# --- Main Sequence ---------------------------------------------------------------
-
-# --- main -----------------------------------------------------------------------
+ # --- main --------------------------------------------------------------------
     # main MUST BE LAST function in script
-        # Main entry point for the executable script.
-        #
-        # Execution flow:
-        #   1) Invoke td_bootstrap to initialize the framework environment, parse
-        #      framework-level arguments, and optionally load UI, state, and config.
-        #   2) Abort immediately if bootstrap reports an error condition.
-        #   3) Enact framework builtin arguments (help, showargs, state reset, etc.).
-        #      Info-only builtins terminate execution; mutating builtins may continue.
-        #   4) Continue with script-specific logic.
-        #
-        # Bootstrap options used here:
-        #   --state         Load persistent state via td_state_load
-        #   --needroot     Enforce execution as root
-        #   --             End of bootstrap options; remaining args are script arguments
-        #
-        # Notes:
-        #   - Builtin argument handling is centralized in td_builtinarg_handler.
-        #   - Scripts may override builtin handling, but doing so transfers
-        #     responsibility for correct behavior to the script author.
+    # Main entry point for the executable script.
+    #
+    # Execution flow:
+    #   1) Invoke td_bootstrap to initialize the framework environment, parse
+    #      framework-level arguments, and optionally load UI, state, and config.
+    #   2) Abort immediately if bootstrap reports an error condition.
+    #   3) Enact framework builtin arguments (help, showargs, state reset, etc.).
+    #      Info-only builtins terminate execution; mutating builtins may continue.
+    #   4) Continue with script-specific logic.
+    #
+    # The script author explicitly selects which framework features to enable.
+    # None of these options are required; include only what this script needs.
+    #
+    # Available bootstrap options:
+    #   --state        Enable persistent state loading/saving.
+    #   --needroot     Require execution as root.
+    #   --cannotroot   Require execution as non-root.
+    #   --log          Enable logging to file.
+    #   --console      Enable logging to console output.
+    #   --             End of bootstrap options; remaining args are script arguments.
+    #
+    # Notes:
+    #   - Builtin argument handling is centralized in td_builtinarg_handler.
+    #   - Scripts may override builtin handling, but doing so transfers
+    #     responsibility for correct behavior to the script author.
     main() {
         # -- Bootstrap
-            td_bootstrap --state --needroot -- "$@"
-            rc=$?
-            if (( rc != 0 )); then
-                exit "$rc"
-            fi
+            local rc = 0
 
+            td_bootstrap -- "$@"
+            rc=$?
+            (( rc != 0 )) && exit "$rc"
+                        
             # -- Handle builtin arguments
                 td_builtinarg_handler
 
             # -- UI
+                td_update_runmode
                 td_print_titlebar
 
         # -- Main script logic
+
     }
 
-    # Run main with positional args only (not the options)
+    # Entrypoint: td_bootstrap will split framework args from script args.
     main "$@"

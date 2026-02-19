@@ -66,7 +66,7 @@ set -euo pipefail
     fi
 
 
-# --- Script metadata -------------------------------------------------------------
+# --- Script metadata (identity) ------------------------------------------------
     TD_SCRIPT_FILE="$(readlink -f "${BASH_SOURCE[0]}")"
     TD_SCRIPT_DIR="$(cd -- "$(dirname -- "$TD_SCRIPT_FILE")" && pwd)"
     TD_SCRIPT_BASE="$(basename -- "$TD_SCRIPT_FILE")"
@@ -79,28 +79,27 @@ set -euo pipefail
     TD_SCRIPT_COPYRIGHT="© 2025 Mark Fieten — Testadura Consultancy"
     TD_SCRIPT_LICENSE="Testadura Non-Commercial License (TD-NC) v1.0"
 
-# --- Using / imports -------------------------------------------------------------
+# --- Script metadata (framework integration) ----------------------------------
     # Libraries to source from TD_COMMON_LIB
     TD_USING=(
     )
 
-# --- Argument specification and processing ---------------------------------------
-    # --- Example: Arguments -------------------------------------------------------
-    # Each entry:
-    #   "name|short|type|var|help|choices"
-    #
-    #   name    = long option name WITHOUT leading --
-    #   short   - short option name WITHOUT leading -
-    #   type    = flag | value | enum
-    #   var     = shell variable that will be set
-    #   help    = help string for auto-generated --help output
-    #   choices = for enum: comma-separated values (e.g. fast,slow,auto)
-    #             for flag/value: leave empty
-    #
-    # Notes:
-    #   - -h / --help is built in, you don't need to define it here.
-    #   - After parsing you can use: FLAG_VERBOSE, VAL_CONFIG, ENUM_MODE, ...
-    # ------------------------------------------------------------------------
+    # TD_ARGS_SPEC
+        # --- Example: Arguments ----------------------------------------------
+        # Each entry:
+        #   "name|short|type|var|help|choices"
+        #
+        #   name    = long option name WITHOUT leading --
+        #   short   - short option name WITHOUT leading -
+        #   type    = flag | value | enum
+        #   var     = shell variable that will be set
+        #   help    = help string for auto-generated --help output
+        #   choices = for enum: comma-separated values (e.g. fast,slow,auto)
+        #             for flag/value: leave empty
+        #
+        # Notes:
+        #   - -h / --help is built in, you don't need to define it here.
+        #   - After parsing you can use: FLAG_VERBOSE, VAL_CONFIG, ENUM_MODE, ...
     TD_ARGS_SPEC=(
         "load|l|flag|FLAG_LOAD|Random argument for testing|"
         "unload|u|flag|FLAG_UNLOAD|Random argument for testing|"
@@ -124,7 +123,7 @@ set -euo pipefail
         "both|TD_COMMON_INT|Common CFG int|"
         "both|TD_COMMON_DATE|Common  CFG date|"
     )
-# --- local script functions ------------------------------------------------------
+# --- local script functions ---------------------------------------------------
     # Declarations
         : "${TD_SYS_STRING:=system-default}"
         : "${TD_SYS_INT:=0}"
@@ -138,10 +137,11 @@ set -euo pipefail
         : "${TD_COMMON_INT:=0}"
         : "${TD_COMMON_DATE:=1970-01-01}"
 
-        : "${STATE_VAR1=State VAR1}"
-        : "${STATE_VAR2=4}"
-        : "${STATE_VAR3=2025-01-01}"
- # --- main -----------------------------------------------------------------------
+        : "${STATE_VAR1:=State VAR1}"
+        : "${STATE_VAR2:=4}"
+        : "${STATE_VAR3:=2025-01-01}"
+
+ # --- main --------------------------------------------------------------------
     # main MUST BE LAST function in script
         # Main entry point for the executable script.
         #
@@ -153,23 +153,27 @@ set -euo pipefail
         #      Info-only builtins terminate execution; mutating builtins may continue.
         #   4) Continue with script-specific logic.
         #
-        # Bootstrap options used here:
-        #   --state         Load persistent state via td_state_load
-        #   --needroot     Enforce execution as root
-        #   --             End of bootstrap options; remaining args are script arguments
+        # Bootstrap options:
+        #   The script author explicitly selects which framework features to enable.
+        #   None are required; include only what this script needs.
         #
+        #   --state        Enable persistent state loading/saving.
+        #   --needroot     Require execution as root.
+        #   --cannotroot   Require execution as non-root.
+        #   --log          Enable logging to file.
+        #   --console      Enable logging to console output.
+        #   --             End of bootstrap options; remaining args are script arguments.
         # Notes:
         #   - Builtin argument handling is centralized in td_builtinarg_handler.
         #   - Scripts may override builtin handling, but doing so transfers
         #     responsibility for correct behavior to the script author.
     main() {
         # -- Bootstrap
+            local rc = 0
             td_bootstrap --state --needroot -- "$@"
             rc=$?
-            if (( rc != 0 )); then
-                exit "$rc"
-            fi
-            
+            (( rc != 0 )) && exit "$rc"
+                        
             # -- Handle builtin arguments
                 td_builtinarg_handler
 
@@ -185,5 +189,5 @@ set -euo pipefail
         printf '%s\n' "$RUN_MODE $TD_STATE_FILE"
     }
 
-    # Run main with positional args only (not the options)
+    # Entrypoint: td_bootstrap will split framework args from script args.
     main "$@"
