@@ -79,7 +79,7 @@ set -euo pipefail
     TD_SCRIPT_COPYRIGHT="© 2025 Mark Fieten — Testadura Consultancy"
     TD_SCRIPT_LICENSE="Testadura Non-Commercial License (TD-NC) v1.0"
 
-# --- Script metadata (framework integration) ----------------------------------
+# --- Script metadata (framework integration) -----------------------------------
     # Libraries to source from TD_COMMON_LIB
     TD_USING=(
     )
@@ -123,25 +123,27 @@ set -euo pipefail
         "both|TD_COMMON_INT|Common CFG int|"
         "both|TD_COMMON_DATE|Common  CFG date|"
     )
-# --- local script functions ---------------------------------------------------
-    # Declarations
-        : "${TD_SYS_STRING:=system-default}"
-        : "${TD_SYS_INT:=0}"
-        : "${TD_SYS_DATE:=1970-01-01}"
 
-        : "${TD_USR_STRING:=user-default}"
-        : "${TD_USR_INT:=0}"
-        : "${TD_USR_DATE:=1970-01-01}"
+# --- Local script Declarations -------------------------------------------------
+    : "${TD_SYS_STRING:=system-default}"
+    : "${TD_SYS_INT:=0}"
+    : "${TD_SYS_DATE:=1970-01-01}"
 
-        : "${TD_COMMON_STRING:=common-default}"
-        : "${TD_COMMON_INT:=0}"
-        : "${TD_COMMON_DATE:=1970-01-01}"
+    : "${TD_USR_STRING:=user-default}"
+    : "${TD_USR_INT:=0}"
+    : "${TD_USR_DATE:=1970-01-01}"
 
-        : "${STATE_VAR1:=State VAR1}"
-        : "${STATE_VAR2:=4}"
-        : "${STATE_VAR3:=2025-01-01}"
+    : "${TD_COMMON_STRING:=common-default}"
+    : "${TD_COMMON_INT:=0}"
+    : "${TD_COMMON_DATE:=1970-01-01}"
 
- # --- main --------------------------------------------------------------------
+    : "${STATE_VAR1:=State VAR1}"
+    : "${STATE_VAR2:=4}"
+    : "${STATE_VAR3:=2025-01-01}"
+    
+# --- Local script functions ----------------------------------------------------
+
+# --- Main ----------------------------------------------------------------------
     # main MUST BE LAST function in script
         # Main entry point for the executable script.
         #
@@ -169,7 +171,7 @@ set -euo pipefail
         #     responsibility for correct behavior to the script author.
     main() {
         # -- Bootstrap
-            local rc = 0
+            local rc=0
             td_bootstrap --state --needroot -- "$@"
             rc=$?
             (( rc != 0 )) && exit "$rc"

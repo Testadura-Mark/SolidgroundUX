@@ -404,7 +404,7 @@
         fi
 
         local l_len pad_lbl
-        l_len=$(visible_len "$lbl")
+        l_len=$(td_visible_len "$lbl")
         pad_lbl=""
         if (( l_len < 8 )); then
             printf -v pad_lbl '%*s' $((8 - l_len)) ''
@@ -441,7 +441,7 @@
         fi
 
         local v_len
-        v_len=$(visible_len "$fnl")
+        v_len=$(td_visible_len "$fnl")
 
         local pad_col=""
         if (( v_len < prefixlength )); then
@@ -502,7 +502,7 @@
                 say DEBUG "$@"
             fi
             return 0
-
+        }
     # -- Sample/demo renderers
     say_test(){
         sayinfo "Info message"

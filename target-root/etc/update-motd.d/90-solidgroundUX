@@ -27,32 +27,25 @@ else
 fi
 
 # Theme
-ttl=$BOLD_YELLOW
-lbl=$BOLD_YELLOW
-txt=$BOLD_SILVER
+ttl=$BRIGHT_YELLOW
+lbl=$YELLOW
+txt=$SILVER
 dsc=$WHITE
 rst=$RESET
 
 printf "=========================================================================================\n"
-printf " ${ttl}SolidgroundUX $SGND_VERSION $rst\n\n"
-printf " ${lbl}Versiondate :${rst} %s\n" "${SGND_VERSION_DATE}"
+printf " ${ttl}SolidgroundUX %s${rst}\n\n" "$SGND_VERSION"
+printf " ${lbl}Build date :${rst} %s\n" "$SGND_VERSION_DATE"
 printf "\n"
-printf " © 2025 Mark Fieten — Testadura Consultancy"
-printf "\nLicensed under the Testadura Non-Commercial License (TD-NC) v1.0.\n"
-printf "\n----------------------------------------------------------------------------------------\n"
-printf "\n${lbl}SolidgroundUX${txt} is a small, powerful Bash framework designed for system engineers,
-developers, automation builders, and anyone who wants clean, structured, reliable
-shell scripts — without the usual mess or over-engineered tooling.
-
-It provides:
-
-- A predictable bootstrap lifecycle  
-- Robust argument parsing  
-- Clear, styled UI output  
-- Practical helpers for deployment and file management  
-- A consistent template system for building new scripts  
-
-SolidgroundUX is built on decades of practical scripting experience, with the simple
-mission of making Bash *civilized*.{$rst}"
-printf "\n"
-printf "======================================================================================\n"
+printf " © 2025 Mark Fieten — Testadura Consultancy\n"
+printf " Licensed under the Testadura Non-Commercial License (TD-NC) v1.0.\n"
+printf "-----------------------------------------------------------------------------------------\n\n"
+printf "${lbl}SolidgroundUX${rst} provides a structured runtime for disciplined Bash tooling.\n\n"
+printf "  • Deterministic bootstrap lifecycle\n"
+printf "  • Declarative argument parsing\n"
+printf "  • Unified state and configuration handling\n"
+printf "  • Structured UI and logging primitives\n"
+printf "  • Consistent deployment and packaging conventions\n\n"
+printf "Designed for engineers who prefer clarity over magic,\n"
+printf "and control over convenience.\n"
+printf "=========================================================================================\n"

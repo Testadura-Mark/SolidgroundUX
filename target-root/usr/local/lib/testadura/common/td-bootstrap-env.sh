@@ -194,7 +194,7 @@
         TD_SYSCFG_DIR="$TD_APPLICATION_ROOT/etc/testadura"
         TD_USRCFG_DIR="$TD_USER_HOME/.config/testadura"
         TD_STATE_DIR="$TD_USER_HOME/.state/testadura"
-        TD_STYLE_DIR="$TD_COMMON_LIB/styles"
+        TD_STYLE_DIR="$TD_FRAMEWORK_ROOT/usr/local/lib/testadura/styles"
         TD_DOCS_DIR="$TD_FRAMEWORK_ROOT/usr/local/share/solidgroundux"   # May be absent in dev/minimal installs
 
         # logs (paths only)
@@ -232,7 +232,7 @@
         #
     td_load_bootstrap_cfg() {
         local self_path
-        local target_root
+        local target_root="/"
         local cfg
 
         # BASH_SOURCE[1] is the caller (typically td-bootstrap.sh), not this library.
@@ -244,12 +244,14 @@
         elif [[ "$self_path" == */target-root ]]; then
             target_root="$self_path"
         fi
-
+        sayinfo "$target_root $self_path"
         if [[ -n "${target_root:-}" ]]; then
             cfg="$target_root/usr/local/lib/testadura/solidgroundux.cfg"
-
+            sayinfo "$cfg"
             if [[ ! -r "$cfg" ]]; then
+                sayinfo "doesn't exists $cfg, should create one $EUID" 
                 if [[ $EUID -eq 0 ]]; then
+                    sayinfo "creating one $EUID"
                     mkdir -p "$(dirname "$cfg")" || return 127
                     printf '%s\n' \
                         "# SolidgroundUX bootstrap configuration" \

@@ -1,18 +1,23 @@
 {
 	"folders": [
 		{
+			"name": "solidgroundux",
 			"path": "."
 		},
 		{
+			"name": "testadura",
 			"path": "../../../../etc/testadura"
 		},
 		{
+			"name": "testadura",
 			"path": "../../.config/testadura"
 		},
 		{
+			"name": "testadura",
 			"path": "../../.state/testadura"
 		},
 		{
+			"name": "solidgroundux",
 			"path": "../../../../usr/local/share/solidgroundux"
 		}
 	],

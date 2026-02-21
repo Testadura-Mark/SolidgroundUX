@@ -1,0 +1,2 @@
+#!/usr/bin/env bash
+exec bash /home/sysadmin/dev/solidgroundux/target-root/usr/local/libexec/testadura/deploy-workspace.sh "$@"

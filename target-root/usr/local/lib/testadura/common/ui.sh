@@ -15,7 +15,7 @@
 #   - Compatibility overrides for common helpers (e.g., _sh_err, confirm)
 #
 # Assumptions:
-#   - Core/string helpers exist: visible_len, strip_ansi, td_wrap_words, string_repeat.
+#   - Core/string helpers exist: td_visible_len, strip_ansi, td_wrap_words, string_repeat.
 #   - Theme variables and RESET are available (e.g., TUI_LABEL, TUI_INPUT, RESET).
 #
 # Rules / Contract:
@@ -33,7 +33,7 @@
 #
 # Dependencies / requirements:
 #   - Bash (arrays, [[ ]], arithmetic).
-#   - Core/string helpers exist: visible_len, strip_ansi, td_wrap_words, string_repeat.
+#   - Core/string helpers exist: td_visible_len, strip_ansi, td_wrap_words, string_repeat.
 #   - Theme variables and RESET are available (e.g., TUI_LABEL, TUI_INPUT, RESET).
 #
 # TTY note:
@@ -379,7 +379,7 @@
         #   td_fg <fg> [fx...]
         #
         # Equivalent to:
-        #   td_color "<fg>" "" [fx...]
+        #   td_sgr "<fg>" "" [fx...]
         #
         # Examples:
         #   # 1) Just a foreground
@@ -393,7 +393,7 @@
     td_fg() {  # td_fg <fg> [fx...]
         local fg="${1:-}"
         shift || true
-        td_color "$fg" "" "$@"
+        td_sgr "$fg" "" "$@"
     }
 
     # td_bg
@@ -403,7 +403,7 @@
         #   td_bg <bg> [fx...]
         #
         # Equivalent to:
-        #   td_color "" "<bg>" [fx...]
+        #   td_sgr "" "<bg>" [fx...]
         #
         # Examples:
         #   # 1) Background only (remember to set fg yourself if needed)
@@ -418,7 +418,7 @@
     td_bg() {  # td_bg <bg> [fx...]
         local bg="${1:-}"
         shift || true
-        td_color "" "$bg" "$@"
+        td_sgr "" "$bg" "$@"
     }
 
  # -- Runmode indicators ----------------------------------------------------------
@@ -554,7 +554,7 @@
     # td_print_fill
         #   Print one line with left/right content separated by a fill region.
         #
-        #   Computes fill width using visible_len (ANSI-safe) so colored left/right
+        #   Computes fill width using ed_visible_len (ANSI-safe) so colored left/right
         #   strings do not break alignment.
         #
         # Usage:
@@ -617,18 +617,18 @@
 
         fill=$(( maxwidth
                 - padleft
-                - $(visible_len "$left")
-                - $(visible_len "$right")
+                - $(td_visible_len "$left")
+                - $(td_visible_len "$right")
                 - padright ))
 
         (( fill < 0 )) && fill=0
 
         # --- Render (colors applied last)
         printf '%s%s%s%s%s%s\n' \
-            "$(string_repeat "$fillchar" "$padleft")" \
+            "$(td_string_repeat "$fillchar" "$padleft")" \
             "${leftclr}${left}${RESET}" \
-            "$(string_repeat "$fillchar" "$fill")" \
-            "$(string_repeat "$fillchar" "$padright")" \
+            "$(td_string_repeat "$fillchar" "$fill")" \
+            "$(td_string_repeat "$fillchar" "$padright")" \
             "${rightclr}${right}${RESET}" \
             ""
     }
@@ -649,15 +649,15 @@
         #
         # Notes:
         #   - Delegates layout to td_print_sectionheader, td_print_fill, and td_print.
-        #   - Expects visible_len and theme variables to be available.
+        #   - Expects td_visible_len and theme variables to be available.
     td_print_titlebar() {
 
         local left="${TD_SCRIPT_TITLE:-$TD_SCRIPT_BASE}"
         local right="${RUN_MODE:-}"
-        local leftclr="$(td_color "$WHITE" "" "$FX_BOLD")"
+        local leftclr="$(td_sgr "$WHITE" "" "$FX_BOLD")"
         local rightclr=""                 # let td_print_fill inherit
         local sub="${TD_SCRIPT_DESC:-""}"
-        local subclr="$(td_color "$WHITE" "" "$FX_ITALIC")"
+        local subclr="$(td_sgr "$WHITE" "" "$FX_ITALIC")"
         local subjust="C"
         local border="="
         local borderclr="${TUI_BORDER}"
@@ -710,7 +710,7 @@
             --text "$sub" \
             --justify "$subjust" \
             --textclr "$subclr" \
-            --rightmargin "$(visible_len "$right")"
+            --rightmargin "$(td_visible_len "$right")"
         fi
 
         td_print_sectionheader \
@@ -743,7 +743,7 @@
         #   Writes one line to stdout.
     td_print_sectionheader() {
         local text=""
-        local textclr="$(td_color "$WHITE" "" "$FX_BOLD")"
+        local textclr="$(td_sgr "$WHITE" "" "$FX_BOLD")"
         local border="-"
         local borderclr="${TUI_BORDER}"
         local padleft=4
@@ -782,18 +782,18 @@
 
         # If no text: full-width border line
         if [[ -z "$text" ]]; then
-            fnl="${borderclr}$(string_repeat "$border" "$maxwidth")${RESET}"
+            fnl="${borderclr}$(td_string_repeat "$border" "$maxwidth")${RESET}"
             printf '%s\n' "$fnl"
             return 0
         fi
 
         # Left: "---- " (padleft times border + a space)
         if [[ -n "$border" && $padleft -gt 0 ]]; then
-            left_plain="$(string_repeat "$border" "$padleft") "
+            left_plain="$(td_string_repeat "$border" "$padleft") "
         fi
 
         # Middle: "Text"
-        mid_plain="$(strip_ansi "$text")"
+        mid_plain="$(td_strip_ansi "$text")"
 
         if (( padend )); then
             # We will output: left_plain + mid_plain + space + right_plain
@@ -807,7 +807,7 @@
             (( remaining < 0 )) && remaining=0
 
             if [[ -n "$border" && $remaining -gt 0 ]]; then
-                right_plain="$(string_repeat "$border" "$remaining")"
+                right_plain="$(td_string_repeat "$border" "$remaining")"
             fi
 
             if [[ -n "$right_plain" ]]; then
@@ -1249,32 +1249,32 @@
 
             # Bold
             printf "%sBOLD%s\t" \
-                "$(td_color "$val" "" "$FX_BOLD")" \
+                "$(td_sgr "$val" "" "$FX_BOLD")" \
                 "$RESET"
 
             # Faint / Dim
             printf "%sFAINT%s\t" \
-                "$(td_color "$val" "" "$FX_FAINT")" \
+                "$(td_sgr "$val" "" "$FX_FAINT")" \
                 "$RESET"
 
             # Italic
             printf "%sITALIC%s\t" \
-                "$(td_color "$val" "" "$FX_ITALIC")" \
+                "$(td_sgr "$val" "" "$FX_ITALIC")" \
                 "$RESET"
 
             # Underline
             printf "%sUNDER%s\t" \
-                "$(td_color "$val" "" "$FX_UNDERLINE")" \
+                "$(td_sgr "$val" "" "$FX_UNDERLINE")" \
                 "$RESET"
 
             # Reverse
             printf "%sREVERSE%s\t" \
-                "$(td_color "$val" "" "$FX_REVERSE")" \
+                "$(td_sgr "$val" "" "$FX_REVERSE")" \
                 "$RESET"
 
             # Strikethrough
             printf "%sSTRIKE%s\t" \
-                "$(td_color "$val" "" "$FX_STRIKE")" \
+                "$(td_sgr "$val" "" "$FX_STRIKE")" \
                 "$RESET"
 
             printf "\n"    
