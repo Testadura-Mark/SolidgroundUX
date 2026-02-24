@@ -67,6 +67,9 @@
     unset -f __td_lib_guard
 
 # --- Internal helpers ------------------------------------------------------------
+    : "${__section_indent:=2}"
+    : "${__items_indent:=4}"
+    
     # __td_print_arg_spec_entry
         #   Print one argument spec entry (from TD_ARGS_SPEC / TD_BUILTIN_ARGS) as:
         #     --long (-s) : VAR = <value>

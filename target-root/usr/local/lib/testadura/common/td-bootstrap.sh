@@ -82,19 +82,24 @@
     RESET=$'\e[0m'
 
     # Minimal say functions
-    saystart()   { printf '%sSTART%s\t%s\n' "${MSG_CLR_STRT-}" "${RESET-}" "$*" >&2; }
-    sayinfo()    { printf '%sINFO%s \t%s\n' "${MSG_CLR_INFO-}" "${RESET-}" "$*" >&2; }
-    sayok()      { printf '%sOK%s   \t%s\n' "${MSG_CLR_OK-}"   "${RESET-}" "$*" >&2; }
-    saywarning() { printf '%sWARN%s \t%s\n' "${MSG_CLR_WARN-}" "${RESET-}" "$*" >&2; }
-    sayfail()    { printf '%sFAIL%s \t%s\n' "${MSG_CLR_FAIL-}" "${RESET-}" "$*" >&2; }
-    saydebug() {
-        if (( ${FLAG_DEBUG:-0} )); then
-            printf '%sDEBUG%s \t%s\n' "${MSG_CLR_DEBUG-}" "${RESET-}" "$*" >&2;
-        fi
-    }
-    saycancel() { printf '%sCANCEL%s\t%s\n' "${MSG_CLR_CNCL-}" "${RESET-}" "$*" >&2; }
-    sayend() { printf '%sEND%s   \t%s\n' "${MSG_CLR_END-}" "${RESET-}" "$*" >&2; }
-    sayerror() { printf '%sERROR%s   \t%s\n' "${MSG_CLR_FAIL-}" "${RESET-}" "$*" >&2; }
+        saystart()   { printf '%sSTART%s\t%s\n' "${MSG_CLR_STRT-}" "${RESET-}" "$*" >&2; }
+        sayinfo()    { printf '%sINFO%s \t%s\n' "${MSG_CLR_INFO-}" "${RESET-}" "$*" >&2; }
+        sayok()      { printf '%sOK%s   \t%s\n' "${MSG_CLR_OK-}"   "${RESET-}" "$*" >&2; }
+        saywarning() { printf '%sWARN%s \t%s\n' "${MSG_CLR_WARN-}" "${RESET-}" "$*" >&2; }
+        sayfail()    { printf '%sFAIL%s \t%s\n' "${MSG_CLR_FAIL-}" "${RESET-}" "$*" >&2; }
+        sayinfo() {
+            if (( ${FLAG_VERBOSE:-0} )); then
+                printf '%sDEBUG%s \t%s\n' "${MSG_CLR_DEBUG-}" "${RESET-}" "$*" >&2;
+            fi
+        }
+        saydebug() {
+            if (( ${FLAG_DEBUG:-0} )); then
+                printf '%sDEBUG%s \t%s\n' "${MSG_CLR_DEBUG-}" "${RESET-}" "$*" >&2;
+            fi
+        }
+        saycancel() { printf '%sCANCEL%s\t%s\n' "${MSG_CLR_CNCL-}" "${RESET-}" "$*" >&2; }
+        sayend() { printf '%sEND%s   \t%s\n' "${MSG_CLR_END-}" "${RESET-}" "$*" >&2; }
+        sayerror() { printf '%sERROR%s   \t%s\n' "${MSG_CLR_FAIL-}" "${RESET-}" "$*" >&2; }
 
     # __boot_fail
         # Emit a bootstrap failure message with caller context and return a code.
@@ -386,7 +391,7 @@
         #   - This function is typically called from td_bootstrap after globals have
         #     been initialized and before any framework functionality is used.
     __source_corelibs(){
-        saydebug "Loading core libraries..."  
+        sayinfo "Loading core libraries..."  
         td_rebase_directories
 
         local lib path
@@ -438,13 +443,13 @@
         fi
 
         # Basic initialization - Defaults
-        saydebug "Initializing bootstrap..."
+        sayinfo "Initializing bootstrap..."
         __init_bootstrap || { local rc=$?; __boot_fail "Failed to initialize bootstrapper" "$rc"; return "$rc"; }
 
-        saydebug "Parsing bootstrap arguments..."
+        sayinfo "Parsing bootstrap arguments..."
         __parse_bootstrap_args "$@" || { local rc=$?; __boot_fail "Failed parsing bootstrap arguments" "$rc"; return "$rc"; }
 
-        saydebug "Loading core libraries"
+        sayinfo "Loading core libraries"
         __source_corelibs || { local rc=$?; __boot_fail "Failed to load core libraries" "$rc"; return "$rc"; }
 
         td_load_ui_style || { local rc=$?; __boot_fail "Failed to load UI style" "$rc"; return "$rc"; }
@@ -456,30 +461,33 @@
         # Parse builtin arguments early
         local -a __td_script_args
         local -a __td_after_builtins
-        __td_script_args=( "${TD_BOOTSTRAP_REST[@]}" )
+            __td_script_args=( "${TD_BOOTSTRAP_REST[@]}" )
 
-        td_parse_args builtins "${__td_script_args[@]}" \
+        saydebug "Parsing arguments $TD_BUILTIN_ARGS ${__td_script_args[@]}"                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                             
+        td_parse_args --stop-at-unknown "${__td_script_args[@]}" \
             || { local rc=$?; __boot_fail "Error parsing builtins" "$rc"; return "$rc"; }
         __td_after_builtins=( "${TD_POSITIONAL[@]}" )
+
+        saydebug "Dryrun = $FLAG_DRYRUN, debug = $FLAG_DEBUG, showenv = $FLAG_SHOWENV"
 
         # Final basic settings
         td_update_runmode || { local rc=$?; __boot_fail "Error setting RUN_MODE" "$rc"; return "$rc"; }
 
-        saydebug "Applying options"
+        sayinfo "Applying options"
 
         # Root checks (after libs so need_root exists)
         if (( exe_root == 1 )); then
-            need_root "${__td_script_args[@]}" \
+            td_need_root "${__td_script_args[@]}" \
                 || { local rc=$?; __boot_fail "Failed to enable need_root" "$rc"; return "$rc"; }
         fi
 
         if (( exe_root == 2 )); then
-            cannot_root "${__td_script_args[@]}" \
+            td_cannot_root "${__td_script_args[@]}" \
                 || { local rc=$?; __boot_fail "Failed to enable cannot_root" "$rc"; return "$rc"; }
         fi
 
         # Now the root/non-root debate has been settled, check license acceptance.
-        td_check_license
+       # td_check_license
         case $? in
             0) : ;;
             2) return 2 ;;
@@ -500,24 +508,29 @@
             td_state_load || { local rc=$?; __boot_fail "Failed to load state" "$rc"; return "$rc"; }
         fi
 
+        
         if (( ${#TD_SCRIPT_GLOBALS[@]} > 0 )); then
+            saydebug "Processing CFG."
             td_cfg_domain_apply "Script" "$TD_SYSCFG_FILE" "$TD_USRCFG_FILE" "TD_SCRIPT_GLOBALS" \
                 || { local rc=$?; __boot_fail "Script cfg load failed" "$rc"; return "$rc"; }
         fi
 
         # Always parse script args if the script defines any arg specs
-        if (( ${#TD_ARGS_SPEC[@]} > 0 )); then
-            td_parse_args script "${TD_BOOTSTRAP_REST[@]}" \
+        if (( ${#TD_ARGS_SPEC[@]} > 0 && ${#TD_BOOTSTRAP_REST[@]} > 0 )); then
+            saydebug "Parsing script arguments $TD_BOOTSTRAP_REST"
+            td_parse_args "${TD_BOOTSTRAP_REST[@]}" \
                 || { local rc=$?; __boot_fail "Error parsing script args" "$rc"; return "$rc"; }
             TD_BOOTSTRAP_REST=( "${TD_POSITIONAL[@]}" )
+            saydebug "Parsed script arguments $TD_BOOTSTRAP_REST remaining"
         fi
 
+        saydebug "Update loadmode"
         td_update_runmode || { local rc=$?; __boot_fail "Error updating RUN_MODE" "$rc"; return "$rc"; }
 
         if [[ "${FLAG_DRYRUN:-0}" -eq 1 ]]; then
-            saydebug "Running in $RUN_MODE mode (no changes will be made)."
+            sayinfo "Running in $RUN_MODE mode (no changes will be made)."
         else
-            saydebug "Running in $RUN_MODE mode (changes will be applied)."
+            sayinfo "Running in $RUN_MODE mode (changes will be applied)."
         fi
 
         return 0

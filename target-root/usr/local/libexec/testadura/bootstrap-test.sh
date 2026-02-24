@@ -174,10 +174,13 @@ set -euo pipefail
             local rc=0
             td_bootstrap --state --needroot -- "$@"
             rc=$?
+            saydebug "After bootstrap: $rc"
             (( rc != 0 )) && exit "$rc"
                         
             # -- Handle builtin arguments
+            saydebug "Calling builtinarg handler"
                 td_builtinarg_handler
+            saydebug "Exited builtinarg handler"
 
             # -- UI
                 td_update_runmode

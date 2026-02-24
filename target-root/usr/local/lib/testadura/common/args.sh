@@ -315,60 +315,65 @@
     }
 
     # td_parse_args
-        # Parse command-line arguments according to TD_ARGS_SPEC.
-        #
-        # Summary:
-        #   Parses CLI arguments using a declarative specification and produces a
-        #   deterministic set of outputs: option variables, and
-        #   TD_POSITIONAL.
-        #
-        # Usage:
-        #   td_parse_args "$@"
-        #
-        # Inputs:
-        #   "$@"                 : Script arguments (post-bootstrap)
-        #
-        # Inputs (globals):
-        #   TD_ARGS_SPEC[]       : Argument specification array
-        #
-        # Outputs (globals):
-        #   TD_POSITIONAL[]      : Remaining non-option arguments
-        #   <option vars>        : Variables defined by TD_ARGS_SPEC (initialized)
+        # Purpose:
+        #   Parse command-line arguments according to TD_ARGS_SPEC.
         #
         # Behavior:
-        #   - Initializes all option variables to defaults based on spec.
+        #   - Initializes option variables from TD_ARGS_SPEC defaults.
+        #   - Parses long (--opt) and short (-o) options.
         #   - Supports:
-        #       --long
-        #       -s (short)
-        #       flag | value | enum option types
-        #   - Stops parsing on:
-        #       "--"  → everything after is positional
-        #       first non-option token → token and rest become positional
-        #   - Validates enum values strictly against declared choices.
+        #       flag   : boolean flag (sets variable to 1)
+        #       value  : option with required value
+        #       enum   : value restricted to predefined choices
+        #   - Stops at '--' and treats remainder as positional.
         #
-        # Return values:
-        #   0  Success
-        #   1  Unknown option, missing value, or invalid enum value
+        # Modes:
+        #   Default (strict):
+        #       Unknown option => error.
         #
-        # Non-goals:
-        #   - Subcommand parsing
-        #   - Option clustering (-abc)
-        #   - Implicit defaults beyond spec initialization
-        #   - UI formatting or help display
+        #   Pass-through mode:
+        #       td_parse_args --stop-at-unknown "$@"
+        #       Unknown option => stop parsing and place remaining args in TD_POSITIONAL.
+        #
+        # Output:
+        #   - Sets option variables defined in TD_ARGS_SPEC.
+        #   - Populates TD_POSITIONAL array with remaining arguments.
+        #
+        # Returns:
+        #   0 on success
+        #   1 on error (invalid or missing option value in strict mode)
     td_parse_args() {
+
+        local stop_at_unknown=0
+
+        # Optional mode switch
+        if [[ "${1-}" == "--stop-at-unknown" ]]; then
+            stop_at_unknown=1
+            shift
+        fi
+
+        # Default parse source (kept for compatibility if you still use it)
         local source="${TD_ARGS_SOURCE:-both}"
 
+        # Reset positional array
         TD_POSITIONAL=()
+
+        # Initialize variables from spec defaults
         __td_arg_init_defaults "$source"
 
+        # Main parse loop
         while [[ $# -gt 0 ]]; do
+            saydebug "Parsing argument $1"
             case "$1" in
+
+                # Explicit end-of-options marker
                 --)
                     shift
                     TD_POSITIONAL+=("$@")
                     break
                     ;;
 
+                # Long option: --option
                 --*)
                     local opt spec
                     opt="${1#--}"
@@ -376,8 +381,7 @@
                     spec="$(__td_arg_find_spec "$opt" || true)"
 
                     if [[ -z "${spec:-}" ]]; then
-                        # Builtins pass: unknown option belongs to script => stop + hand off remainder
-                        if [[ "$source" == "builtins" ]]; then
+                        if (( stop_at_unknown )); then
                             TD_POSITIONAL+=("$@")
                             break
                         fi
@@ -392,20 +396,31 @@
                             printf -v "$__td_var" '1'
                             shift
                             ;;
+
                         value)
-                            [[ $# -ge 2 ]] || { echo "Missing value for --$opt" >&2; return 1; }
-                            printf -v "$__td_var" '%s' "$2"
-                            shift 2
-                            ;;
-                        enum)
-                            [[ $# -ge 2 ]] || { echo "Missing value for --$opt" >&2; return 1; }
-                            if ! __td_arg_validate_enum "$2" "${__td_choices:-}"; then
-                                echo "Invalid value '$2' for --$opt (allowed: ${__td_choices:-<none>})" >&2
+                            if [[ $# -lt 2 ]]; then
+                                echo "Missing value for --$opt" >&2
                                 return 1
                             fi
                             printf -v "$__td_var" '%s' "$2"
                             shift 2
                             ;;
+
+                        enum)
+                            if [[ $# -lt 2 ]]; then
+                                echo "Missing value for --$opt" >&2
+                                return 1
+                            fi
+
+                            if ! __td_arg_validate_enum "$2" "${__td_choices:-}"; then
+                                echo "Invalid value '$2' for --$opt (allowed: ${__td_choices:-<none>})" >&2
+                                return 1
+                            fi
+
+                            printf -v "$__td_var" '%s' "$2"
+                            shift 2
+                            ;;
+
                         *)
                             echo "Invalid spec type '$__td_type' for --$opt" >&2
                             return 1
@@ -413,15 +428,21 @@
                     esac
                     ;;
 
+                # Short option: -o
                 -?*)
                     local sopt spec
                     sopt="${1#-}"
-                    [[ "${#sopt}" -eq 1 ]] || { echo "Unknown option: $1" >&2; return 1; }
+
+                    # Only single short options supported
+                    if [[ "${#sopt}" -ne 1 ]]; then
+                        echo "Unknown option: $1" >&2
+                        return 1
+                    fi
 
                     spec="$(__td_arg_find_spec "$sopt" || true)"
 
                     if [[ -z "${spec:-}" ]]; then
-                        if [[ "$source" == "builtins" ]]; then
+                        if (( stop_at_unknown )); then
                             TD_POSITIONAL+=("$@")
                             break
                         fi
@@ -436,20 +457,31 @@
                             printf -v "$__td_var" '1'
                             shift
                             ;;
+
                         value)
-                            [[ $# -ge 2 ]] || { echo "Missing value for -$sopt" >&2; return 1; }
-                            printf -v "$__td_var" '%s' "$2"
-                            shift 2
-                            ;;
-                        enum)
-                            [[ $# -ge 2 ]] || { echo "Missing value for -$sopt" >&2; return 1; }
-                            if ! __td_arg_validate_enum "$2" "${__td_choices:-}"; then
-                                echo "Invalid value '$2' for -$sopt (allowed: ${__td_choices:-<none>})" >&2
+                            if [[ $# -lt 2 ]]; then
+                                echo "Missing value for -$sopt" >&2
                                 return 1
                             fi
                             printf -v "$__td_var" '%s' "$2"
                             shift 2
                             ;;
+
+                        enum)
+                            if [[ $# -lt 2 ]]; then
+                                echo "Missing value for -$sopt" >&2
+                                return 1
+                            fi
+
+                            if ! __td_arg_validate_enum "$2" "${__td_choices:-}"; then
+                                echo "Invalid value '$2' for -$sopt (allowed: ${__td_choices:-<none>})" >&2
+                                return 1
+                            fi
+
+                            printf -v "$__td_var" '%s' "$2"
+                            shift 2
+                            ;;
+
                         *)
                             echo "Invalid spec type '$__td_type' for -$sopt" >&2
                             return 1
@@ -457,6 +489,7 @@
                     esac
                     ;;
 
+                # Positional or first unknown
                 *)
                     TD_POSITIONAL+=("$@")
                     break
@@ -466,7 +499,6 @@
 
         return 0
     }
-
 
     # td_builtinarg_handler
         # Handle framework builtin arguments after bootstrap and script setup.

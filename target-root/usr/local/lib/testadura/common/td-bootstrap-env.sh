@@ -70,7 +70,7 @@
 
 # --- Framework metadata ----------------------------------------------------------
     # TD_FRAMEWORK_GLOBALS spec format:
-        #   audience|VARNAME|Human-readable description|extra
+        # audience|VARNAME|Human-readable description|extra
         # Where audience is one of: system | user | both
     TD_FRAMEWORK_GLOBALS=(
         "system|TD_SYSCFG_DIR|Framework-wide system configuration directory|"

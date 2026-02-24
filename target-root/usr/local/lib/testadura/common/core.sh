@@ -62,10 +62,6 @@
   _sh_err(){ printf '%s\n' "${*:-(no message)}" >&2; }
 
 # --- Requirement checks ----------------------------------------------------------
-  # td_have
-    # Test if a command exists in PATH.
-  td_have(){ command -v "$1" >/dev/null 2>&1; }
-
  # -- Possibly exiting requirement checks -----------------------------------------
   # td_need_cmd
     # Require a command to exist or exit with error.

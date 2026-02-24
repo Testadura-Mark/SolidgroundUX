@@ -466,7 +466,10 @@
 
     # -- Convenience wrappers for say() with a fixed TYPE.
         sayinfo() {
-            say INFO "$@"
+            if [[ ${FLAG_VERBOSE:-0} -eq 1 ]]; then
+                say INFO "$@"
+            fi
+            return 0
         }
 
         saystart() {
