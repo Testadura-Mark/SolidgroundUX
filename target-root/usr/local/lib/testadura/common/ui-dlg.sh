@@ -37,7 +37,7 @@
 #   - Typed/structured message output (see ui-say.sh)
 #   - Full-screen UI frameworks (alternate screen, panes, widgets)
 # =================================================================================
-
+set -uo pipefail
 # --- Library guard ---------------------------------------------------------------
     # Library-only: must be sourced, never executed.
     # Uses a per-file guard variable derived from the filename, e.g.:

@@ -42,7 +42,7 @@
 #   - Rich form UIs (menus, curses layouts, etc.)
 #   - Centralized logging/formatting policy beyond minimal prompting
 # ==================================================================================
-
+set -uo pipefail
 # --- Library guard ----------------------------------------------------------------
     # Library-only: must be sourced, never executed.
     # Uses a per-file guard variable derived from the filename, e.g.:
@@ -420,16 +420,17 @@
         local prompt="$1"
         local orq_response=""
 
-        ask --label "$prompt [OK/Redo/Quit]" --default "OK" --var orq_response
+        ask --label "$prompt [OK/Redo/Quit]" --var orq_response
 
-        # Trim whitespace (left + right)
+        # Trim whitespace
         orq_response="${orq_response#"${orq_response%%[![:space:]]*}"}"
         orq_response="${orq_response%"${orq_response##*[![:space:]]}"}"
 
+        saydebug "raw=$orq_response upper=${orq_response^^}"
+        
         local upper="${orq_response^^}"
-        #saydebug "Response: '%s' -> '%s'\n" "$orq_response" "$upper"
         case "$upper" in
-            ""|OK|O)        return 0  ;;  # Enter defaults to OK
+            ""|OK|O)        return 0 ;;
             REDO|R)         return 1 ;;
             QUIT|Q|EXIT)    return 2 ;;
             *)              return 3 ;;

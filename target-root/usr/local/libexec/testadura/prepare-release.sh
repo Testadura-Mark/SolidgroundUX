@@ -21,7 +21,7 @@
 #   - May create or remove temporary staging directories
 # ==================================================================================
 
-set -euo pipefail
+set -uo pipefail
 # --- Load bootstrapper ------------------------------------------------------------
     _bootstrap_default="/usr/local/lib/testadura/common/td-bootstrap.sh"
 

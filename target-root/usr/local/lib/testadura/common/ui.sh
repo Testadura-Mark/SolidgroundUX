@@ -40,7 +40,7 @@
 #   Output helpers emit ANSI styling if the theme variables include escapes.
 #   Non-TTY consumers (pipes/logs) may see raw escapes unless upstream disables them.
 # =================================================================================
-
+set -uo pipefail
 # --- Library guard ---------------------------------------------------------------
     # Library-only: must be sourced, never executed.
     # Uses a per-file guard variable derived from the filename, e.g.:

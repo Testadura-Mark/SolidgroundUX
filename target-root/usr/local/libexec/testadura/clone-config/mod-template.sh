@@ -34,7 +34,7 @@
 #   - Composition over inheritance: modules contribute actions + registrations.
 #   - All effects happen only inside handlers invoked by the hub dispatcher.
 # =================================================================================
-
+set -uo pipefail
 # --- Validate use ----------------------------------------------------------------
     # Refuse to execute (library only)
     [[ "${BASH_SOURCE[0]}" != "$0" ]] || {

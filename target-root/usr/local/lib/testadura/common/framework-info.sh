@@ -37,7 +37,7 @@
 #   - td_print_license
 #   - td_print_readme
 # =================================================================================
-
+set -uo pipefail
 # --- Library guard ---------------------------------------------------------------
     # Library-only: must be sourced, never executed.
     # Uses a per-file guard variable derived from the filename, e.g.:

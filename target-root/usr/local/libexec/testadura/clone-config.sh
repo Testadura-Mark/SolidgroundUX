@@ -26,7 +26,7 @@
 #   - Args parsing and config/state loading are opt-in via ARGS_SPEC and/or CFG_*.
 # ==============================================================================
 
-set -euo pipefail
+set -uo pipefail
 # -- Find bootstrapper
     BOOTSTRAP="/usr/local/lib/testadura/common/td-bootstrap.sh"
 

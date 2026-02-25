@@ -47,8 +47,7 @@
     #       New functionality is added by dropping modules into a directory,
     #       not by editing the hub itself.
 # ==================================================================================
-
-set -euo pipefail
+set -uo pipefail
 # --- Find and source bootstrapper
     # Persist framework root for future runs (developer convenience).
     BOOTSTRAP="/usr/local/lib/testadura/common/td-bootstrap.sh"

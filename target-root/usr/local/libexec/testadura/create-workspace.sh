@@ -28,7 +28,7 @@
 #   ./create-workspace.sh --project MyProject --folder /path/to/project
 #   ./create-workspace.sh -p MyProject -f /path/to/project --dryrun
 # ===============================================================================
-set -euo pipefail
+set -uo pipefail
 # -- Find bootstrapper
     BOOTSTRAP="/usr/local/lib/testadura/common/td-bootstrap.sh"
 

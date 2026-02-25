@@ -32,7 +32,7 @@
 #   - User interaction unless explicitly part of a UI module
 #   - Policy decisions (libraries provide mechanisms; callers decide policy)
 # =================================================================================
-
+set -uo pipefail
 # --- Library guard ---------------------------------------------------------------
     # Library-only: must be sourced, never executed.
     # Uses a per-file guard variable derived from the filename, e.g.:

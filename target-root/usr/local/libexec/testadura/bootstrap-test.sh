@@ -12,8 +12,7 @@
 #   - Libraries never auto-run (templating, not inheritance).
 #   - Args parsing and config loading are opt-in by defining ARGS_SPEC and/or CFG_*.
 # ==================================================================================
-
-set -euo pipefail
+set -uo pipefail
 # --- Load bootstrapper ---------------------------------------------------------
     _bootstrap_default="/usr/local/lib/testadura/common/td-bootstrap.sh"
 
@@ -191,7 +190,19 @@ set -euo pipefail
         td_state_set "STATE_VAR1" "$STATE_VAR1"
         td_state_set "STATE_VAR2" "$STATE_VAR2"
         td_state_set "STATE_VAR3" "$STATE_VAR3"
-        printf '%s\n' "$RUN_MODE $TD_STATE_FILE"
+
+        # -- Debug ask_redo_quit
+        while true; do
+            ask_ok_redo_quit "Continue anyway?"
+            local rc=$?
+            saydebug "Return received: $rc"
+            case $rc in
+                0) saydebug "0 detected"; break ;;
+                1) sayinfo "Redoing selection..."; saydebug "Redo detected"; continue ;;
+                2) saywarning "User quit.";saydebug "Quit"; break ;;
+                3) saywarning "Invalid response."; saydebug "Invalid Response"; continue ;;
+            esac
+        done
     }
 
     # Entrypoint: td_bootstrap will split framework args from script args.

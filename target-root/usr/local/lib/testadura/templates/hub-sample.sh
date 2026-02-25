@@ -10,7 +10,7 @@
 # Description:
 #   module-template with some sample functions for learning/testing
 # =================================================================================
-
+set -uo pipefail
 # --- Library guard ----------------------------------------------------------------
     # Library-only: must be sourced, never executed.
     # Uses a per-file guard variable derived from the filename, e.g.:

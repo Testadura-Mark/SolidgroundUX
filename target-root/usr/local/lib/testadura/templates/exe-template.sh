@@ -22,8 +22,7 @@
 #
 # Do NOT modify the bootstrap loader unless you are developing the framework.
 # ==================================================================================
-
-set -euo pipefail
+set -uo pipefail
 # --- Load bootstrapper ------------------------------------------------------------
     _bootstrap_default="/usr/local/lib/testadura/common/td-bootstrap.sh"
 

@@ -32,7 +32,7 @@
 #   Or simply:
 #   ./deploy-workspace.sh   # interactive mode
 # ===============================================================================
-set -euo pipefail
+set -uo pipefail
 # --- Load bootstrapper ------------------------------------------------------------
     _bootstrap_default="/usr/local/lib/testadura/common/td-bootstrap.sh"
 
@@ -265,16 +265,15 @@ set -euo pipefail
 
                     saywarning "Source root '$SRC_ROOT' doesn't look valid; should contain 'etc/' and/or 'usr/'."
 
-                    if ask_ok_redo_quit "Continue anyway?"; then
-                        break
-                    fi
-
+                    ask_ok_redo_quit "Continue anyway?"
                     case $? in
-                        1) SRC_ROOT="" ;;  # REDO
-                        2) saycancel "Aborting as per user request."; exit 1 ;;
-                        *) sayfail "Aborting (unexpected response)."; exit 1 ;;
+                        0) apply_changes; break ;;
+                        1) sayinfo "Redoing selection..."; continue ;;
+                        2) saywarn "User quit."; return 1 ;;
+                        3) saywarning "Invalid response."; continue ;;
                     esac
 
+                    # Redo
                     ask --label "Workspace source root" --var SRC_ROOT --default "$default_src" --colorize both
                 done
 

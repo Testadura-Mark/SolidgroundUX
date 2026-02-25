@@ -32,7 +32,7 @@
 #   - Configuration domain application (handled by cfg/state layer)
 #   - Logging/UI policy decisions (handled by ui-say/ui modules)
 # =================================================================================
-
+set -uo pipefail
 # --- Library guard ---------------------------------------------------------------
     # Derive a unique per-library guard variable from the filename:
     #   ui.sh        -> TD_UI_LOADED

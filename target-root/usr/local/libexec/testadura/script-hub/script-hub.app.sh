@@ -5,7 +5,7 @@
 # This file is sourced by script-hub.sh when --app/--applet is used.
 # Keep it declarative: variable assignments only (no side effects).
 # ==================================================================================
-
+set -uo pipefail
 # --- Identity ---------------------------------------------------------------
 TD_SCRIPT_TITLE="Script hub"
 TD_SCRIPT_DESC=""

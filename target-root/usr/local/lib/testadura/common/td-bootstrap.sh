@@ -33,7 +33,7 @@
 #   - Configuration loading (handled by cfg/state layer)
 #   - Script execution or control flow (entry scripts/applications own this)
 # =================================================================================
-
+set -uo pipefail
 # --- Library guard ---------------------------------------------------------------
     # Library-only: must be sourced, never executed.
     # Uses a per-file guard variable derived from the filename, e.g.:
@@ -487,7 +487,7 @@
         fi
 
         # Now the root/non-root debate has been settled, check license acceptance.
-       # td_check_license
+        td_check_license
         case $? in
             0) : ;;
             2) return 2 ;;

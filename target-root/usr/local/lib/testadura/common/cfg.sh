@@ -39,7 +39,7 @@
 #   - Schema or type enforcement
 #   - Merging/inheritance logic or config precedence policy
 # ==================================================================================
-
+set -uo pipefail
 # --- Library guard ----------------------------------------------------------------
     # Library-only: must be sourced, never executed.
     # Uses a per-file guard variable derived from the filename, e.g.:
