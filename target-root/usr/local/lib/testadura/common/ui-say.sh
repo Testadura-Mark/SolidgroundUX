@@ -502,7 +502,17 @@ set -uo pipefail
 
         saydebug() {
             if [[ ${FLAG_DEBUG:-0} -eq 1 ]]; then
-                say DEBUG "$@"
+
+                if [[ ${FLAG_VERBOSE:-0} -eq 1 ]]; then
+                    # Stack level 1 = caller of saydebug
+                    local src="${BASH_SOURCE[1]##*/}"
+                    local func="${FUNCNAME[1]}"
+                    local line="${BASH_LINENO[0]}"
+
+                    say DEBUG "$@" "[$src:$func:$line]"
+                else
+                    say DEBUG "$@"
+                fi
             fi
             return 0
         }

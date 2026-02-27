@@ -643,11 +643,14 @@ set -uo pipefail
     td_state_save_keys() {
         local key val
         for key in "$@"; do
-            __td_is_ident "$key" || {
-                saywarning "Skipping invalid state key: '$key'"
-                continue
-            }
-            val="${!key}"
+            __td_is_ident "$key" || { saywarning "Skipping invalid state key: '$key'"; continue; }
+
+            # Safe under set -u
+            val="${!key-}"
+
+            # Optional: skip unset keys instead of saving empty
+            # [[ -z "${!key+x}" ]] && continue
+
             td_state_set "$key" "$val"
         done
     }

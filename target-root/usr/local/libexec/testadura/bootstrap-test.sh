@@ -123,6 +123,25 @@ set -uo pipefail
         "both|TD_COMMON_DATE|Common  CFG date|"
     )
 
+    : "${INP_NAME=}"
+    : "${INP_STREET=}"
+    : "${INP_ZIPCODE=}"
+    : "${INP_CITY=}"
+    : "${INP_COUNTRY=}"
+    : "${INP_AGE=}"
+     
+    TD_STATE_VARIABLES=(
+        "INP_NAME|Name|Petrus Puk|"
+        "INP_STREET|Address|Nowhere straat|"
+        "INP_ZIPCODE|Postcode|5544 QU|"
+        "INP_CITY|Stad||"
+        "INP_COUNTRY|||"
+        "INP_AGE|Leeftijd|102|td_is_number"
+    )
+
+    TD_ON_EXIT_HANDLERS=(
+    )
+
 # --- Local script Declarations -------------------------------------------------
     : "${TD_SYS_STRING:=system-default}"
     : "${TD_SYS_INT:=0}"
@@ -141,6 +160,9 @@ set -uo pipefail
     : "${STATE_VAR3:=2025-01-01}"
     
 # --- Local script functions ----------------------------------------------------
+    input_test() {
+        td_prompt_fromlist --autoalign "${TD_STATE_VARIABLES[@]}" 
+    }
 
 # --- Main ----------------------------------------------------------------------
     # main MUST BE LAST function in script
@@ -186,18 +208,17 @@ set -uo pipefail
                 td_print_titlebar
 
         # -- Main script logic
-        saydebug "Setting state vars"
-        td_state_set "STATE_VAR1" "$STATE_VAR1"
-        td_state_set "STATE_VAR2" "$STATE_VAR2"
-        td_state_set "STATE_VAR3" "$STATE_VAR3"
+        
 
         # -- Debug ask_redo_quit
         while true; do
+            input_test
+
             ask_ok_redo_quit "Continue anyway?"
             local rc=$?
             saydebug "Return received: $rc"
             case $rc in
-                0) saydebug "0 detected"; break ;;
+                0) saydebug "0 detected"; td_save_state; break ;;
                 1) sayinfo "Redoing selection..."; saydebug "Redo detected"; continue ;;
                 2) saywarning "User quit.";saydebug "Quit"; break ;;
                 3) saywarning "Invalid response."; saydebug "Invalid Response"; continue ;;

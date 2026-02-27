@@ -308,5 +308,95 @@ set -uo pipefail
         done
     }
 
+    # td_prompt_fromlist
+    td_prompt_fromlist() {
+        local labelwidth=0
+        local autoalign=0
+        local colorize="both"
+
+        # ---- parse optional parameters ---------------------------------
+        while [[ $# -gt 0 ]]; do
+            case "$1" in
+                --labelwidth)
+                    labelwidth="$2"
+                    shift 2
+                    ;;
+                --autoalign)
+                    autoalign=1
+                    shift
+                    ;;
+                --colorize)
+                    colorize="$2"
+                    shift 2
+                    ;;
+                --)
+                    shift
+                    break
+                    ;;
+                *)
+                    break
+                    ;;
+            esac
+        done
+
+        # ---- compute labelwidth if autoalign is enabled -----------------
+        if (( autoalign )) && (( labelwidth <= 0 )); then
+            local line key label def validator
+            local w=0
+
+            for line in "$@"; do
+                td_parse_statespec "$line"
+                key="$(td_trim "$__statekey")"
+                label="$(td_trim "$__statelabel")"
+
+                __td_is_ident "$key" || continue
+                [[ -n "$label" ]] || label="$key"
+
+                ((${#label} > w)) && w=${#label}
+            done
+
+            labelwidth="$w"
+        fi
+
+        # ---- main prompt loop ------------------------------------------
+        local line key label def validator
+        local current chosen
+
+        for line in "$@"; do
+            td_parse_statespec "$line"
+
+            key="$(td_trim "$__statekey")"
+            label="$(td_trim "$__statelabel")"
+            def="$(td_trim "$__statedefault")"
+            validator="$(td_trim "$__statevalidate")"
+
+            __td_is_ident "$key" || { saywarning "Skipping invalid state key: '$key'"; continue; }
+            [[ -n "$label" ]] || label="$key"
+
+            # ---- optional label alignment --------------------------------
+            if (( labelwidth > 0 )); then
+                label="$(td_fill_right "$label" "$labelwidth" " ")"
+            fi
+
+            current="${!key-}"
+            if [[ -n "$current" ]]; then
+                chosen="$current"
+            else
+                chosen="$def"
+            fi
+
+            if [[ -n "$validator" ]]; then
+                ask --label "$label" --var "$key" \
+                    --default "$chosen" \
+                    --validate "$validator" \
+                    --colorize "$colorize"
+            else
+                ask --label "$label" --var "$key" \
+                    --default "$chosen" \
+                    --colorize "$colorize"
+            fi
+        done
+    }
+
 
 

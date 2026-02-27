@@ -87,11 +87,6 @@ set -uo pipefail
         sayok()      { printf '%sOK%s   \t%s\n' "${MSG_CLR_OK-}"   "${RESET-}" "$*" >&2; }
         saywarning() { printf '%sWARN%s \t%s\n' "${MSG_CLR_WARN-}" "${RESET-}" "$*" >&2; }
         sayfail()    { printf '%sFAIL%s \t%s\n' "${MSG_CLR_FAIL-}" "${RESET-}" "$*" >&2; }
-        sayinfo() {
-            if (( ${FLAG_VERBOSE:-0} )); then
-                printf '%sDEBUG%s \t%s\n' "${MSG_CLR_DEBUG-}" "${RESET-}" "$*" >&2;
-            fi
-        }
         saydebug() {
             if (( ${FLAG_DEBUG:-0} )); then
                 printf '%sDEBUG%s \t%s\n' "${MSG_CLR_DEBUG-}" "${RESET-}" "$*" >&2;
@@ -99,7 +94,6 @@ set -uo pipefail
         }
         saycancel() { printf '%sCANCEL%s\t%s\n' "${MSG_CLR_CNCL-}" "${RESET-}" "$*" >&2; }
         sayend() { printf '%sEND%s   \t%s\n' "${MSG_CLR_END-}" "${RESET-}" "$*" >&2; }
-        sayerror() { printf '%sERROR%s   \t%s\n' "${MSG_CLR_FAIL-}" "${RESET-}" "$*" >&2; }
 
     # __boot_fail
         # Emit a bootstrap failure message with caller context and return a code.
@@ -128,11 +122,11 @@ set -uo pipefail
 
         local fnlmsg="${msg} (at ${caller_file}:${caller_line} in function ${caller_func})"
 
-        sayerror "$fnlmsg"
+        sayfail "$fnlmsg"
         return "$rc"
     }
 
-# --- Main sequence functions -----------------------------------------------------
+# --- Main sequence helpers -------------------------------------------------------
     # __parse_bootstrap_args
         # Parse framework-level (bootstrap) command-line switches.
         #
@@ -195,15 +189,186 @@ set -uo pipefail
 
         while [[ $# -gt 0 ]]; do
             case "$1" in
-                --state)     exe_state=1; shift ;;
-                --needroot)  exe_root=1; shift ;;
-                --cannotroot)exe_root=2; shift ;;
-                --log)       TD_LOGFILE_ENABLED=1; shift ;;
-                --console)   TD_LOG_TO_CONSOLE=1; shift ;; 
-                --) shift; TD_BOOTSTRAP_REST=("$@"); return 0 ;;
-                *) TD_BOOTSTRAP_REST=("$@"); return 0 ;;
+                --state)
+                    exe_state=1; shift ;;
+                --autostate)
+                     exe_state=2; shift ;;
+                --needroot)
+                    exe_root=1; shift ;;
+                --cannotroot)
+                    exe_root=2; shift ;;
+                --log)
+                    TD_LOGFILE_ENABLED=1; shift ;;
+                --console)
+                    TD_LOG_TO_CONSOLE=1; shift ;; 
+                --) 
+                    shift; TD_BOOTSTRAP_REST=("$@"); return 0 ;;
+                *) 
+                    TD_BOOTSTRAP_REST=("$@"); return 0 ;;
             esac
         done
+    }
+
+    # __init_bootstrap
+        # Initialize the SolidgroundUX bootstrap environment.
+        #
+        # Responsibilities:
+            #   - Resolve the absolute path of td-bootstrap.sh (this file).
+            #   - Locate the bootstrap configuration file that lives beside it.
+            #   - Create a minimal bootstrap configuration if none exists.
+            #   - Establish the initial framework/application roots used for further setup.
+        #
+        # Bootstrap configuration:
+            #   - The file "solidgroundux.cfg" is expected to reside in the same directory
+            #     as td-bootstrap.sh.
+            #   - This file is the *earliest* configuration source and is loaded before
+            #     any framework libraries or domain-specific configuration.
+        #
+        # Auto-creation behavior:
+            #   - If the bootstrap configuration file does not exist, a minimal template
+            #     is created in-place.
+            #   - Auto-created defaults set:
+            #       TD_FRAMEWORK_ROOT=/
+            #       TD_APPLICATION_ROOT=/
+            #   - Creation failures are considered fatal.
+        #
+        # Execution model:
+            #   - This function may be executed more than once across process boundaries
+            #     when root escalation is required (e.g. via need_root + exec sudo).
+            #   - Each execution is isolated to its process; no state is shared between
+            #     pre- and post-escalation runs.
+        #
+        # Design notes:
+            #   - No directory probing or upward traversal is performed.
+            #   - No user interaction or policy decisions occur here.
+            #   - This function must be safe to call multiple times per process
+            #     (idempotent by construction).
+        #
+        # Failure handling:
+            #   - Failure to create or source the bootstrap configuration is fatal and
+            #     aborts bootstrap immediately.
+            #
+    __init_bootstrap() {
+        TD_BOOTSTRAP_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+        # shellcheck source=/dev/null
+        source "$TD_BOOTSTRAP_DIR/td-bootstrap-env.sh"
+
+        td_defaults_apply
+
+        td_load_bootstrap_cfg
+        td_rebase_directories
+        td_rebase_framework_cfg_paths   
+    }
+
+    # __source_corelibs
+        # Source all core framework libraries required for normal operation.
+        #
+        # This function iterates over the list of core library filenames defined in
+        # TD_CORE_LIBS and sources each one from TD_COMMON_LIB.
+        #
+        # Behavior:
+        #   - Libraries are sourced in the order specified by TD_CORE_LIBS.
+        #   - Each library is expected to define functions, globals, or defaults used
+        #     throughout the framework.
+        #   - No validation or dependency resolution is performed here; ordering and
+        #     completeness are assumed to be correct.
+        #
+        # Assumptions:
+        #   - TD_COMMON_LIB is already set and points to the framework library directory.
+        #   - TD_CORE_LIBS contains relative filenames (not absolute paths).
+        #   - Missing or failing libraries will cause the script to terminate via
+        #     standard shell error handling unless caught by the caller.
+        #
+        # Notes:
+        #   - shellcheck warnings for dynamic sourcing are intentionally suppressed.
+        #   - This function is typically called from td_bootstrap after globals have
+        #     been initialized and before any framework functionality is used.
+    __source_corelibs(){
+        sayinfo "Loading core libraries..."  
+        td_rebase_directories
+
+        local lib path
+        for lib in "${TD_CORE_LIBS[@]}"; do
+            path="$TD_COMMON_LIB/$lib"
+            # shellcheck source=/dev/null
+            source "$path"
+        done
+    }
+
+    __td_on_exit_run() {
+        local rc=$?
+        local i cmd
+        saydebug "Entering on exit"
+        declare -p TD_ON_EXIT_HANDLERS >/dev/null 2>&1 || { return "$rc"; }
+
+        for (( i=${#TD_ON_EXIT_HANDLERS[@]}-1; i>=0; i-- )); do
+            
+            cmd="${TD_ON_EXIT_HANDLERS[i]}"
+            saydebug "On exit executing: $cmd"
+            eval "$cmd" || true
+        done
+
+        return "$rc"
+    }
+
+    __td_save_state_dispatch() {
+        local rc=$?   # capture immediately!
+
+        # Only run state save on clean exit
+        if (( rc == 0 )); then
+            td_save_state
+        elif (( rc == 130 )); then
+            saydebug "Interrupted (Ctrl+C), not saving state"
+        else
+            saydebug "Error exit ($rc), not saving state"
+        fi
+
+        return "$rc"
+    }
+
+# --- Public API ------------------------------------------------------------------
+    # td_on_exit_install
+    td_on_exit_install() {
+        # Install once
+        [[ "${__TD_ON_EXIT_INSTALLED-0}" -eq 1 ]] && return 0
+        __TD_ON_EXIT_INSTALLED=1
+        trap '__td_on_exit_run' EXIT
+    }
+
+    # td_parse_statespec
+    td_parse_statespec() {
+        local spec="${1-}"
+        __statekey="" __statelabel="" __statedefault="" __statevalidate="" __statecolorize=""
+        IFS='|' read -r __statekey __statelabel __statedefault __statevalidate __statecolorize <<< "$spec"
+    }
+    
+    # td_save_state
+    td_save_state(){
+
+        saydebug "Assembling list out of TD_STATE_VARIABLES"
+        local line key label def validator colorize
+        local keys=()
+
+        [[ ${#TD_STATE_VARIABLES[@]} -gt 0 ]] || return 0
+        saystart "Saving state variables"
+        for line in "${TD_STATE_VARIABLES[@]}"; do
+            td_parse_statespec "$line"
+            key="$(td_trim "$__statekey")"
+            __td_is_ident "$key" || continue
+            keys+=( "$key" )
+        done
+
+        saydebug "Saving state variables from array"
+        # Only save if the array exists and has elements
+         [[ ${#keys[@]} -gt 0 ]] || return 0
+        td_state_save_keys "${keys[@]}"
+        sayend "Done saving state variables."
+    }    
+
+    # td_on_exit_add
+    td_on_exit_add() {
+        # store as one string per handler: "fn arg1 arg2 ..."
+        TD_ON_EXIT_HANDLERS+=( "$*" )
     }
 
     # td_check_license
@@ -286,57 +451,6 @@ set -uo pipefail
         TD_LICENSE_ACCEPTED=$isaccepted
     }
 
-    # __init_bootstrap
-        # Initialize the SolidgroundUX bootstrap environment.
-        #
-        # Responsibilities:
-            #   - Resolve the absolute path of td-bootstrap.sh (this file).
-            #   - Locate the bootstrap configuration file that lives beside it.
-            #   - Create a minimal bootstrap configuration if none exists.
-            #   - Establish the initial framework/application roots used for further setup.
-        #
-        # Bootstrap configuration:
-            #   - The file "solidgroundux.cfg" is expected to reside in the same directory
-            #     as td-bootstrap.sh.
-            #   - This file is the *earliest* configuration source and is loaded before
-            #     any framework libraries or domain-specific configuration.
-        #
-        # Auto-creation behavior:
-            #   - If the bootstrap configuration file does not exist, a minimal template
-            #     is created in-place.
-            #   - Auto-created defaults set:
-            #       TD_FRAMEWORK_ROOT=/
-            #       TD_APPLICATION_ROOT=/
-            #   - Creation failures are considered fatal.
-        #
-        # Execution model:
-            #   - This function may be executed more than once across process boundaries
-            #     when root escalation is required (e.g. via need_root + exec sudo).
-            #   - Each execution is isolated to its process; no state is shared between
-            #     pre- and post-escalation runs.
-        #
-        # Design notes:
-            #   - No directory probing or upward traversal is performed.
-            #   - No user interaction or policy decisions occur here.
-            #   - This function must be safe to call multiple times per process
-            #     (idempotent by construction).
-        #
-        # Failure handling:
-            #   - Failure to create or source the bootstrap configuration is fatal and
-            #     aborts bootstrap immediately.
-            #
-    __init_bootstrap() {
-        TD_BOOTSTRAP_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
-        # shellcheck source=/dev/null
-        source "$TD_BOOTSTRAP_DIR/td-bootstrap-env.sh"
-
-        td_defaults_apply
-
-        td_load_bootstrap_cfg
-        td_rebase_directories
-        td_rebase_framework_cfg_paths   
-    }
-
     # td_load_ui_style
         # Load the active UI palette and style definitions.
         #
@@ -367,42 +481,6 @@ set -uo pipefail
         source "$style_path"
     }
 
-    # __source_corelibs
-        # Source all core framework libraries required for normal operation.
-        #
-        # This function iterates over the list of core library filenames defined in
-        # TD_CORE_LIBS and sources each one from TD_COMMON_LIB.
-        #
-        # Behavior:
-        #   - Libraries are sourced in the order specified by TD_CORE_LIBS.
-        #   - Each library is expected to define functions, globals, or defaults used
-        #     throughout the framework.
-        #   - No validation or dependency resolution is performed here; ordering and
-        #     completeness are assumed to be correct.
-        #
-        # Assumptions:
-        #   - TD_COMMON_LIB is already set and points to the framework library directory.
-        #   - TD_CORE_LIBS contains relative filenames (not absolute paths).
-        #   - Missing or failing libraries will cause the script to terminate via
-        #     standard shell error handling unless caught by the caller.
-        #
-        # Notes:
-        #   - shellcheck warnings for dynamic sourcing are intentionally suppressed.
-        #   - This function is typically called from td_bootstrap after globals have
-        #     been initialized and before any framework functionality is used.
-    __source_corelibs(){
-        sayinfo "Loading core libraries..."  
-        td_rebase_directories
-
-        local lib path
-        for lib in "${TD_CORE_LIBS[@]}"; do
-            path="$TD_COMMON_LIB/$lib"
-            # shellcheck source=/dev/null
-            source "$path"
-        done
-    }
-
-# --- Public API ------------------------------------------------------------------
     # td_bootstrap
         # Initialize the Testadura runtime context for the current script.
         #
@@ -424,77 +502,87 @@ set -uo pipefail
         #   - Builtins are parsed and TD_BOOTSTRAP_REST contains remaining script args
         #   - RUN_MODE reflects parsed builtins (commit/dryrun)
     td_bootstrap() {
-
+        saystart "Initializing framework"
         # Definitions
-        : "${TUI_COMMIT:=$(printf '\e[38;5;130m')}"
-        : "${TUI_DRYRUN:=$(printf '\e[38;5;245m')}"
-        : "${RESET:=$(printf '\e[0m')}"
-        : "${RUN_MODE:="${TUI_COMMIT}COMMIT${RESET}"}"
-        : "${FLAG_DEBUG:=0}"
-        : "${FLAG_DRYRUN:=0}"
-        : "${FLAG_VERBOSE:=0}"
-        : "${FLAG_STATERESET:=0}"
-        : "${FLAG_INIT_CONFIG:=0}"
-        : "${FLAG_SHOWARGS:=0}"
-        : "${FLAG_HELP:=0}"
+            : "${TUI_COMMIT:=$(printf '\e[38;5;130m')}"
+            : "${TUI_DRYRUN:=$(printf '\e[38;5;245m')}"
+            : "${RESET:=$(printf '\e[0m')}"
+            : "${RUN_MODE:="${TUI_COMMIT}COMMIT${RESET}"}"
+            : "${FLAG_DEBUG:=0}"
+            : "${FLAG_DRYRUN:=0}"
+            : "${FLAG_VERBOSE:=0}"
+            : "${FLAG_STATERESET:=0}"
+            : "${FLAG_INIT_CONFIG:=0}"
+            : "${FLAG_SHOWARGS:=0}"
+            : "${FLAG_HELP:=0}"
 
-        if ! declare -p TD_SCRIPT_GLOBALS >/dev/null 2>&1; then
-            declare -ag TD_SCRIPT_GLOBALS=()
-        fi
+            if ! declare -p TD_SCRIPT_GLOBALS >/dev/null 2>&1; then
+                declare -ag TD_SCRIPT_GLOBALS=()
+            fi
+            
+            if ! declare -p TD_STATE_VARIABLES >/dev/null 2>&1; then
+                declare -ag TD_STATE_VARIABLES=()
+            fi
+
+            if ! declare -p TD_ON_EXIT_HANDLERS >/dev/null 2>&1; then
+                declare -ag TD_ON_EXIT_HANDLERS=()
+            fi
 
         # Basic initialization - Defaults
-        sayinfo "Initializing bootstrap..."
-        __init_bootstrap || { local rc=$?; __boot_fail "Failed to initialize bootstrapper" "$rc"; return "$rc"; }
+            saydebug "Initializing bootstrap..."
+            __init_bootstrap || { local rc=$?; __boot_fail "Failed to initialize bootstrapper" "$rc"; return "$rc"; }
 
-        sayinfo "Parsing bootstrap arguments..."
-        __parse_bootstrap_args "$@" || { local rc=$?; __boot_fail "Failed parsing bootstrap arguments" "$rc"; return "$rc"; }
+            sayinfo "Parsing bootstrap arguments..."
+            __parse_bootstrap_args "$@" || { local rc=$?; __boot_fail "Failed parsing bootstrap arguments" "$rc"; return "$rc"; }
 
-        sayinfo "Loading core libraries"
-        __source_corelibs || { local rc=$?; __boot_fail "Failed to load core libraries" "$rc"; return "$rc"; }
+            saydebug "Loading core libraries"
+            __source_corelibs || { local rc=$?; __boot_fail "Failed to load core libraries" "$rc"; return "$rc"; }
 
-        td_load_ui_style || { local rc=$?; __boot_fail "Failed to load UI style" "$rc"; return "$rc"; }
+            saydebug "Loading UI style"
+            td_load_ui_style || { local rc=$?; __boot_fail "Failed to load UI style" "$rc"; return "$rc"; }
 
         # Load Framework globals
-        td_cfg_domain_apply "Framework" "$TD_FRAMEWORK_SYSCFG_FILE" "$TD_FRAMEWORK_USRCFG_FILE" "TD_FRAMEWORK_GLOBALS" "framework" \
-            || { local rc=$?; __boot_fail "Framework cfg load failed" "$rc"; return "$rc"; }
+            saydebug "Loading framework globals"
+            td_cfg_domain_apply "Framework" "$TD_FRAMEWORK_SYSCFG_FILE" "$TD_FRAMEWORK_USRCFG_FILE" "TD_FRAMEWORK_GLOBALS" "framework" \
+                || { local rc=$?; __boot_fail "Framework cfg load failed" "$rc"; return "$rc"; }
 
         # Parse builtin arguments early
-        local -a __td_script_args
-        local -a __td_after_builtins
-            __td_script_args=( "${TD_BOOTSTRAP_REST[@]}" )
+            saydebug "Processing builtin arguments."
+            local -a __td_script_args
+            local -a __td_after_builtins
+                __td_script_args=( "${TD_BOOTSTRAP_REST[@]}" )
 
-        saydebug "Parsing arguments $TD_BUILTIN_ARGS ${__td_script_args[@]}"                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                             
-        td_parse_args --stop-at-unknown "${__td_script_args[@]}" \
-            || { local rc=$?; __boot_fail "Error parsing builtins" "$rc"; return "$rc"; }
-        __td_after_builtins=( "${TD_POSITIONAL[@]}" )
-
-        saydebug "Dryrun = $FLAG_DRYRUN, debug = $FLAG_DEBUG, showenv = $FLAG_SHOWENV"
+            saydebug "Parsing arguments $TD_BUILTIN_ARGS ${__td_script_args[@]}"                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                             
+            td_parse_args --stop-at-unknown "${__td_script_args[@]}" \
+                || { local rc=$?; __boot_fail "Error parsing builtins" "$rc"; return "$rc"; }
+            __td_after_builtins=( "${TD_POSITIONAL[@]}" )
 
         # Final basic settings
-        td_update_runmode || { local rc=$?; __boot_fail "Error setting RUN_MODE" "$rc"; return "$rc"; }
+            saydebug "Finalizing initial settings"
+            td_update_runmode || { local rc=$?; __boot_fail "Error setting RUN_MODE" "$rc"; return "$rc"; }
 
-        sayinfo "Applying options"
+        sayinfo "Applying bootstrap options"
 
         # Root checks (after libs so need_root exists)
-        if (( exe_root == 1 )); then
-            td_need_root "${__td_script_args[@]}" \
-                || { local rc=$?; __boot_fail "Failed to enable need_root" "$rc"; return "$rc"; }
-        fi
+            if (( exe_root == 1 )); then
+                td_need_root "${__td_script_args[@]}" \
+                    || { local rc=$?; __boot_fail "Failed to enable need_root" "$rc"; return "$rc"; }
+            fi
 
-        if (( exe_root == 2 )); then
-            td_cannot_root "${__td_script_args[@]}" \
-                || { local rc=$?; __boot_fail "Failed to enable cannot_root" "$rc"; return "$rc"; }
-        fi
+            if (( exe_root == 2 )); then
+                td_cannot_root "${__td_script_args[@]}" \
+                    || { local rc=$?; __boot_fail "Failed to enable cannot_root" "$rc"; return "$rc"; }
+            fi
 
         # Now the root/non-root debate has been settled, check license acceptance.
-        td_check_license
-        case $? in
-            0) : ;;
-            2) return 2 ;;
-            *) { __boot_fail "License acceptance check failed" 1; return 1; } ;;
-        esac
-
-        # Now that we know we won't re-exec, continue with the remainder
+            td_check_license
+            case $? in
+                0) : ;;
+                2) return 2 ;;
+                *) { __boot_fail "License acceptance check failed" 1; return 1; } ;;
+            esac
+        
+        # Now that we know we won't re-exec, continue with the remainder of the arguments
         TD_BOOTSTRAP_REST=( "${__td_after_builtins[@]}" )
 
         # Reset statefile before it's loaded if requested
@@ -504,10 +592,18 @@ set -uo pipefail
         fi
 
         # Load state and parse *script* args
-        if (( exe_state )); then
+        if (( exe_state > 0 )); then
+            saydebug "Installing on exit handler"
+            td_on_exit_install
+
+            saydebug "Loading state file."
             td_state_load || { local rc=$?; __boot_fail "Failed to load state" "$rc"; return "$rc"; }
         fi
 
+        if (( exe_state == 2 )); then
+            saydebug "Registering save state"
+            td_on_exit_add "__td_save_state_dispatch"
+        fi
         
         if (( ${#TD_SCRIPT_GLOBALS[@]} > 0 )); then
             saydebug "Processing CFG."
@@ -532,7 +628,7 @@ set -uo pipefail
         else
             sayinfo "Running in $RUN_MODE mode (changes will be applied)."
         fi
-
+        sayend "Finished bootstrap"
         return 0
     }
 

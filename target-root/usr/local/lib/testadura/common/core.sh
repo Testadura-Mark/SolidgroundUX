@@ -70,20 +70,25 @@ set -uo pipefail
   # td_need_root 
     # Require the script to run as root, re-exec with sudo if not.
   td_need_root() {
-      if [[ ${EUID:-$(id -u)} -ne 0 && -z "${TD_ALREADY_ROOT:-}" ]]; then
-          exec sudo \
-              --preserve-env=TD_FRAMEWORK_ROOT,TD_APPLICATION_ROOT,PATH \
-              -- env TD_ALREADY_ROOT=1 "$0" "$@"
-      fi
+    sayinfo "Script requires root permissions"
+    if [[ ${EUID:-$(id -u)} -ne 0 && -z "${TD_ALREADY_ROOT:-}" ]]; then
+      exec sudo \
+          --preserve-env=TD_FRAMEWORK_ROOT,TD_APPLICATION_ROOT,PATH \
+          -- env TD_ALREADY_ROOT=1 "$0" "$@"
+      saydebug "Restarting as root"
+    else
+      saydebug "Already root, no restart required"
+    fi
   }
 
   # td_cannot_root
     # require normal session
   td_cannot_root() {
-      if [[ ${EUID:-$(id -u)} -eq 0 ]]; then
-          _sh_err "Do not run this script as root."
-          exit 1
-      fi
+    sayinfo "Script requires NOT having root permissions"
+    if [[ ${EUID:-$(id -u)} -eq 0 ]]; then
+        sayfail "Do not run this script as root. Exiting..."
+        exit 1
+    fi
   }
 
   # td_need_bash
@@ -325,6 +330,30 @@ set -uo pipefail
     # Terminate processes by name if they are running.
   td_kill_if_running(){ pkill -x "$1" &>/dev/null || true; }
 
+  # td_caller_id
+    #   Returns "file:line (function)" of the caller.
+    #   Optional arg: stack depth (default 1 = direct caller)
+  td_caller_id() {
+      local depth="${1:-1}"
+
+      local file="${BASH_SOURCE[$depth]}"
+      local func="${FUNCNAME[$depth]}"
+      local line="${BASH_LINENO[$((depth-1))]}"
+
+      printf '%s:%s (%s)' "${file##*/}" "$line" "$func"
+  }
+  
+  # td_stack_trace
+    # Returns full stacktrace
+  td_stack_trace() {
+      local i
+      for (( i=1; i<${#FUNCNAME[@]}; i++ )); do
+          printf '  at %s:%s (%s)\n' \
+              "${BASH_SOURCE[$i]##*/}" \
+              "${BASH_LINENO[$((i-1))]}" \
+              "${FUNCNAME[$i]}"
+      done
+  }
 # --- Version & OS Helpers --------------------------------------------------------
   # td_get_os
     # Return OS ID from /etc/os-release (e.g. ubuntu, debian).
@@ -340,9 +369,7 @@ set -uo pipefail
   td_version_ge(){ [[ "$(printf '%s\n' "$2" "$1" | sort -V | head -n1)" == "$2" ]]; }
 
 # --- Misc Utilities --------------------------------------------------------------
-  # td_join_by
-    # Join arguments with a separator.
-  td_join_by(){ local IFS="$1"; shift; echo "$*"; }
+
 
   # td_timestamp
     # Return current time as "YYYY-MM-DD HH:MM:SS".
@@ -361,6 +388,10 @@ set -uo pipefail
     return 1
   }
 
+  # td_join
+      # Join arguments with a separator.
+  td_join(){ local IFS="$1"; shift; echo "$*"; }
+  
   # td_array_union
     # Create a stable union of N arrays (unique values, order preserved).
     #
@@ -416,22 +447,75 @@ set -uo pipefail
   td_trim(){ local v="${*:-}"; v="${v#"${v%%[![:space:]]*}"}"; echo "${v%"${v##*[![:space:]]}"}"; }
 
   # td_string_repeat
-     # Repeat a string N times.
-     # Usage: td_string_repeat "abc" 3  # outputs "abcabcabc"
-   td_string_repeat() {
-        local s="$1"
-        local n="$2"
-        local out=""
-        local i=0
+    # Repeat string S N times.
+    # Usage: td_string_repeat "abc" 3  # -> abcabcabc
+  td_string_repeat() {
+      local s="${1- }"
+      local n="${2-0}"
 
-        (( n <= 0 )) && { printf '%s' ""; return 0; }
+      local out=""
+      local i=0
 
-        for (( i=0; i<n; i++ )); do
-            out+="$s"
-        done
-        printf '%s' "$out"
+      (( n > 0 )) || { printf '%s' ""; return 0; }
+
+      for (( i=0; i<n; i++ )); do
+          out+="$s"
+      done
+
+      printf '%s' "$out"
   }
 
+  # td_fill_left
+    # Pads a string on the left to maxlength using char (default: space)
+  td_fill_left() {
+      local source="${1-}"
+      local maxlength="${2-20}"
+      local char="${3- }"
+
+      local padcount=$(( maxlength - ${#source} ))
+      (( padcount > 0 )) || { printf '%s' "$source"; return 0; }
+
+      local pad
+      pad="$(td_string_repeat "$char" "$padcount")"
+
+      printf '%s%s' "$pad" "$source"
+  }
+
+  # td_fill_right
+    # Pads a string on the right to maxlength using char (default: space)
+  td_fill_right() {
+      local source="${1-}"
+      local maxlength="${2-20}"
+      local char="${3- }"
+
+      local padcount=$(( maxlength - ${#source} ))
+      (( padcount > 0 )) || { printf '%s' "$source"; return 0; }
+
+      local pad
+      pad="$(td_string_repeat "$char" "$padcount")"
+
+      printf '%s%s' "$source" "$pad"
+  }
+
+  # td_fill_center
+    # Pads a string centered to maxlength using char (default: space)
+  td_fill_center() {
+      local source="${1-}"
+      local maxlength="${2-20}"
+      local char="${3- }"
+
+      local padcount=$(( maxlength - ${#source} ))
+      (( padcount > 0 )) || { printf '%s' "$source"; return 0; }
+
+      local left=$(( padcount / 2 ))
+      local right=$(( padcount - left ))
+
+      local pad_left pad_right
+      pad_left="$(td_string_repeat "$char" "$left")"
+      pad_right="$(td_string_repeat "$char" "$right")"
+
+      printf '%s%s%s' "$pad_left" "$source" "$pad_right"
+  }
   # td_wrap_words
     # Wrap a text to a given width (word-boundary wrap).
     # Usage: td_wrap_words --width 60 --text "hello world ..."
@@ -466,19 +550,51 @@ set -uo pipefail
 
         [[ -n "$line" ]] && printf '%s\n' "$line"
     }
-# --- Die and exit handlers -------------------------------------------------------
-    td_die(){ local code="${2:-1}"; _sh_err "${1:-fatal error}"; exit "$code"; }
+# --- Error handlers --------------------------------------------------------------
+    # td_die
+      # Terminate immediately, reporting the problem
+      # Usage: td_die "message" [rc]
+    td_die() {
+        local msg="${1-}"
+        local rc="${2-1}"
 
-    # td_on_exit
-      # Append command to existing EXIT trap if set.
-    td_on_exit(){
-      local new="$1" old
-      old="$(trap -p EXIT | sed -n "s/^trap -- '\(.*\)' EXIT$/\1/p")"
-      if [[ -n "$old" ]]; then
-        trap "$old; $new" EXIT
-      else
-        trap "$new" EXIT
-      fi
+        local ci=""
+        if (( ${FLAG_VERBOSE:-0} )); then
+            # td_stack_trace should PRINT the trace to stdout
+            ci="$(td_stack_trace)"
+        else
+            ci="$(td_caller_id 2)"
+        fi
+
+        sayfail "$rc ${msg:-Fatal error} ($ci)"
+        exit "$rc"
+    }
+    # td_require
+      #   Run a command. If it fails, report where it was invoked and return rc.
+      #   Usage: td_require <command> [args...]
+    td_require() {
+        "$@"
+        local rc=$?
+
+        if (( rc != 0 )); then
+            # script -> td_require -> td_caller_id
+            sayfail "Command failed (rc=$rc): $* ($(td_caller_id 2))"
+        fi
+
+        return "$rc"
+    }
+
+    # td_must
+      #   Run a command. If it fails, terminate via td_die (fatal).
+      #   Usage: td_must <command> [args...]
+    td_must() {
+        "$@"
+        local rc=$?
+
+        (( rc == 0 )) && return 0
+
+        # Do NOT add caller-id here; td_die will do that (and optional stack trace)
+        td_die "Fatal: $* (rc=$rc)" "$rc"
     }
 
 # --- Argument & Environment Validators -------------------------------------------
@@ -493,7 +609,6 @@ set -uo pipefail
     # Return 0 if value is a decimal number (int or int.frac, optional +/-).
   td_validate_decimal() 
   {
-
     [[ "$1" =~ ^[+-]?[0-9]+(\.[0-9]+)?$ ]]
   }
 

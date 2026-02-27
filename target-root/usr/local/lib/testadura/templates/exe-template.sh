@@ -158,6 +158,12 @@ set -uo pipefail
     TD_SCRIPT_GLOBALS=(
     )
 
+    TD_STATE_VARIABLES=(
+    )
+
+    TD_ON_EXIT_HANDLERS=(
+    )
+
 # --- Local script Declarations ----------------------------------------------------
     # Put script-local constants and defaults here (NOT framework config).
     # Prefer local variables inside functions unless a value must be shared.

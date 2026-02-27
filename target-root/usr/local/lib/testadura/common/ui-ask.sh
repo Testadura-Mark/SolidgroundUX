@@ -417,23 +417,82 @@ set -uo pipefail
         #       esac
         #   done  
     ask_ok_redo_quit() {
-        local prompt="$1"
+        local prompt="${1-}"
+        local seconds="${2:-0}"   # 0 = no auto-continue
         local orq_response=""
 
+        # Non-interactive: never block; default OK
+        if [[ ! -t 0 || ! -t 1 ]]; then
+            return 0
+        fi
+
+        # Optional auto-confirm phase
+        if (( seconds > 0 )); then
+            local paused=0
+            local key=""
+            local clr
+            clr="$(td_sgr "$WHITE" "$FX_ITALIC")"
+
+            while true; do
+                if (( paused )); then
+                    printf "%s\nPaused. (o=ok, r=redo, q=quit, any other key=type)%s" "$clr" "$RESET"
+                    IFS= read -r -n 1 -s key
+                else
+                    printf "\r\033[K%s%s [OK/Redo/Quit] default=OK in %ds… (o/r/q, p=pause)%s" \
+                        "$clr" "$prompt" "$seconds" "$RESET"
+                    IFS= read -r -n 1 -s -t 1 key || key=""
+                fi
+
+                if [[ -n "$key" ]]; then
+                    case "$key" in
+                        p|P)
+                            paused=1
+                            printf "\n"
+                            continue
+                            ;;
+                        o|O|$'\n'|$'\r')
+                            printf "\n"
+                            return 0
+                            ;;
+                        r|R)
+                            printf "\n"
+                            return 1
+                            ;;
+                        q|Q|c|C|$'\e')
+                            printf "\n${MSG_CLR_CNCL}Cancelled.${RESET}\n"
+                            return 2
+                            ;;
+                        *)
+                            # Any other key drops to the full typed prompt
+                            printf "\n"
+                            break
+                            ;;
+                    esac
+                fi
+
+                if (( ! paused )); then
+                    ((seconds--))
+                    if (( seconds <= 0 )); then
+                        printf "\n"
+                        return 0
+                    fi
+                fi
+            done
+        fi
+
+        # Full typed prompt (original behavior)
         ask --label "$prompt [OK/Redo/Quit]" --var orq_response
 
         # Trim whitespace
         orq_response="${orq_response#"${orq_response%%[![:space:]]*}"}"
         orq_response="${orq_response%"${orq_response##*[![:space:]]}"}"
 
-        saydebug "raw=$orq_response upper=${orq_response^^}"
-        
         local upper="${orq_response^^}"
         case "$upper" in
-            ""|OK|O)        return 0 ;;
-            REDO|R)         return 1 ;;
-            QUIT|Q|EXIT)    return 2 ;;
-            *)              return 3 ;;
+            ""|OK|O)                    return 0 ;;
+            REDO|R)                     return 1 ;;
+            QUIT|Q|EXIT|CANCEL|C)       return 2 ;;
+            *)                          return 3 ;;
         esac
     }
 

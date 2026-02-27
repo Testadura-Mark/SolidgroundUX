@@ -116,6 +116,12 @@ set -uo pipefail
         "  $TD_SCRIPT_NAME -v"
     ) 
 
+    TD_STATE_VARIABLES=(
+    )
+
+    TD_ON_EXIT_HANDLERS=(
+    )
+
 # --- local script functions ------------------------------------------------------
     __show_mainmenu() {
         local _barcolor="${TUI_BORDER}"
