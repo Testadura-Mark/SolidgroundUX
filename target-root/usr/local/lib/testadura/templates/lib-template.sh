@@ -22,9 +22,10 @@
 # Design rules:
 #   - Libraries define functions and constants only.
 #   - No auto-execution (must be sourced).
-#   - No `set -euo pipefail` or persistent shell-option changes.
+#   - Avoids changing shell options beyond strict-unset/pipefail (set -u -o pipefail).
+#     (No set -e; no shopt.)
 #   - No path detection or root resolution (bootstrap owns path resolution).
-#   - No global behavior changes (UI routing, logging policy, shell options).
+#   - No framework policy decisions. May emit say* diagnostics and use td_print_* helpers for display.
 #   - Safe to source multiple times (idempotent load guard).
 #
 # Non-goals:
@@ -63,16 +64,41 @@ set -uo pipefail
 
 
 # --- Internal helpers ------------------------------------------------------------
-    # Prefix with __
+    # Naming:
+    #   - Prefix internal-only helpers with "__" (never "td_")
     # Example:
-    # __<libname>_helper() {
-    #     :
-    # }
+    #   __<libname>_helper() { :; }
 # --- Public API ------------------------------------------------------------------
-    # prefix with td_
+    # Naming:
+    #   - Prefix public functions with "td_" (never "__")
     # Example:
-    # td_<libname>_do_something() {
-    #     :
-    # }
+    #   td_<libname>_do_something() { :; }
+
+    # Default function header
+    # <function_name>
+        # Purpose:
+        #   <one-liner>
+        #
+        # Arguments:
+        #   $1  ...
+        #   $2  ...
+        #
+        # Inputs (globals):
+        #   FOO, BAR   (only if used)
+        #
+        # Outputs (globals):
+        #   BAZ        (only if set)
+        #
+        # Output:
+        #   Writes ... to stdout/stderr (only if applicable)
+        #
+        # Side effects:
+        #   Creates/updates/deletes files, sets permissions, etc.
+        #
+        # Returns:
+        #   0 on success, ...
+        #
+        # Notes:
+        #   - Edge cases / gotchas
 
 

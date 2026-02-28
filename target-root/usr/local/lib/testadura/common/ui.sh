@@ -73,15 +73,22 @@ set -uo pipefail
     # Shims to integrate with legacy helpers if present (say/ask), with safe fallbacks.
     # These overrides are intentionally small and policy-free.
 
-  # _sh_err
-    #   Compatibility override for legacy "_sh_err" error reporting.
-    #
-    # Behavior:
-    #   - If say() exists, delegates to: say --type FAIL ...
-    #   - Otherwise prints the message to stderr.
-    #
-    # Output:
-    #   Writes one line to stderr (directly or via say()).
+    # _sh_err
+        # Purpose:
+        #   Compatibility shim for legacy "_sh_err" error reporting.
+        #
+        # Usage:
+        #   _sh_err "message..."
+        #
+        # Behavior:
+        #   - If say() exists, emits a FAIL message via: say --type FAIL "$*"
+        #   - Otherwise prints the message to stderr.
+        #
+        # Output:
+        #   One line to stderr (directly or via say()).
+        #
+        # Returns:
+        #   0 always.
   _sh_err() {
       if declare -f say >/dev/null 2>&1; then
           say --type FAIL "$*"
@@ -123,27 +130,28 @@ set -uo pipefail
   }
 
 # --- Helpers ---------------------------------------------------------------------
-    # __td_ui_resolve_theme_file KIND SPEC
-        #   Resolve a palette/style "spec" to a readable .sh file path.
+    # __td_ui_resolve_theme_file
+        # Purpose:
+        #   Resolve a palette/style spec into a readable .sh file path.
         #
-        # Parameters:
-        #   KIND : "palettes" | "styles"
-        #   SPEC : Either:
-        #          - explicit path (contains '/' or ends with .sh), OR
-        #          - logical name (resolved under $TD_UI_THEME_DIR/<KIND>/<SPEC>.sh)
+        # Usage:
+        #   __td_ui_resolve_theme_file KIND SPEC
+        #
+        # Arguments:
+        #   $1  KIND : "palettes" | "styles"
+        #   $2  SPEC : either:
+        #       - explicit path (contains '/' or ends with .sh), OR
+        #       - logical name (resolved as "$TD_UI_THEME_DIR/<KIND>/<SPEC>.sh")
         #
         # Output:
-        #   Prints the resolved file path to stdout.
+        #   Prints the resolved file path to stdout (no newline).
         #
         # Returns:
         #   0  resolved and readable
         #   2  missing SPEC
         #   3  explicit path provided but not readable
-        #   4  theme base directory not set (TD_UI_THEME_DIR/TD_FRAMEWORK_ROOT missing)
+        #   4  theme base directory not set (TD_UI_THEME_DIR missing)
         #   5  named theme not found under theme directory
-        #
-        # Notes:
-        #   - This is an internal helper; callers should not parse stderr output.
     __td_ui_resolve_theme_file() {
         local kind="$1"
         local spec="$2"
@@ -186,45 +194,79 @@ set -uo pipefail
 
 # --- Public API ------------------------------------------------------------------
  # -- Public helpers --------------------------------------------------------------
-  # td_strip_ansi
-    # Strip ANSI SGR color sequences (ESC[...m)
+    # td_strip_ansi
+        # Purpose:
+        #   Strip ANSI CSI escape sequences (sufficient for SGR styling) from a string.
+        #
+        # Usage:
+        #   td_strip_ansi "text"
+        #
+        # Output:
+        #   Prints the sanitized string to stdout.
+        #
+        # Notes:
+        #   - Uses a regex that removes ESC[...<alpha> sequences.
+        #   - Intended mainly for SGR (ESC[...m) and similar CSI codes used by the framework.
+        #
+        # Returns:
+        #   0 always.
   td_strip_ansi() {
     sed -r $'s/\x1B\\[[0-9;?]*[[:alpha:]]//g' <<<"$1"
   }
+
   # td_visible_len
-    # Visible length of a string (after stripping ANSI SGR codes)
-    # Usage: td_visible_len "text"
+    # Purpose:
+    #   Return the visible length (terminal columns) of a string after stripping ANSI.
+    #
+    # Usage:
+    #   td_visible_len "text"
+    #
+    # Output:
+    #   Prints an integer length to stdout (no newline).
+    #
+    # Notes:
+    #   - Byte-count based; assumes monospaced terminal and no multi-column glyphs.
+    #
+    # Returns:
+    #   0 always.
   td_visible_len() {
       local plain
       plain="$(td_strip_ansi "$1")"
       printf '%s' "${#plain}"
   }
+
  # -- Theme loading ---------------------------------------------------------------
     # td_ui_set_theme
-        #   Load a UI palette and UI style (in that order).
+        # Purpose:
+        #   Load a UI palette and UI style (in that order) into the current shell.
         #
         # Usage:
         #   td_ui_set_theme --palette <file|name> --style <file|name>
         #   td_ui_set_theme --default
+        #   td_ui_set_theme <palette> <style>         # shorthand positional form
         #
         # Resolution rules:
-        #   - If the value contains '/' or ends with .sh, it is treated as a file path.
-        #   - Otherwise it is treated as a "name" and resolved under:
+        #   - If a spec contains '/' or ends with .sh, it is treated as a file path.
+        #   - Otherwise it is treated as a name and resolved under:
         #       $TD_UI_THEME_DIR/palettes/<name>.sh
         #       $TD_UI_THEME_DIR/styles/<name>.sh
-        #     where TD_UI_THEME_DIR defaults to:
-        #       $TD_FRAMEWORK_ROOT/usr/local/lib/testadura/common/ui
         #
-        # Side effects:
-        #   - Sources the resolved palette and style files into the current shell.
-        #   - Updates globals: TD_UI_THEME_DIR, TD_UI_PALETTE_FILE, TD_UI_STYLE_FILE.
+        # Theme dir:
+        #   - If TD_UI_THEME_DIR is unset and TD_FRAMEWORK_ROOT is set, derives:
+        #       TD_UI_THEME_DIR="$TD_FRAMEWORK_ROOT/usr/local/lib/testadura/common/ui"
+        #   - If both are missing, name-based resolution will fail.
         #
-        # Notes:
-        #   - If TD_UI_THEME_DIR cannot be derived, name-based resolution will fail.
-        #     Prefer setting TD_FRAMEWORK_ROOT (or TD_UI_THEME_DIR) before calling.
+        # Side effects (globals):
+        #   TD_UI_THEME_DIR, TD_UI_PALETTE_FILE, TD_UI_STYLE_FILE, plus all variables
+        #   defined by the sourced palette/style files.
         #
         # Returns:
-        #   0 on success, non-zero on failure.
+        #   0  success (or --help)
+        #   2  unexpected argument (too many positionals / unknown token)
+        #   4/5/3  resolution failures from __td_ui_resolve_theme_file
+        #   10 palette load failed
+        #   11 palette did not define RESET
+        #   12 style load failed
     td_ui_set_theme() {
         local palette_spec=""
         local style_spec=""
@@ -306,41 +348,47 @@ set -uo pipefail
     }
 
     # td_ui_set_default_theme
-        # Convenience wrapper to set the default theme (palette + style).
+        # Purpose:
+        #   Convenience wrapper to load the default palette + style.
         #
         # Usage:
         #   td_ui_set_default_theme
         #
-        # Side effects:
-        #   See td_ui_set_theme --default
+        # Equivalent:
+        #   td_ui_set_theme --default
+        #
+        # Returns:
+        #   Whatever td_ui_set_theme returns.
     td_ui_set_default_theme() {
         td_ui_set_theme --default
     }
+
  # -- Styling helpers -------------------------------------------------------------
     # td_sgr
+        # Purpose:
         #   Build ONE canonical ANSI SGR escape (ESC[...m) from mixed inputs.
         #
+        # Usage:
+        #   td_sgr <part...>
+        #
         # Accepts:
-        #   - numeric SGR params (e.g. 1=bold, 4=underline, 7=reverse)
-        #   - full SGR escapes like $'\e[38;5;46m' (palette colors/effects)
+        #   - Numeric SGR params (e.g. 1 bold, 4 underline, 7 reverse)
+        #   - Full SGR escapes like: $'\e[38;5;46m'
         #
         # Behavior:
-        #   - Extracts the inner "..." parameters from any ESC[...m input.
-        #   - Merges all parameters into a single ESC[...m prefix.
-        #   - Ignores empty or unrecognized parts.
+        #   - Extracts inner parameters from any ESC[...m input.
+        #   - Merges all parts into a single ESC[<joined>m sequence.
+        #   - Ignores empty/unrecognized parts.
         #
         # Output:
         #   Prints the SGR prefix to stdout (no newline).
         #
         # Returns:
-        #   0 always (construction-only; does not validate terminal support).
+        #   0 always (construction-only).
         #
-        # Fallback:
-        #   - If no valid parts are provided, prints "${RESET-}" (may be empty if RESET unset).
-        #
-        # Examples:
-        #   printf "%sHi%s\n"   "$(td_sgr 1 "$BRIGHT_GREEN")" "$RESET"
-        #   printf "%sWarn%s\n" "$(td_sgr "$FX_BOLD" "$MSG_CLR_WARN")" "$RESET"
+        # Notes:
+        #   - Does not validate terminal support.
+        #   - If no valid parts are provided, prints "${RESET-}" (may be empty).
     td_sgr() {
         local -a parts=()
         local arg
@@ -373,23 +421,20 @@ set -uo pipefail
     }
 
     # td_fg
-        #   Convenience wrapper for foreground-only styling.
+        # Purpose:
+        #   Convenience wrapper to build a foreground SGR prefix (+ optional effects).
         #
         # Usage:
         #   td_fg <fg> [fx...]
         #
-        # Equivalent to:
-        #   td_sgr "<fg>" "" [fx...]
+        # Output:
+        #   Prints an SGR prefix to stdout (no newline).
         #
-        # Examples:
-        #   # 1) Just a foreground
-        #   printf '%sHello%s\n' "$(td_fg "$BRIGHT_GREEN")" "$RESET"
+        # Returns:
+        #   0 always.
         #
-        #   # 2) Foreground + effect
-        #   printf '%sOK%s\n' "$(td_fg "$GREEN" "$FX_BOLD")" "$RESET"
-        #
-        #   # 3) Multiple effects
-        #   printf '%sNote%s\n' "$(td_fg "$CYAN" 1 4)" "$RESET"
+        # Notes:
+        #   - This is syntactic sugar for: td_sgr "$fg" "" [fx...]
     td_fg() {  # td_fg <fg> [fx...]
         local fg="${1:-}"
         shift || true
@@ -397,24 +442,20 @@ set -uo pipefail
     }
 
     # td_bg
-        #   Convenience wrapper for background-only styling.
+        # Purpose:
+        #   Convenience wrapper to build a background SGR prefix (+ optional effects).
         #
         # Usage:
         #   td_bg <bg> [fx...]
         #
-        # Equivalent to:
-        #   td_sgr "" "<bg>" [fx...]
+        # Output:
+        #   Prints an SGR prefix to stdout (no newline).
         #
-        # Examples:
-        #   # 1) Background only (remember to set fg yourself if needed)
-        #   printf '%s%s%s\n' "$(td_bg "$BG_DARK_BLUE")" " Banner " "$RESET"
+        # Returns:
+        #   0 always.
         #
-        #   # 2) Typical: explicit fg + bg
-        #   printf '%s%s%s%s\n' \
-        #       "$(td_fg "$WHITE")" "$(td_bg "$BG_RED")" " ERROR " "$RESET"
-        #
-        #   # 3) Background with effect (reverse is often redundant if you already set bg)
-        #   printf '%s%s%s\n' "$(td_bg "$BG_YELLOW" "$FX_BOLD")" " CAUTION " "$RESET"
+        # Notes:
+        #   - This is syntactic sugar for: td_sgr "" "$bg" [fx...]
     td_bg() {  # td_bg <bg> [fx...]
         local bg="${1:-}"
         shift || true
@@ -423,14 +464,19 @@ set -uo pipefail
 
  # -- Runmode indicators ----------------------------------------------------------
     # td_update_runmode
-        #   Update global RUN_MODE ("DRYRUN" or "COMMIT") with appropriate styling.
+        # Purpose:
+        #   Update the global RUN_MODE indicator ("DRYRUN" or "COMMIT") with styling.
         #
         # Inputs (globals):
-        #   FLAG_DRYRUN  (0/1)
-        #   RESET, and colors used by td_runmode_color()
+        #   FLAG_DRYRUN (0/1)
+        #   RESET
+        #   td_runmode_color() (uses TUI_DRYRUN / TUI_COMMIT)
         #
         # Outputs (globals):
-        #   RUN_MODE  (string; includes ANSI styling and RESET suffix)
+        #   RUN_MODE  Styled string ending with RESET (suitable for title bars).
+        #
+        # Returns:
+        #   0 always.
         #
         # Notes:
         #   - UI-only indicator; does not affect execution logic.
@@ -443,43 +489,46 @@ set -uo pipefail
     }
 
     # td_runmode_color
-        #   Return the style prefix associated with the current run mode.
+        # Purpose:
+        #   Return the ANSI prefix associated with the current run mode.
         #
         # Inputs (globals):
-        #   FLAG_DRYRUN, TUI_DRYRUN, TUI_COMMIT
+        #   FLAG_DRYRUN
+        #   TUI_DRYRUN, TUI_COMMIT
         #
         # Output:
-        #   Prints the ANSI prefix for the active mode (no newline, no RESET).
+        #   Prints an ANSI prefix (no newline, no RESET).
         #
-        # Example:
-        #   printf '%s%s%s\n' "$(td_runmode_color)" "COMMIT" "$RESET"
+        # Returns:
+        #   0 always.
     td_runmode_color() {
         (( FLAG_DRYRUN )) && printf '%s' "$TUI_DRYRUN" || printf '%s' "$TUI_COMMIT"
     }
 
  # -- Rendering primitives --------------------------------------------------------
     # td_print_labeledvalue
-        #   Print one "Label : Value" line with alignment and optional colors.
+        # Purpose:
+        #   Print one aligned "Label : Value" line with optional coloring.
         #
         # Usage:
         #   td_print_labeledvalue "Label" "Value"
-        #   td_print_labeledvalue --label "Label" --value "Value"
-        #   td_print_labeledvalue --label "Label" --value "Value" --sep ":" --width 22 --pad 4
+        #   td_print_labeledvalue --label "Label" --value "Value" [opts]
         #
         # Options:
-        #   --label <text>       Label text (positional fallback supported)
-        #   --value <text>       Value text (positional fallback supported)
-        #   --sep <text>         Separator between label and value (default: ":")
-        #   --width <n>          Fixed label width (default: 25)
-        #   --pad <n>            Left indentation (default: 4)
-        #   --labelclr <ansi>    ANSI prefix for label (default: TUI_LABEL)
-        #   --valueclr <ansi>    ANSI prefix for value (default: TUI_VALUE)
+        #   --sep <text>         Separator token (default ":")
+        #   --width <n>          Fixed label width (default 25)
+        #   --pad <n>            Left indentation (default 0)
+        #   --labelclr <ansi>    Label color prefix (default TUI_LABEL)
+        #   --valueclr <ansi>    Value color prefix (default TUI_VALUE)
         #
         # Output:
         #   Writes one line to stdout.
         #
+        # Returns:
+        #   0 always (no-op if label missing).
+        #
         # Notes:
-        #   - Does not truncate value; only the label is width-clamped.
+        #   - Only the label is width-clamped; the value is not truncated.
         #   - Always appends RESET after colored segments.
     td_print_labeledvalue() {
         local label=""
@@ -552,24 +601,27 @@ set -uo pipefail
     }
 
     # td_print_fill
+        # Purpose:
         #   Print one line with left/right content separated by a fill region.
-        #
-        #   Computes fill width using ed_visible_len (ANSI-safe) so colored left/right
-        #   strings do not break alignment.
         #
         # Usage:
         #   td_print_fill "Left" "Right"
-        #   td_print_fill --left "Menu" --right "$RUN_MODE"
-        #   td_print_fill --fillchar "." --maxwidth 100
+        #   td_print_fill --left "Menu" --right "$RUN_MODE" [opts]
         #
         # Options:
-        #   --left/--right <text>
-        #   --padleft/--padright <n>   Fill padding counts (default: 2 / 1)
-        #   --maxwidth <n>             Total width (default: 80)
-        #   --fillchar <c>             Single visible character used for fill (default: space)
+        #   --padleft/--padright <n>   Fill padding counts (default 2 / 1)
+        #   --maxwidth <n>             Total width (default 80)
+        #   --fillchar <c>             Single visible fill character (default space)
         #   --leftclr/--rightclr <ansi> ANSI prefixes (right defaults to left)
         #
+        # Output:
+        #   Writes one line to stdout.
+        #
+        # Returns:
+        #   0 always.
+        #
         # Notes:
+        #   - Uses td_visible_len (ANSI-safe) for alignment.
         #   - fillchar is truncated to one character.
         #   - Always appends RESET after colored segments.
     td_print_fill() {
@@ -634,22 +686,37 @@ set -uo pipefail
     }
 
     # td_print_titlebar
-        #   Print a framed title bar: border line, left/right header line, optional subtitle,
-        #   and closing border line.
-        #
-        # Defaults:
-        #   left     = TD_SCRIPT_TITLE (or TD_SCRIPT_BASE)
-        #   right    = RUN_MODE
-        #   maxwidth = 80
+        # Purpose:
+        #   Print a framed title bar: border, header line (left/right), optional subtitle, border.
         #
         # Usage:
-        #   td_print_titlebar
-        #   td_print_titlebar --left "My Tool" --right "$RUN_MODE"
-        #   td_print_titlebar --sub "Description" --subjust C
+        #   td_print_titlebar [opts]
+        #
+        # Defaults:
+        #   --left     = TD_SCRIPT_TITLE (or TD_SCRIPT_BASE)
+        #   --right    = RUN_MODE
+        #   --sub      = TD_SCRIPT_DESC (if non-empty)
+        #   --maxwidth = 80
+        #
+        # Options:
+        #   --left/--right <text>
+        #   --leftclr/--rightclr <ansi>
+        #   --sub <text>              Subtitle line (optional)
+        #   --subclr <ansi>
+        #   --subjust <L|C|R>         Subtitle justification (default C)
+        #   --border <char>           Border character (default "=")
+        #   --borderclr <ansi>        Border color (default TUI_BORDER)
+        #   --padleft <n>             Left indentation for fill layout (default 4)
+        #   --maxwidth <n>            Total width (default 80)
+        #
+        # Output:
+        #   Writes multiple lines to stdout.
+        #
+        # Returns:
+        #   0 always.
         #
         # Notes:
-        #   - Delegates layout to td_print_sectionheader, td_print_fill, and td_print.
-        #   - Expects td_visible_len and theme variables to be available.
+        #   - Delegates to td_print_sectionheader, td_print_fill, td_print.
     td_print_titlebar() {
 
         local left="${TD_SCRIPT_TITLE:-$TD_SCRIPT_BASE}"
@@ -720,27 +787,31 @@ set -uo pipefail
     }
 
     # td_print_sectionheader
-        #   Print a section divider line with optional title text.
-        #
-        #   ANSI-safe: width is computed from strip_ansi(text). The title itself may
-        #   include ANSI escapes; they do not affect padding math.
+        # Purpose:
+        #   Print a divider line with optional title text.
         #
         # Usage:
         #   td_print_sectionheader
-        #   td_print_sectionheader "Framework info"
-        #   td_print_sectionheader --text "Framework info" --border "=" --maxwidth 100
+        #   td_print_sectionheader "Title"
+        #   td_print_sectionheader --text "Title" [opts]
         #
         # Options:
         #   --text <text>          Title text (positional fallback supported)
-        #   --textclr <ansi>       Title color (default: bold white)
-        #   --border <char>        Border character (default: "-")
-        #   --borderclr <ansi>     Border color (default: TUI_BORDER)
-        #   --padleft <n>          Border count before title (default: 4)
-        #   --padend <0|1>         If 1, fill to maxwidth after title (default: 1)
-        #   --maxwidth <n>         Total width (default: 80)
+        #   --textclr <ansi>       Title color (default bold white)
+        #   --border <char>        Border character (default "-")
+        #   --borderclr <ansi>     Border color (default TUI_BORDER)
+        #   --padleft <n>          Border count before title (default 4)
+        #   --padend <0|1>         Fill to maxwidth after title (default 1)
+        #   --maxwidth <n>         Total width (default 80)
         #
         # Output:
         #   Writes one line to stdout.
+        #
+        # Returns:
+        #   0 always.
+        #
+        # Notes:
+        #   - ANSI-safe: width calculations are based on td_strip_ansi(text).
     td_print_sectionheader() {
         local text=""
         local textclr="$(td_sgr "$WHITE" "" "$FX_BOLD")"
@@ -823,47 +894,38 @@ set -uo pipefail
     }
 
     # td_print
-        # Print formatted text with padding, justification, and optional word-wrapping.
+        # Purpose:
+        #   Print formatted text with padding, justification, and optional word-wrapping.
         #
-        # This is a high-level print helper that decides whether text should be rendered
-        # as a single line or wrapped into multiple lines, and delegates the actual
-        # rendering of each line to td_print_single().
+        # Usage:
+        #   td_print
+        #   td_print "Text"
+        #   td_print --text "Text" [opts]
         #
-        # Wrapping behavior:
-        # - If --wrap is explicitly specified, that value is always honored.
-        # - If --wrap is NOT specified, wrapping is enabled automatically when the
-        #   text length exceeds the available width:
-        #
-        #       available = maxwidth - (padleft * 2) - rightmargin
-        #
-        # - In wrap (multi-line) mode:
-        #   - Text is wrapped using td_wrap_words() with the available width.
-        #   - Each wrapped line is rendered using td_print_single() with an effective
-        #     maxwidth of (maxwidth - rightmargin), creating a visual right margin.
-        #
-        # - In non-wrapped (single-line) mode:
-        #   - The full maxwidth is passed to td_print_single().
-        #   - rightmargin has no effect.
-        #
-        # Parameters:
+        # Options:
         #   --text <string>        Text to print (positional fallback supported)
-        #   --textclr <ansi>       ANSI color sequence applied to the entire line
-        #   --justify <L|C|R>      Text justification: Left (default), Center, Right
-        #   --pad <n>              Padding added on both left and right sides (default: 4)
-        #   --rightmargin <n>      Reserved margin on the right (wrap mode only)
-        #   --maxwidth <n>         Total line width including padding (default: 80)
-        #   --wrap <0|1>       Explicit wrap mode; overrides auto-wrap logic
+        #   --textclr <ansi>       ANSI color prefix (applied to the full rendered line)
+        #   --justify <L|C|R>      Justification (default L)
+        #   --pad <n>              Left/right padding (default 0)
+        #   --rightmargin <n>      Reserved right margin (wrap mode only; default 0)
+        #   --maxwidth <n>         Total width including padding (default 80)
+        #   --wrap <0|1>           Explicit wrap mode; overrides auto-wrap
         #
-        # Behavior notes:
-        # - An empty call prints a blank line.
-        # - Text is assumed to be plain (no ANSI escapes); coloring is applied via --textclr.
-        # - All layout decisions are made here; td_print_single() is purely a renderer.
+        # Behavior:
+        #   - Empty call prints a blank line.
+        #   - If --wrap is not specified, auto-wrap is enabled when text exceeds:
+        #       maxwidth - (pad * 2) - rightmargin
+        #   - In wrap mode, wraps using td_wrap_words and prints multiple lines,
+        #     using (maxwidth - rightmargin) as the effective width for rendering.
         #
-        # Examples:
-        #   td_print "Hello world"
-        #   td_print --text "Centered text" --justify C
-        #   td_print --text "Long text" --rightmargin 4
-        #   td_print --text "Force wrap" --wrap 1
+        # Output:
+        #   Writes one or more lines to stdout.
+        #
+        # Returns:
+        #   0 always.
+        #
+        # Dependencies:
+        #   - td_wrap_words (external to this file)
     td_print() {
         local text=""
         local textclr="${TUI_TEXT:-}"
@@ -936,38 +998,31 @@ set -uo pipefail
     }
 
     # td_print_single
-        # Render a single formatted text line within a fixed width.
+        # Purpose:
+        #   Render exactly one formatted line within a fixed width (no wrapping).
         #
-        # This is a low-level rendering function used by td_print(). It formats and
-        # outputs exactly one line of text, applying padding, justification, and
-        # optional coloring. No wrapping or layout decisions are made here.
+        # Usage:
+        #   td_print_single
+        #   td_print_single "Text"
+        #   td_print_single --text "Text" [opts]
+        #
+        # Options:
+        #   --text <string>        Text to render (positional fallback supported)
+        #   --textclr <ansi>       ANSI color prefix for the entire rendered line
+        #   --justify <L|C|R>      Justification (default L)
+        #   --pad <n>              Left/right padding (default 0)
+        #   --maxwidth <n>         Total width including padding (default 80)
         #
         # Behavior:
-        # - Renders exactly one output line per call.
-        # - Text longer than the available width is truncated.
-        # - Padding is applied symmetrically on both sides.
-        # - Justification is applied within the padded area.
-        # - Coloring is applied to the entire rendered line.
+        #   - Empty call prints a blank line.
+        #   - If text exceeds available width (maxwidth - pad*2), it is truncated.
+        #   - Width math is byte-based (monospace assumptions).
         #
-        # Available width calculation:
-        #   available = maxwidth - (pad * 2)
+        # Output:
+        #   Writes one line to stdout.
         #
-        # Parameters:
-        #   --text <string>        Text to render (positional fallback supported)
-        #   --textclr <ansi>       ANSI color sequence applied to the entire line
-        #   --justify <L|C|R>      Text justification: Left (default), Center, Right
-        #   --pad <n>              Padding on both left and right sides (default: 4)
-        #   --maxwidth <n>         Total line width including padding (default: 80)
-        #
-        # Notes:
-        # - If called with no text, a blank line is printed.
-        # - Text is assumed to be plain (no ANSI escape sequences).
-        # - Width calculations are byte-based and assume a monospaced terminal.
-        # - All layout policy (wrapping, margins) must be handled by the caller.
-        #
-        # Intended use:
-        # - Call directly for precise single-line output.
-        # - Used internally by td_print() for both single-line and wrapped output.
+        # Returns:
+        #   0 always.
     td_print_single() {
         local text=""
         local textclr="${TUI_TEXT:-}"
@@ -1036,25 +1091,25 @@ set -uo pipefail
     }
 
     # td_print_file
+        # Purpose:
         #   Print a text file to stdout, paging when interactive.
-        #
-        # Behavior:
-        #   - If stdout is a TTY and "less" exists, pages output (less -FRSX).
-        #   - For Markdown (*.md), tries richer renderers in this order:
-        #       glow (pager mode), mdcat, bat, pandoc->plain
-        #     then falls back to plain view.
-        #   - For non-TTY output (pipes/redirects), prints without paging.
         #
         # Usage:
         #   td_print_file <path>
         #
+        # Behavior:
+        #   - If stdout is a TTY and "less" exists, pages output using: less -FRSX
+        #   - For Markdown (*.md), tries richer viewers in this order:
+        #       glow (pager mode), mdcat, bat, pandoc->plain, then plain
+        #   - For non-TTY output (pipes/redirects), prints without paging.
+        #
         # Returns:
-        #   0 on success (viewer return code),
-        #   2 on missing/unreadable file.
+        #   0 on success (viewer return code)
+        #   2 on missing/unreadable file
         #
         # Notes:
-        #   - Does not attempt encoding detection; assumes text.
         #   - Viewer availability is runtime-dependent (command -v checks).
+        #   - Assumes text input (no encoding detection).
     td_print_file() {
         local file="$1"
         
@@ -1117,45 +1172,21 @@ set -uo pipefail
     }
     
     # td_print_cell
-        #   Print a fixed-width “cell” that may contain ANSI color/effect escapes.
-        #
-        #   This function pads with spaces so the *visible* text occupies exactly WIDTH
-        #   terminal columns, even when TEXT includes ANSI CSI sequences like ESC[...m.
-        #
-        #   It is intended for building aligned tables where each cell might be colored.
+        # Purpose:
+        #   Print a fixed-width “cell” that may contain ANSI CSI sequences (SGR colors/effects).
         #
         # Usage:
         #   td_print_cell <width> <text_with_ansi>
         #
-        # Parameters:
-        #   width          Target visible width (columns).
-        #   text_with_ansi Text that may contain ANSI SGR sequences (colors/effects).
-        #
         # Output:
         #   Writes the padded cell to stdout (no newline).
         #
-        # Notes / limitations:
-        #   - Only strips CSI escapes of the form ESC[ ... <alpha>. This is enough for SGR
-        #     color/effect sequences (ESC[...m), which is what SolidgroundUX uses.
-        #   - Does not truncate: if visible text is longer than WIDTH, it prints it as-is.
-        #   - Does not add a newline.
+        # Returns:
+        #   0 always.
         #
-        # Examples:
-        #   # 1) Simple aligned columns
-        #   td_print_cell 12 "Name"
-        #   td_print_cell 8  "Value"
-        #   printf '\n'
-        #
-        #   # 2) Aligned colored columns
-        #   td_print_cell 12 "${TUI_LABEL}Name${RESET}"
-        #   td_print_cell 8  "${TUI_VALUE}Mark${RESET}"
-        #   printf '\n'
-        #
-        #   # 3) Use inside loops to build a “row”
-        #   for item in one two three; do
-        #       td_print_cell 10 "${TUI_VALUE}${item}${RESET}"
-        #   done
-        #   printf '\n'
+        # Notes:
+        #   - Pads based on visible length after stripping CSI sequences.
+        #   - Does not truncate: if visible text is longer than width, prints as-is.
     td_print_cell() {
         local width="$1"
         local s="$2"
@@ -1174,28 +1205,20 @@ set -uo pipefail
  # -- Externals -------------------------------------------------------------------
  # -- Sample/demo renderers -------------------------------------------------------
     # td_color_samples
-        #   Print a demo table of available foreground colors, related variants, and
-        #   common effects (bold/faint/italic/underline/reverse/strike).
+        # Purpose:
+        #   Print a demo table of available palette colors and common effects.
         #
         # Usage:
         #   td_color_samples
         #
         # Output:
-        #   Writes a formatted table to stdout.
+        #   Writes a formatted demo to stdout.
         #
-        # Typical use:
-        #   - Manual development/testing of palette definitions.
-        #   - Quick “is my terminal rendering this correctly?” sanity check.
+        # Returns:
+        #   0 always.
         #
-        # Example:
-        #   # In a dev command:
-        #   ./mytool.sh --colors
-        #
-        #   # Handler:
-        #   if (( FLAG_COLORS )); then
-        #       td_color_samples
-        #       exit 0
-        #   fi
+        # Notes:
+        #   - Intended for palette/style development and sanity checks.
     td_color_samples()
     {
         printf '\n%s\n\n' "---- Available foreground colors & effects in SolidgroundUX ----"
@@ -1217,28 +1240,28 @@ set -uo pipefail
     }
 
     # td_sample_row
-        #   Internal helper used by td_color_samples.
-        #
-        #   For each provided COLOR_NAME token (e.g. "BLUE", "BG_BLUE"), it:
-        #   - looks up the variable of that name via eval (expects it to exist),
-        #   - prints a 20-col “cell” showing the name in that color,
-        #   - then prints samples for multiple effects using td_color(...).
+        # Purpose:
+        #   Internal helper used by td_color_samples to render one row of samples.
         #
         # Usage:
         #   td_sample_row <NAME> [NAME...]
         #
-        # Parameters:
-        #   NAME: Variable name containing an ANSI SGR escape sequence.
-        #         Example: BLUE=$'\e[34m'
+        # Arguments:
+        #   NAME is the variable name holding an ANSI escape (e.g. BLUE=$'\e[34m').
+        #
+        # Behavior:
+        #   - Uses eval to retrieve the value of each named color variable.
+        #   - Prints a fixed-width cell containing the variable name in that style.
+        #   - Prints multiple effect samples (bold/faint/italic/underline/reverse/strike).
         #
         # Output:
-        #   Writes one line per NAME, plus a blank line after the batch.
+        #   Writes one line per NAME to stdout.
         #
-        # Example (direct):
-        #   td_sample_row RED BRIGHT_RED DARK_RED BG_RED BG_DARK_RED
+        # Returns:
+        #   0 always.
         #
         # Notes:
-        #   - Uses eval; this is fine here because the input is controlled (your palette list).
+        #   - Uses eval; safe here because NAME tokens come from the framework palette list.
     td_sample_row(){
         local clr name val
 
@@ -1284,33 +1307,22 @@ set -uo pipefail
     }
 
     # td_style_samples
-        #   Print a demo of semantic UI/style variables (message colors, UI element colors).
-        #
-        #   This shows “what users will see” for:
-        #     - MSG_CLR_* (say/info/warn/fail/etc.)
-        #     - TUI_* semantic UI colors (labels, values, borders, modes, etc.)
+        # Purpose:
+        #   Print a demo of semantic UI/style variables (message colors + UI element colors).
         #
         # Usage:
         #   td_style_samples
         #
         # Output:
-        #   Writes a formatted list to stdout.
+        #   Writes a formatted list to stdout showing:
+        #     - MSG_CLR_* (say/info/warn/fail/etc.)
+        #     - TUI_* semantic UI colors (labels, borders, run mode, prompt/input, etc.)
         #
-        # Typical use:
-        #   - Validate that a style file/palette file has been loaded correctly.
-        #   - Compare multiple palettes quickly (run once per loaded palette).
+        # Returns:
+        #   0 always.
         #
-        # Examples:
-        #   # 1) Provide a diagnostic flag in a script:
-        #   if (( FLAG_SHOWSTYLE )); then
-        #       td_style_samples
-        #       exit 0
-        #   fi
-        #
-        #   # 2) Quick smoke test after sourcing palette/style libs:
-        #   source "$TD_LIB/ui-colors.sh"
-        #   source "$TD_LIB/ui-style-default.sh"
-        #   td_style_samples
+        # Notes:
+        #   - Useful for verifying that palette/style files were loaded correctly.
     td_style_samples(){
         printf '\n%s\n\n' "---- Message colors (Say) ----"
        

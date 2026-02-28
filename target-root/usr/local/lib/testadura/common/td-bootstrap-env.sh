@@ -1,5 +1,5 @@
 # =================================================================================
-# Testadura — td-bootstrap-env.sh
+# Testadura Consultancy — td-bootstrap-env.sh
 # ---------------------------------------------------------------------------------
 # Purpose    : Bootstrap environment primitives (defaults, roots, derived paths)
 # Author     : Mark Fieten
@@ -21,11 +21,14 @@
 #   - Minimal shell environment; safe to source early in bootstrap.
 #   - Caller may be running under sudo; TD_USER_HOME is derived accordingly.
 #
-# Design rules / Contract:
-#   - No user interaction (no prompts/dialogs).
-#   - No persistent shell-option changes (no set -euo pipefail; no shopt).
+# Design rules:
+#   - Libraries define functions and constants only.
+#   - No auto-execution (must be sourced).
+#   - Avoids changing shell options beyond strict-unset/pipefail (set -u -o pipefail).
+#     (No set -e; no shopt.)
+#   - No path detection or root resolution (bootstrap owns path resolution).
+#   - No global behavior changes (UI routing, logging policy, shell options).
 #   - Safe to source multiple times (idempotent load guard).
-#   - Path derivation is purely from current globals (roots/user home/script name).
 #
 # Non-goals:
 #   - Argument parsing (handled by bootstrap + args layer)
@@ -39,8 +42,8 @@ set -uo pipefail
     #   ui-sgr.sh    -> TD_UI_SGR_LOADED
     #   foo-bar.sh   -> TD_FOO_BAR_LOADED
     # Note:
-    #   Guard variables (__lib_*) are internal globals by convention; they are not part
-    #   of the public API and may change without notice.
+    #   The derived TD_<NAME>_LOADED guard is an internal implementation detail
+    #   and not part of the public API.
     __lib_base="$(basename "${BASH_SOURCE[0]}")"
     __lib_base="${__lib_base%.sh}"
     __lib_base="${__lib_base//-/_}"
@@ -70,8 +73,9 @@ set -uo pipefail
 
 # --- Framework metadata ----------------------------------------------------------
     # TD_FRAMEWORK_GLOBALS spec format:
-        # audience|VARNAME|Human-readable description|extra
-        # Where audience is one of: system | user | both
+        #   audience|VARNAME|Human-readable description|extra
+        #   - audience: system | user | both
+        #   - extra: reserved for future metadata (currently unused)
     TD_FRAMEWORK_GLOBALS=(
         "system|TD_SYSCFG_DIR|Framework-wide system configuration directory|"
         "system|TD_DOCS_DIR|Framework-wide documentation directory|"
@@ -97,6 +101,7 @@ set -uo pipefail
 
     # TD_CORE_LIBS:
         #   Core libraries sourced by td-bootstrap in this exact order.
+        #   Ordering is part of the bootstrap contract.
     TD_CORE_LIBS=(
         args.sh
         framework-info.sh
@@ -110,17 +115,24 @@ set -uo pipefail
 
 # --- Public API ------------------------------------------------------------------
     # td_defaults_apply
-        # Apply default values for bootstrap globals if they are currently unset.
+        # Purpose:
+        #   Apply default values for bootstrap globals if currently unset.
         #
-        # Notes:
-        #   - Does not overwrite values already set by the caller or bootstrap cfg.
-        #   - Derives TD_USER_HOME from SUDO_USER when available.
+        # Behavior:
+        #   - Sets TD_FRAMEWORK_ROOT / TD_APPLICATION_ROOT defaults to "/".
+        #   - Sets logging/UI defaults.
+        #   - Derives TD_USER_HOME from SUDO_USER when available, otherwise uses $HOME.
         #
         # Outputs (globals):
-        #   Sets default values for logging, UI style/palette, and framework cfg basename.
+        #   TD_FRAMEWORK_ROOT, TD_APPLICATION_ROOT
+        #   TD_USER_HOME
+        #   TD_LOG_* defaults, TD_LOGFILE_ENABLED, TD_LOG_TO_CONSOLE, TD_CONSOLE_MSGTYPES
+        #   TD_UI_STYLE, TD_UI_PALETTE
+        #   SAY_* defaults
+        #   TD_FRAMEWORK_CFG_BASENAME
         #
         # Returns:
-        #   Always 0.
+        #   0 always.
     td_defaults_apply() {
         : "${TD_FRAMEWORK_ROOT:=/}"
         : "${TD_APPLICATION_ROOT:=/}"
@@ -152,15 +164,28 @@ set -uo pipefail
     }
 
     # td_defaults_reset
-        # Clear all variables declared in TD_FRAMEWORK_GLOBALS, then re-apply defaults.
+        # Purpose:
+        #   Reset all framework-global configuration variables to their default state.
         #
-        # Notes:
-        #   - Uses TD_FRAMEWORK_GLOBALS as the authoritative list of resettable globals.
-        #   - Intended for development/testing and controlled reinitialization.
+        # Behavior:
+        #   - Iterates over TD_FRAMEWORK_GLOBALS specifications.
+        #   - Extracts each declared variable name.
+        #   - Unsets those variables (ignores unset failures).
+        #   - Re-applies defaults via td_defaults_apply().
+        #
+        # Inputs (globals):
+        #   TD_FRAMEWORK_GLOBALS
+        #
+        # Side effects:
+        #   - Unsets variables declared in TD_FRAMEWORK_GLOBALS.
+        #   - Reinitializes them according to td_defaults_apply().
         #
         # Returns:
-        #   Always 0.
-
+        #   0 always.
+        #
+        # Notes:
+        #   - Intended for development/testing and controlled reinitialization.
+        #   - TD_FRAMEWORK_GLOBALS is the authoritative list of resettable globals.
     td_defaults_reset() {
         local spec audience var desc extra
         for spec in "${TD_FRAMEWORK_GLOBALS[@]}"; do
@@ -174,21 +199,47 @@ set -uo pipefail
     }
 
     # td_rebase_directories
-        # Derive standard directory and file paths from current root settings.
+        # Purpose:
+        #   Derive standard framework directory and file paths from current root settings.
         #
-        # Call after:
-        #   - TD_FRAMEWORK_ROOT / TD_APPLICATION_ROOT are set (bootstrap cfg)
-        #   - TD_USER_HOME is set (td_defaults_apply)
-        #   - TD_SCRIPT_NAME is set (entry script), if script-scoped files are desired
+        # Behavior:
+        #   - Computes framework-scoped directories from:
+        #       TD_FRAMEWORK_ROOT
+        #       TD_APPLICATION_ROOT
+        #       TD_USER_HOME
+        #   - Derives logging paths.
+        #   - Optionally derives script-scoped cfg/state paths when TD_SCRIPT_NAME is set.
+        #
+        # Inputs (globals):
+        #   TD_FRAMEWORK_ROOT
+        #   TD_APPLICATION_ROOT
+        #   TD_USER_HOME
+        #   TD_SCRIPT_NAME (optional)
         #
         # Outputs (globals):
         #   Directories:
-        #     TD_COMMON_LIB, TD_SYSCFG_DIR, TD_USRCFG_DIR, TD_STATE_DIR,
-        #     TD_STYLE_DIR, TD_DOCS_DIR
+        #     TD_COMMON_LIB
+        #     TD_SYSCFG_DIR
+        #     TD_USRCFG_DIR
+        #     TD_STATE_DIR
+        #     TD_STYLE_DIR
+        #     TD_DOCS_DIR
+        #
         #   Logging paths:
-        #     TD_LOG_PATH, TD_ALTLOG_PATH
-        #   Script-scoped paths (only if TD_SCRIPT_NAME is set):
-        #     TD_SYSCFG_FILE, TD_USRCFG_FILE, TD_STATE_FILE
+        #     TD_LOG_PATH
+        #     TD_ALTLOG_PATH
+        #
+        #   Script-scoped paths (if TD_SCRIPT_NAME is set):
+        #     TD_SYSCFG_FILE
+        #     TD_USRCFG_FILE
+        #     TD_STATE_FILE
+        #
+        # Returns:
+        #   0 always.
+        #
+        # Notes:
+        #   - Pure path derivation: no filesystem validation is performed here.
+        #   - TD_DOCS_DIR may not exist in dev/minimal installs.
     td_rebase_directories() {
         TD_COMMON_LIB="$TD_FRAMEWORK_ROOT/usr/local/lib/testadura/common"
         TD_SYSCFG_DIR="$TD_APPLICATION_ROOT/etc/testadura"
@@ -210,10 +261,12 @@ set -uo pipefail
     }
 
     # td_rebase_framework_cfg_paths
-        #   Derive the framework-global cfg file paths from the current cfg dirs.
-        #   These cfg files are framework-scoped (not script-scoped) and always use the
-        #   fixed basename $TD_FRAMEWORK_CFG_BASENAME.
-
+        # Purpose:
+        #   Derive framework-global cfg file paths from current cfg directories.
+        #
+        # Behavior:
+        #   - Uses the fixed basename TD_FRAMEWORK_CFG_BASENAME.
+        #   - Produces framework-scoped (not script-scoped) cfg file paths.
         #
         # Outputs (globals):
         #   TD_FRAMEWORK_SYSCFG_FILE
@@ -224,12 +277,31 @@ set -uo pipefail
     }
 
     # td_load_bootstrap_cfg
-        # Locate, optionally create, and source the bootstrap configuration file.
-        #
         # Purpose:
-        #   - Establish TD_FRAMEWORK_ROOT and TD_APPLICATION_ROOT early
-        #   - Support dev-tree (target-root) execution without installer
+        #   Locate, optionally create, and source the bootstrap configuration file.
         #
+        # Behavior:
+        #   - Detects dev-tree execution under a "target-root" directory.
+        #   - Prefers bootstrap cfg at:
+        #       <target_root>/usr/local/lib/testadura/solidgroundux.cfg
+        #   - If missing in dev-tree mode:
+        #       - Creates a minimal cfg when running as root (EUID==0).
+        #       - Fails with rc=126 when non-root (cannot create).
+        #   - Falls back to installed default:
+        #       /usr/local/lib/testadura/solidgroundux.cfg
+        #   - Sources the resolved cfg file.
+        #
+        # Side effects:
+        #   - May create the cfg file and its parent directory in dev-tree mode (root only).
+        #   - Sources the cfg file (may set TD_FRAMEWORK_ROOT / TD_APPLICATION_ROOT).
+        #
+        # Returns:
+        #   0 on success.
+        #   126 if cfg cannot be read (or cannot be created when required).
+        #   127 if directory creation fails (dev-tree root create path).
+        #
+        # Notes:
+        #   - Uses BASH_SOURCE[1] to locate the caller path (td-bootstrap.sh).
     td_load_bootstrap_cfg() {
         local self_path
         local target_root="/"

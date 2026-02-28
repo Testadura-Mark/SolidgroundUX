@@ -16,17 +16,19 @@
 #   - State files are script-managed runtime data (persistent outputs).
 #
 # Assumptions:
+#   - Requires bash 4.3+
 #   - This is a FRAMEWORK library (may depend on the framework as it exists).
 #   - File paths (TD_CFG_FILE / TD_STATE_FILE or equivalents) are resolved by
 #     bootstrap or the caller; this module does not perform path detection.
 #
-# Rules / Contract:
-#   - Plain KEY=VALUE format only (no sections, includes, quoting rules, or typing).
-#   - No interpretation or validation of values (strings only).
-#   - No default injection or merge/inheritance policy (caller decides precedence).
-#   - No environment or shell option changes.
-#   - Library-only: must be sourced, never executed.
-#   - Safe to source multiple times (must be guarded).
+# Design rules:
+#   - Libraries define functions and constants only.
+#   - No auto-execution (must be sourced).
+#   - Avoids changing shell options beyond strict-unset/pipefail (set -u -o pipefail).
+#     (No set -e; no shopt.)
+#   - No path detection or root resolution (bootstrap owns path resolution).
+#   - #   - No framework policy decisions. May emit say* diagnostics and use td_print_* helpers for display.
+#   - Safe to source multiple times (idempotent load guard).
 #
 # Public API (summary):
 #   - td_cfg_load, td_cfg_set, td_cfg_unset, td_cfg_reset, td_cfg_get, td_cfg_has, td_cfg_show_keys
@@ -71,28 +73,43 @@ set -uo pipefail
 # --- Internal: file and value manipulation ----------------------------------------
     # - Ignores empty lines and comments
     # - Accepts only names: [A-Za-z_][A-Za-z0-9_]*
-    # - Loads by eval of sanitized assignment (value preserved as-is)
+    # - Loads via printf -v assignment (value preserved as-is)
 
     
-    # __td_is_ident
-        # Test whether a string is a valid bash variable identifier.
-        # - Must match: [A-Za-z_][A-Za-z0-9_]*
-        # - Used to protect file/state operations from invalid keys.
+ #__td_is_ident
+    # Purpose:
+        #   Test whether a string is a valid Bash variable identifier.
+        #
+        # Arguments:
+        #   $1  Candidate identifier.
+        #
         # Returns:
-        #   0 if valid
-        #   1 if invalid
+        #   0 if valid ([A-Za-z_][A-Za-z0-9_]*), 1 otherwise.
     __td_is_ident() {
         [[ "${1:-}" =~ ^[A-Za-z_][A-Za-z0-9_]*$ ]]
     }
 
-    # __td_kv_load_file
-        # Load KEY=VALUE pairs from FILE into the current shell.
-        # - Ignores empty lines and comments (#...).
-        # - Accepts only keys matching: [A-Za-z_][A-Za-z0-9_]*
-        # - Assign via printf -v (value preserved as-is).
-        # Notes:
-        # - Values are taken verbatim as the substring after the first '=' (no unquoting).
-        # - Leading/trailing whitespace is trimmed from the line and the key only.
+ # __td_kv_load_file
+    # Purpose:
+    #   Load KEY=VALUE pairs from a file into shell variables.
+    #
+    # Arguments:
+    #   $1  File path.
+    #
+    # Outputs (globals):
+    #   Sets variables for each valid KEY found in the file.
+    #
+    # Behavior:
+    #   - Ignores blank lines and comment lines starting with '#'.
+    #   - Requires a literal '=' to be present.
+    #   - Trims whitespace around the KEY only (not the VALUE).
+    #   - Stores VALUE verbatim as the substring after the first '='.
+    #
+    # Returns:
+    #   0 always (missing file is not an error).
+    #
+    # Notes:
+    #   - Does not unquote or interpret escapes; this is not shell syntax parsing.
     __td_kv_load_file() {
         local file="$1"
         [[ -f "$file" ]] || return 0
@@ -128,13 +145,26 @@ set -uo pipefail
     }
 
     # __td_kv_set
-        # Upsert KEY=VALUE into FILE.
-        # - Removes any existing assignment for KEY (leading whitespace tolerated).
-        # - Appends KEY=VALUE at the end of the file (VALUE written verbatim).
-        # - Creates parent directory if needed.
-        # - Writes file with mode 600; directory mode 700.
-        # - If running under sudo as root, file/dir ownership is set to SUDO_UID:SUDO_GID.
-        # Returns 0 on success; non-zero on error.
+        # Purpose:
+        #   Upsert a KEY=VALUE entry into a KEY=VALUE file.
+        #
+        # Arguments:
+        #   $1  File path.
+        #   $2  Key (must be a valid identifier).
+        #   $3  Value (written verbatim).
+        #
+        # Side effects:
+        #   - Creates the parent directory if needed.
+        #   - Rewrites the file (removes existing KEY=... lines, appends new KEY=VALUE).
+        #   - Sets directory mode to 700 and file mode to 600.
+        #   - When running as root under sudo, attempts to set ownership to SUDO_UID:SUDO_GID.
+        #
+        # Returns:
+        #   0 on success; non-zero on error (invalid key, mkdir/install failure, etc.).
+        #
+        # Notes:
+        #   - Matching/removal is line-based: any line beginning with KEY (allowing leading whitespace)
+        #     followed by optional whitespace and '=' is removed.
     __td_kv_set() {
         local file="$1" key="$2" val="$3"
         [[ "$key" =~ ^[A-Za-z_][A-Za-z0-9_]*$ ]] || return 1
@@ -181,10 +211,19 @@ set -uo pipefail
     }
 
     # __td_kv_unset
-        # Remove KEY from FILE.
-        # - No-op if FILE does not exist.
-        # - Deletes FILE if it becomes empty after removal.
-        # Returns 0 on success; non-zero on error.
+        # Purpose:
+        #   Remove a KEY entry from a KEY=VALUE file.
+        #
+        # Arguments:
+        #   $1  File path.
+        #   $2  Key (must be a valid identifier).
+        #
+        # Side effects:
+        #   - Rewrites the file without matching KEY=... lines.
+        #   - Deletes the file if it becomes empty after removal.
+        #
+        # Returns:
+        #   0 on success (missing file is not an error); non-zero on error.
     __td_kv_unset() {
         local file="$1" key="$2"
         [[ "$key" =~ ^[A-Za-z_][A-Za-z0-9_]*$ ]] || return 1
@@ -206,19 +245,37 @@ set -uo pipefail
     }
 
     # __td_kv_reset_file
-        # Delete FILE (hard reset). Caller decides whether to recreate a skeleton.
+        # Purpose:
+        #   Hard-delete a KEY=VALUE file.
+        #
+        # Arguments:
+        #   $1  File path.
+        #
+        # Side effects:
+        #   Removes the file if present.
+        #
+        # Returns:
+        #   0 always (rm -f semantics).
     __td_kv_reset_file() {
         local file="$1"
         rm -f "$file"
     }
 
     # __td_kv_get
-        # Read KEY's value from FILE and print it to stdout.
-        # - Matches lines like: KEY=..., optionally with whitespace around KEY and '='.
+        # Purpose:
+        #   Read a KEY's value from a KEY=VALUE file.
+        #
+        # Arguments:
+        #   $1  File path.
+        #   $2  Key (must be a valid identifier).
+        #
+        # Output:
+        #   Prints the value (substring after the first '=') to stdout (no newline).
+        #
         # Returns:
-        #   0 if found
-        #   1 if not found
-        #   2 on read/argument error
+        #   0 if found,
+        #   1 if not found,
+        #   2 on argument/read error (missing key/file not readable/invalid key).
     __td_kv_get() {
         local file="$1" key="$2"
 
@@ -235,11 +292,17 @@ set -uo pipefail
     }
 
     # __td_kv_has
-        # Test whether KEY exists in FILE (even if the value is empty).
+        # Purpose:
+        #   Test whether a KEY exists in a KEY=VALUE file (even if empty).
+        #
+        # Arguments:
+        #   $1  File path.
+        #   $2  Key (must be a valid identifier).
+        #
         # Returns:
-        #   0 if found
-        #   1 if not found
-        #   2 on read/argument error
+        #   0 if present,
+        #   1 if not present,
+        #   2 on argument/read error.
     __td_kv_has() {
         local file="$1" key="$2"
 
@@ -251,9 +314,20 @@ set -uo pipefail
     }
 
     # __td_kv_list_keys
-        # Emit file contents as 'key|value' lines (order preserved).
+        # Purpose:
+        #   Emit file contents as 'key|value' lines (order preserved).
+        #
+        # Arguments:
+        #   $1  File path.
+        #
+        # Output:
+        #   Prints one line per KEY=VALUE entry as: key|value
+        #
+        # Returns:
+        #   0 on success; non-zero if file is unreadable.
+        #
         # Notes:
-        # - Intended for display/debug; not a stable interchange format.
+        #   - Intended for display/debug; not a stable interchange format.
     __td_kv_list_keys() {
         local file="$1"
         [[ -r "$file" ]] || return 1
@@ -281,19 +355,47 @@ set -uo pipefail
 
 # --- Public API: Config management ------------------------------------------------
     # td_cfg_load
-        # Load TD_CFG_FILE (KEY=VALUE) into the current shell.
-        # Returns 0; missing file is not an error.
+        # Purpose:
+        #   Load a config file into shell variables.
+        #
+        # Arguments:
+        #   $1  Optional file path (defaults to TD_CFG_FILE).
+        #
+        # Inputs (globals):
+        #   TD_CFG_FILE (default path).
+        #
+        # Outputs (globals):
+        #   Sets variables defined in the file.
+        #
+        # Returns:
+        #   0 always (missing file is not an error).
     td_cfg_load() {
         local file="${1:-$TD_CFG_FILE}"
         __td_kv_load_file "$file"
     }
 
     # td_cfg_set
-        # Persist KEY=VALUE to TD_CFG_FILE and update the current shell variable.
-        # Usage: td_cfg_set KEY VALUE
-        # Returns 0 on success; non-zero on write error.
+        # Purpose:
+        #   Persist a config KEY=VALUE pair and update the current shell variable.
+        #
+        # Arguments:
+        #   $1  Key.
+        #   $2  Value.
+        #
+        # Inputs (globals):
+        #   TD_CFG_FILE
+        #
+        # Outputs (globals):
+        #   Sets $KEY in the current shell.
+        #
+        # Side effects:
+        #   Updates TD_CFG_FILE on disk (see __td_kv_set).
+        #
+        # Returns:
+        #   0 on success; non-zero on invalid key or write error.
     td_cfg_set() {
         local key="$1" val="$2"
+        __td_is_ident "$key" || { saywarning "Skipping invalid cfg key: '$key'"; return 1; }
         local file
         file="${TD_CFG_FILE}"
         __td_kv_set "$file" "$key" "$val"
@@ -301,10 +403,26 @@ set -uo pipefail
     }
 
     # td_cfg_unset
-        # Remove KEY from TD_CFG_FILE and unset it in the current shell.
-        # Usage: td_cfg_unset KEY
+        # Purpose:
+        #   Remove a config key from the file and unset it in the current shell.
+        #
+        # Arguments:
+        #   $1  Key.
+        #
+        # Inputs (globals):
+        #   TD_CFG_FILE
+        #
+        # Outputs (globals):
+        #   Unsets $KEY (best effort).
+        #
+        # Side effects:
+        #   Removes KEY from TD_CFG_FILE on disk (see __td_kv_unset).
+        #
+        # Returns:
+        #   0 on success; non-zero on invalid key or write error.
     td_cfg_unset() {
         local key="$1"
+        __td_is_ident "$key" || { saywarning "Skipping invalid cfg key: '$key'"; return 1; }
         local file
         file="${TD_CFG_FILE}"
         __td_kv_unset "$file" "$key"
@@ -312,16 +430,42 @@ set -uo pipefail
     }
 
     # td_cfg_reset
-        # Reset TD_CFG_FILE to an empty/default file (implementation-defined).
-    td_cfg_reset() {
+        # Purpose:
+        #   Hard-reset the config file (delete it).
+        #
+        # Inputs (globals):
+        #   TD_CFG_FILE
+        #
+        # Side effects:
+        #   Deletes TD_CFG_FILE.
+        #
+        # Returns:
+        #   0 always (rm -f semantics).
+        #
+        # Notes:
+        #   - Does not recreate a skeleton; bootstrap/domain code may do that.
+        td_cfg_reset() {
         local file
         file="${TD_CFG_FILE}"
         __td_kv_reset_file "$file"
     }
 
     # td_cfg_get
-        # Get KEY's value from TD_CFG_FILE. Prints value to stdout.
-        # Returns 0 if found, 1 if missing.
+        # Purpose:
+        #   Read a config value from file.
+        #
+        # Arguments:
+        #   $1  Key.
+        #
+        # Inputs (globals):
+        #   TD_CFG_FILE
+        #
+        # Output:
+        #   Prints value to stdout (no newline) if present.
+        #
+        # Returns:
+        #   0 if found,
+        #   1 if missing or invalid key.
     td_cfg_get() {
         local key="$1"
         __td_is_ident "$key" || {
@@ -332,7 +476,18 @@ set -uo pipefail
     }
 
     # td_cfg_has
-        # Return 0 if KEY exists in TD_CFG_FILE (even if empty).
+        # Purpose:
+        #   Test whether a config key exists in file.
+        #
+        # Arguments:
+        #   $1  Key.
+        #
+        # Inputs (globals):
+        #   TD_CFG_FILE
+        #
+        # Returns:
+        #   0 if present,
+        #   1 if not present or invalid key.
     td_cfg_has() {
         local key="$1"
         __td_is_ident "$key" || {
@@ -343,9 +498,20 @@ set -uo pipefail
     }
     
     # td_cfg_show_keys
-        # Show cfg keys and their values (reads from file, does not rely on shell vars).
-        # Usage: td_cfg_show_keys KEY1 [KEY2 ...]
-        # Notes: values are read from file each time (does not rely on shell variables).
+        # Purpose:
+        #   Display selected config keys and their values (read from file, not from shell vars).
+        #
+        # Arguments:
+        #   $@  Keys to display.
+        #
+        # Inputs (globals):
+        #   TD_CFG_FILE
+        #
+        # Output:
+        #   Renders a small formatted section via td_print_* helpers.
+        #
+        # Returns:
+        #   0 always.
     td_cfg_show_keys() {
         local key val
 
@@ -488,7 +654,7 @@ set -uo pipefail
                     "$audience_want"|both)
                         printf '# %s\n' "${desc:-$var}"
                         local val
-                        val="${!var-}"
+                        val="${!var:-}"
                         printf '%s=%s\n\n' "$var" "$val"
                         ;;
                 esac
@@ -568,15 +734,41 @@ set -uo pipefail
 
 # --- Public API: State ------------------------------------------------------------
     # td_state_load
-        # Load TD_STATE_FILE (KEY=VALUE) into the current shell.
+        # Purpose:
+        #   Load the state file into shell variables.
+        #
+        # Inputs (globals):
+        #   TD_STATE_FILE
+        #
+        # Outputs (globals):
+        #   Sets variables found in the file.
+        #
+        # Returns:
+        #   0 always (missing file is not an error).
     td_state_load() {
         saydebug "Loading state from file ${TD_STATE_FILE}"
         __td_kv_load_file "$TD_STATE_FILE"
     }
 
     # td_state_set
-        # Persist KEY=VALUE to TD_STATE_FILE and update the current shell variable.
-        # Usage: td_state_set KEY VALUE
+        # Purpose:
+        #   Persist a state KEY=VALUE pair and update the current shell variable.
+        #
+        # Arguments:
+        #   $1  Key.
+        #   $2  Value.
+        #
+        # Inputs (globals):
+        #   TD_STATE_FILE
+        #
+        # Outputs (globals):
+        #   Sets $KEY in the current shell.
+        #
+        # Side effects:
+        #   Updates TD_STATE_FILE on disk.
+        #
+        # Returns:
+        #   0 on success; non-zero on invalid key or write error.
     td_state_set() {
         local key="$1" val="$2"
         __td_is_ident "$key" || {
@@ -591,8 +783,23 @@ set -uo pipefail
     }
 
     # td_state_unset
-        # Remove KEY from TD_STATE_FILE and unset it in the current shell.
-        # Usage: td_state_unset KEY
+        # Purpose:
+        #   Remove a state key from the file and unset it in the current shell.
+        #
+        # Arguments:
+        #   $1  Key.
+        #
+        # Inputs (globals):
+        #   TD_STATE_FILE
+        #
+        # Outputs (globals):
+        #   Unsets $KEY (best effort).
+        #
+        # Side effects:
+        #   Updates TD_STATE_FILE on disk.
+        #
+        # Returns:
+        #   0 on success; non-zero on invalid key or write error.
     td_state_unset() {
         local key="$1"
         __td_is_ident "$key" || {
@@ -607,7 +814,17 @@ set -uo pipefail
     }
 
     # td_state_reset
-        # Reset TD_STATE_FILE to an empty/default file (implementation-defined).
+        # Purpose:
+        #   Hard-reset the state file (delete it).
+        #
+        # Inputs (globals):
+        #   TD_STATE_FILE
+        #
+        # Side effects:
+        #   Deletes TD_STATE_FILE.
+        #
+        # Returns:
+        #   0 always (rm -f semantics).
     td_state_reset() {
         [[ -n "$TD_STATE_FILE" ]] || return 0
         saydebug "Deleting statefile $TD_STATE_FILE"
@@ -615,8 +832,21 @@ set -uo pipefail
     }
 
     # td_state_get
-        # Get KEY's value from TD_STATE_FILE. Prints value to stdout.
-        # Returns 0 if found, 1 if missing.
+        # Purpose:
+        #   Read a state value from file.
+        #
+        # Arguments:
+        #   $1  Key.
+        #
+        # Inputs (globals):
+        #   TD_STATE_FILE
+        #
+        # Output:
+        #   Prints value to stdout (no newline) if present.
+        #
+        # Returns:
+        #   0 if found,
+        #   1 if missing or invalid key.
     td_state_get() {
         local key="$1"
         __td_is_ident "$key" || {
@@ -627,7 +857,18 @@ set -uo pipefail
     }
 
     # td_state_has
-        # Return 0 if KEY exists in TD_STATE_FILE (even if empty).
+        # Purpose:
+        #   Test whether a state key exists in file.
+        #
+        # Arguments:
+        #   $1  Key.
+        #
+        # Inputs (globals):
+        #   TD_STATE_FILE
+        #
+        # Returns:
+        #   0 if present,
+        #   1 if not present or invalid key.
     td_state_has() {
         local key="$1"
         __td_is_ident "$key" || {
@@ -639,7 +880,21 @@ set -uo pipefail
     }
 
     # td_state_save_keys
-        # Save a list of variable names to the state store.
+        # Purpose:
+        #   Persist a list of shell variables to the state store.
+        #
+        # Arguments:
+        #   $@  Variable names to save.
+        #
+        # Inputs (globals):
+        #   TD_STATE_FILE
+        #
+        # Behavior:
+        #   - Reads each variable value using indirect expansion (${!key-}) (safe under set -u).
+        #   - Writes each as KEY=VALUE via td_state_set.
+        #
+        # Returns:
+        #   0 always (skips invalid keys).
     td_state_save_keys() {
         local key val
         for key in "$@"; do
@@ -656,8 +911,20 @@ set -uo pipefail
     }
 
     # td_state_load_keys
-        # Load a list of variable names from the state store into shell variables.
-        # Existing values are left untouched if no state value exists.
+        # Purpose:
+        #   Load a list of keys from the state store into shell variables (best effort).
+        #
+        # Arguments:
+        #   $@  Variable names to load.
+        #
+        # Inputs (globals):
+        #   TD_STATE_FILE
+        #
+        # Outputs (globals):
+        #   Sets $KEY for each key that exists in the state store.
+        #
+        # Returns:
+        #   0 always (skips invalid keys).
     td_state_load_keys() {
         local key val
         for key in "$@"; do
@@ -673,7 +940,17 @@ set -uo pipefail
     }
 
     # td_state_list_keys
-        # List keys currently present in TD_STATE_FILE (one per line).
+        # Purpose:
+        #   List keys currently present in the state file.
+        #
+        # Inputs (globals):
+        #   TD_STATE_FILE
+        #
+        # Output:
+        #   Prints 'key|value' lines to stdout (order preserved).
+        #
+        # Returns:
+        #   0 always (missing/unreadable file is not an error).
     td_state_list_keys() {
         [[ -r "${TD_STATE_FILE:-}" ]] || return 0
         __td_kv_list_keys "$TD_STATE_FILE"

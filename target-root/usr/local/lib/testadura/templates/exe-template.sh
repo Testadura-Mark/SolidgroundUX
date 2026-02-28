@@ -20,7 +20,10 @@
 # 5) List intentional global variables in TD_SCRIPT_GLOBALS (recommended)
 # 6) Implement your logic inside main() under "-- Main script logic"
 #
-# Do NOT modify the bootstrap loader unless you are developing the framework.
+# IMPORTANT:
+#   - Never read prompts from stdin in executables. Use /dev/tty (or ask/td_dlg_*).
+#   - Never print UI to stdout if stdout may be piped; prefer say*/td_print_* which can route.
+#   - Do NOT modify the bootstrap loader unless you are developing the framework.
 # ==================================================================================
 set -uo pipefail
 # --- Load bootstrapper ------------------------------------------------------------
@@ -51,7 +54,7 @@ set -uo pipefail
             printf "  - common dir (the folder that contains td-bootstrap.sh), e.g. /home/me/dev/solidgroundux/target-root/usr/local/lib/testadura/common\n"
             printf "  - full path to td-bootstrap.sh\n\n"
 
-            read -r -p "Path (empty to abort): " _root
+            read -r -p "Path (empty to abort): " _root <dev/tty
             [[ -n "$_root" ]] || exit 127
 
             if [[ "$_root" == */td-bootstrap.sh ]]; then
@@ -80,14 +83,15 @@ set -uo pipefail
     TD_SCRIPT_DIR="$(cd -- "$(dirname -- "$TD_SCRIPT_FILE")" && pwd)"
     TD_SCRIPT_BASE="$(basename -- "$TD_SCRIPT_FILE")"
     TD_SCRIPT_NAME="${TD_SCRIPT_BASE%.sh}"
-    TD_SCRIPT_DESC="Canonical executable template for Testadura scripts"
-    TD_SCRIPT_VERSION="1.0"
-    TD_SCRIPT_BUILD="20250110"    
-    TD_SCRIPT_DEVELOPERS="Mark Fieten"
-    TD_SCRIPT_COMPANY="Testadura Consultancy"
-    TD_SCRIPT_COPYRIGHT="© 2025 Mark Fieten — Testadura Consultancy"
-    TD_SCRIPT_LICENSE="Testadura Non-Commercial License (TD-NC) v1.0"
+    : "${TD_SCRIPT_DESC:=Canonical executable template for Testadura scripts}"
+    : "${TD_SCRIPT_VERSION:=1.0}"
+    : "${TD_SCRIPT_BUILD:=20250110}"
+    : "${TD_SCRIPT_DEVELOPERS:=Mark Fieten}"
+    : "${TD_SCRIPT_COMPANY:=Testadura Consultancy}"
+    : "${TD_SCRIPT_COPYRIGHT:=© 2025 Mark Fieten — Testadura Consultancy}"
+    : "${TD_SCRIPT_LICENSE:=Testadura Non-Commercial License (TD-NC) v1.0}"
 
+    readonly BOOTSTRAP
 # --- Script metadata (framework integration) --------------------------------------
     # TD_USING
         # Libraries to source from TD_COMMON_LIB.
@@ -138,31 +142,80 @@ set -uo pipefail
     # TD_SCRIPT_GLOBALS
         # Explicit declaration of global variables intentionally used by this script.
         #
-        # IMPORTANT:
-        #   - If this array is non-empty, td_bootstrap will enable config loading.
+        # Purpose:
+        #   - Declares which globals are part of the script’s public/config contract.
+        #   - Enables optional configuration loading when non-empty.
+        #
+        # Behavior:
+        #   - If this array is non-empty, td_bootstrap enables config integration.
         #   - Variables listed here may be populated from configuration files.
-        #   - This makes TD_SCRIPT_GLOBALS part of the script’s configuration contract.
+        #   - Unlisted globals will NOT be auto-populated.
         #
         # Use this to:
         #   - Document intentional globals
         #   - Prevent accidental namespace leakage
-        #   - Enable cfg integration in a predictable way
+        #   - Make configuration behavior explicit and predictable
         #
         # Only list:
-        #   - Variables that are meant to be globally accessible
-        #   - Variables that may be set via config files
+        #   - Variables that must be globally accessible
+        #   - Variables that may be defined in config files
         #
         # Leave empty if:
-        #   - The script does not use config-driven globals
-        #
+        #   - The script does not use configuration-driven globals
     TD_SCRIPT_GLOBALS=(
     )
 
+    # TD_STATE_VARIABLES
+        # List of variables participating in persistent state.
+        #
+        # Purpose:
+        #   - Declares which variables should be saved/restored when state is enabled.
+        #
+        # Behavior:
+        #   - Only used when td_bootstrap is invoked with --state.
+        #   - Variables listed here are serialized on exit (if TD_STATE_SAVE=1).
+        #   - On startup, previously saved values are restored before main logic runs.
+        #
+        # Contract:
+        #   - Variables must be simple scalars (no arrays/associatives unless explicitly supported).
+        #   - Script remains fully functional when state is disabled.
+        #
+        # Leave empty if:
+        #   - The script does not use persistent state.
     TD_STATE_VARIABLES=(
     )
 
+    # TD_ON_EXIT_HANDLERS
+        # List of functions to be invoked on script termination.
+        #
+        # Purpose:
+        #   - Allows scripts to register cleanup or finalization hooks.
+        #
+        # Behavior:
+        #   - Functions listed here are executed during framework exit handling.
+        #   - Execution order follows array order.
+        #   - Handlers run regardless of normal exit or controlled termination.
+        #
+        # Contract:
+        #   - Functions must exist before exit occurs.
+        #   - Handlers must not call exit directly.
+        #   - Handlers should be idempotent (safe if executed once).
+        #
+        # Typical uses:
+        #   - Cleanup temporary files
+        #   - Persist additional state
+        #   - Release locks
+        #
+        # Leave empty if:
+        #   - No custom exit behavior is required.
     TD_ON_EXIT_HANDLERS=(
     )
+    
+    # State persistence is opt-in.
+        # Scripts that want persistent state must:
+        #   1) set TD_STATE_SAVE=1
+        #   2) call td_bootstrap --state
+    TD_STATE_SAVE=0
 
 # --- Local script Declarations ----------------------------------------------------
     # Put script-local constants and defaults here (NOT framework config).

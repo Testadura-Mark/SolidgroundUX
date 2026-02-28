@@ -1,5 +1,5 @@
 # =================================================================================
-# Testadura — td-bootstrap.sh
+# Testadura Consultancy — td-bootstrap.sh
 # ---------------------------------------------------------------------------------
 # Purpose    : Framework bootstrap and library load orchestration
 # Author     : Mark Fieten
@@ -7,31 +7,42 @@
 # © 2025 Mark Fieten — Testadura Consultancy
 # Licensed under the Testadura Non-Commercial License (TD-NC) v1.0.
 # ---------------------------------------------------------------------------------
-# Description:
-#   Initializes the Testadura framework environment by:
-#   - Resolving base paths (framework root / application root)
-#   - Establishing core framework invariants (env vars, directories, defaults)
-#   - Sourcing required libraries in a defined, layered order
+# Overview
+#   td-bootstrap.sh is the entry bootstrap for any script that runs inside the
+#   SolidgroundUX framework context. It must be sourced (never executed) and is
+#   responsible for:
 #
-#   This file defines what it means to run inside a "framework context".
+#   1) Path resolution
+#      - Determine bootstrap directory
+#      - Load bootstrap environment (td-bootstrap-env.sh)
+#      - Apply defaults and derive key directories/files ("rebase")
 #
-# Assumptions:
-#   - None. Bootstrap is the starting point and must tolerate a minimal shell.
+#   2) Library load orchestration
+#      - Source core libraries in a fixed order (TD_CORE_LIBS from TD_COMMON_LIB)
+#      - Load UI palette and style after core libraries are available
 #
-# Design rules / Contract:
-#   - Owns all path resolution and library load order.
-#   - Sources core libraries in a defined order (TD_CORE_LIBS), then loads style/palette.
-#   - Performs environment sanity checks only (existence, permissions, commands).
-#   - Must remain thin: no reusable helpers live here (libraries own helpers).
-#   - No application logic or policy decisions.
-#   - No user interaction during early bootstrap (path resolution / library load).
-#     A license acceptance prompt may occur after core libraries are loaded and any
-#     root re-exec constraints have been resolved.
+#   3) Minimal early error reporting
+#      - Provide fallback say* functions before ui.sh is loaded
 #
-# Non-goals:
-#   - Argument parsing (handled by args layer)
-#   - Configuration loading (handled by cfg/state layer)
-#   - Script execution or control flow (entry scripts/applications own this)
+#   4) Framework initialization sequence
+#      - Apply Framework configuration domain
+#      - Parse builtin arguments (commit/dryrun/debug/help/etc.)
+#      - Optionally load persistent state and register EXIT handlers
+#      - Apply Script configuration domain (if TD_SCRIPT_GLOBALS defined)
+#      - Parse script arguments (if TD_ARGS_SPEC and remaining args exist)
+#
+# Contract
+#   - Owns all path resolution and core library load order.
+#   - Performs sanity checks only (existence, permissions, required commands).
+#   - No reusable helpers live here (helpers belong in libraries).
+#   - No application logic or policy decisions here.
+#   - No user interaction until after core libraries are loaded and root constraints
+#     are resolved (license acceptance may prompt after that point).
+#
+# Non-goals
+#   - Full argument parsing/validation (args layer)
+#   - Configuration semantics beyond loading/applying domains (cfg layer)
+#   - Script execution/control flow (entry script owns it)
 # =================================================================================
 set -uo pipefail
 # --- Library guard ---------------------------------------------------------------
@@ -106,7 +117,7 @@ set -uo pipefail
         #   $2  Return code to propagate (defaults to 1)
         #
         # Output:
-        #   Writes one ERROR line to stderr (via sayerror), including:
+        #   Writes one FAIL line to stderr (via sayfail), including:
         #     - calling file, line number, and function.
         #
         # Returns:
@@ -126,61 +137,41 @@ set -uo pipefail
         return "$rc"
     }
 
-# --- Main sequence helpers -------------------------------------------------------
+# --- Main sequence helpers + EXIT dispatch ---------------------------------------
     # __parse_bootstrap_args
-        # Parse framework-level (bootstrap) command-line switches.
+        # Purpose:
+        #   Parse framework-level bootstrap switches before script/builtin parsing.
         #
-        # This function scans the command line for bootstrap options that control
-        # framework initialization and execution constraints. Parsing stops at the
-        # first non-bootstrap argument or at the explicit "--" separator.
+        # Arguments:
+        #   $@  Full command line as received by td_bootstrap().
+        #
+        # Outputs (globals):
+        #   exe_state
+        #     0 = no state, 1 = load state, 2 = load + autosave state on EXIT.
+        #   exe_root
+        #     0 = no constraint, 1 = must be root, 2 = must be non-root.
+        #   TD_BOOTSTRAP_REST
+        #     Array of remaining arguments after bootstrap parsing (preserved verbatim).
         #
         # Behavior:
-            #   - Recognized bootstrap switches set internal execution selectors (exe_*),
-            #     framework flags, or logging options.
-            #   - All remaining arguments (after "--" or after the first unknown option)
-            #     are collected verbatim into TD_BOOTSTRAP_REST and left untouched.
-            #   - Script-specific arguments are *not* validated or interpreted here.
-            #
-        # Parsing rules:
-            #   - Bootstrap options must appear before script arguments.
-            #   - Encountering "--" explicitly ends bootstrap parsing.
-            #   - Encountering any unknown option implicitly ends bootstrap parsing.
-            #
-        # Recognized bootstrap switches:
-            #   --state
-            #       Enable loading of persistent state (sets exe_state=1).
-            #
-            #   --needroot
-            #       Enforce execution as root (sets exe_root=1).
-            #
-            #   --cannotroot
-            #       Enforce execution as non-root (sets exe_root=2).
-            #
-            #   --log
-            #       Enable logging to file (sets TD_LOGFILE_ENABLED=1).
-            #
-            #   --console
-            #       Enable logging to console output (sets TD_LOG_TO_CONSOLE=1).
-            #
-            #   --
-            #       Explicit end of bootstrap options. All remaining arguments are treated
-            #       as script arguments and copied into TD_BOOTSTRAP_REST unchanged.
-        # Outputs (globals):
-            #   exe_state
-            #       1 if --state was provided, otherwise 0.
-            #
-            #   exe_root
-            #       0 = no constraint, 1 = must be root, 2 = must be non-root.
-            #
-            #   TD_BOOTSTRAP_REST
-            #       Array of remaining arguments after bootstrap parsing, preserved
-            #       exactly as received.
-        # Return value:
-            #   Always returns 0. Validation is deferred to later bootstrap stages.
+        #   - Consumes recognized bootstrap switches from the start of the argument list.
+        #   - Stops parsing at "--" or at the first unknown option.
+        #   - Copies the remaining arguments into TD_BOOTSTRAP_REST unchanged.
+        #
+        # Returns:
+        #   0 always (validation is deferred to later stages).
+        #
         # Notes:
-            #   - This function does not enforce ordering or validity of script arguments.
-            #   - Bootstrap parsing is intentionally permissive to allow scripts to define
-            #     their own argument syntax without interference.
+        #   Recognized switches:
+        #     --state      -> exe_state=1
+        #     --autostate  -> exe_state=2
+        #     --needroot   -> exe_root=1
+        #     --cannotroot -> exe_root=2
+        #     --log        -> TD_LOGFILE_ENABLED=1
+        #     --console    -> TD_LOG_TO_CONSOLE=1
+        #     --           -> explicit end of bootstrap switches
+        #     <unknown>    -> implicit end of bootstrap switches
+
     __parse_bootstrap_args() {
         exe_state=0
         exe_root=0
@@ -208,46 +199,28 @@ set -uo pipefail
             esac
         done
     }
-
     # __init_bootstrap
-        # Initialize the SolidgroundUX bootstrap environment.
+        # Purpose:
+        #   Initialize the SolidgroundUX bootstrap environment (env, defaults, roots, derived paths).
         #
-        # Responsibilities:
-            #   - Resolve the absolute path of td-bootstrap.sh (this file).
-            #   - Locate the bootstrap configuration file that lives beside it.
-            #   - Create a minimal bootstrap configuration if none exists.
-            #   - Establish the initial framework/application roots used for further setup.
+        # Outputs (globals):
+        #   TD_BOOTSTRAP_DIR
+        #     Absolute directory of this file.
         #
-        # Bootstrap configuration:
-            #   - The file "solidgroundux.cfg" is expected to reside in the same directory
-            #     as td-bootstrap.sh.
-            #   - This file is the *earliest* configuration source and is loaded before
-            #     any framework libraries or domain-specific configuration.
+        # Behavior:
+        #   - Resolves TD_BOOTSTRAP_DIR.
+        #   - Sources td-bootstrap-env.sh from TD_BOOTSTRAP_DIR.
+        #   - Applies defaults, loads bootstrap cfg, and rebases derived directories/paths.
         #
-        # Auto-creation behavior:
-            #   - If the bootstrap configuration file does not exist, a minimal template
-            #     is created in-place.
-            #   - Auto-created defaults set:
-            #       TD_FRAMEWORK_ROOT=/
-            #       TD_APPLICATION_ROOT=/
-            #   - Creation failures are considered fatal.
+        # Side effects:
+        #   - Sources td-bootstrap-env.sh (may define variables/functions).
+        #   - Loads bootstrap cfg via td_load_bootstrap_cfg.
         #
-        # Execution model:
-            #   - This function may be executed more than once across process boundaries
-            #     when root escalation is required (e.g. via need_root + exec sudo).
-            #   - Each execution is isolated to its process; no state is shared between
-            #     pre- and post-escalation runs.
+        # Returns:
+        #   Propagates failures from sourced/bootstrap routines.
         #
-        # Design notes:
-            #   - No directory probing or upward traversal is performed.
-            #   - No user interaction or policy decisions occur here.
-            #   - This function must be safe to call multiple times per process
-            #     (idempotent by construction).
-        #
-        # Failure handling:
-            #   - Failure to create or source the bootstrap configuration is fatal and
-            #     aborts bootstrap immediately.
-            #
+        # Notes:
+        #   May run multiple times across process boundaries when root re-exec occurs.
     __init_bootstrap() {
         TD_BOOTSTRAP_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
         # shellcheck source=/dev/null
@@ -261,28 +234,22 @@ set -uo pipefail
     }
 
     # __source_corelibs
-        # Source all core framework libraries required for normal operation.
+        # Purpose:
+        #   Source core framework libraries in the defined order (TD_CORE_LIBS).
         #
-        # This function iterates over the list of core library filenames defined in
-        # TD_CORE_LIBS and sources each one from TD_COMMON_LIB.
+        # Inputs (globals):
+        #   TD_COMMON_LIB
+        #   TD_CORE_LIBS
         #
         # Behavior:
-        #   - Libraries are sourced in the order specified by TD_CORE_LIBS.
-        #   - Each library is expected to define functions, globals, or defaults used
-        #     throughout the framework.
-        #   - No validation or dependency resolution is performed here; ordering and
-        #     completeness are assumed to be correct.
+        #   - Rebase directories.
+        #   - Sources each library from: $TD_COMMON_LIB/<lib>.
         #
-        # Assumptions:
-        #   - TD_COMMON_LIB is already set and points to the framework library directory.
-        #   - TD_CORE_LIBS contains relative filenames (not absolute paths).
-        #   - Missing or failing libraries will cause the script to terminate via
-        #     standard shell error handling unless caught by the caller.
+        # Side effects:
+        #   - Defines functions/variables provided by core libraries.
         #
-        # Notes:
-        #   - shellcheck warnings for dynamic sourcing are intentionally suppressed.
-        #   - This function is typically called from td_bootstrap after globals have
-        #     been initialized and before any framework functionality is used.
+        # Returns:
+        #   Propagates any sourcing failures to the caller.
     __source_corelibs(){
         sayinfo "Loading core libraries..."  
         td_rebase_directories
@@ -295,6 +262,24 @@ set -uo pipefail
         done
     }
 
+    # __td_on_exit_run
+        # Purpose:
+        #   Execute registered EXIT handlers (LIFO) while preserving the original exit code.
+        #
+        # Inputs (globals):
+        #   TD_ON_EXIT_HANDLERS
+        #
+        # Behavior:
+        #   - Captures the current exit code ($?) immediately.
+        #   - Executes handlers in reverse registration order.
+        #   - Evaluates each handler via eval.
+        #   - Ignores handler failures to ensure all handlers run.
+        #
+        # Returns:
+        #   The original exit code.
+        #
+        # Notes:
+        #   Installed once via td_on_exit_install().
     __td_on_exit_run() {
         local rc=$?
         local i cmd
@@ -311,6 +296,20 @@ set -uo pipefail
         return "$rc"
     }
 
+    # __td_save_state_dispatch
+        # Purpose:
+        #   Save state on EXIT only for clean exits.
+        #
+        # Behavior:
+        #   - Captures the current exit code ($?).
+        #   - Calls td_save_state only when rc == 0.
+        #   - Skips save on rc == 130 (Ctrl+C) and other non-zero exits.
+        #
+        # Returns:
+        #   The original exit code.
+        #
+        # Notes:
+        #   Registered only when --autostate is active.
     __td_save_state_dispatch() {
         local rc=$?   # capture immediately!
 
@@ -328,6 +327,23 @@ set -uo pipefail
 
 # --- Public API ------------------------------------------------------------------
     # td_on_exit_install
+        # Purpose:
+        #   Install the framework EXIT dispatcher (trap) exactly once per process.
+        #
+        # Behavior:
+        #   - If not yet installed, registers __td_on_exit_run as the EXIT trap.
+        #   - Subsequent calls are no-ops (idempotent).
+        #
+        # Side effects:
+        #   - Sets __TD_ON_EXIT_INSTALLED=1 on first install.
+        #   - Installs an EXIT trap handler.
+        #
+        # Returns:
+        #   0 always.
+        #
+        # Notes:
+        #   - This does not register handlers; it only installs the dispatcher.
+        #   - Add handlers via td_on_exit_add().
     td_on_exit_install() {
         # Install once
         [[ "${__TD_ON_EXIT_INSTALLED-0}" -eq 1 ]] && return 0
@@ -336,14 +352,85 @@ set -uo pipefail
     }
 
     # td_parse_statespec
+        # Purpose:
+        #   Parse a pipe-delimited state specification into component fields.
+        #
+        # Arguments:
+        #   $1  State specification string in the format:
+        #       key|label|default|validator|colorize
+        #
+        # Outputs (globals):
+        #   __statekey       Variable name to persist (expected identifier).
+        #   __statelabel     Optional human-readable label (UI/prompt usage).
+        #   __statedefault   Optional default value when no persisted value exists.
+        #   __statevalidate  Optional validator function name.
+        #   __statecolorize  Optional UI color token.
+        #
+        # Behavior:
+        #   - Splits the spec on '|' using IFS.
+        #   - Assigns missing fields as empty strings.
+        #
+        # Returns:
+        #   0 always (parsing only; no validation performed here).
+        #
+        # Notes:
+        #   - Callers must validate __statekey and interpret semantics of other fields.
+        #   - Scratch variables are intentionally global to avoid array/echo returns.
     td_parse_statespec() {
         local spec="${1-}"
         __statekey="" __statelabel="" __statedefault="" __statevalidate="" __statecolorize=""
         IFS='|' read -r __statekey __statelabel __statedefault __statevalidate __statecolorize <<< "$spec"
     }
     
+    # td_enable_save_state
+        # Purpose:
+        #   Enable automatic state persistence.
+        #
+        # Behavior:
+        #   - Sets TD_STATE_SAVE=1.
+        #   - Allows td_save_state to execute when invoked.
+    td_enable_save_state(){
+        TD_STATE_SAVE=1
+    }
+
+    # td_disable_save_state
+        # Purpose:
+        #   Disable automatic state persistence.
+        #
+        # Behavior:
+        #   - Sets TD_STATE_SAVE=0.
+        #   - Causes td_save_state to become a no-op.
+    td_disable_save_state(){
+        TD_STATE_SAVE=0
+    }
+
     # td_save_state
+        # Purpose:
+        #   Persist selected state variables to storage (as configured by TD_STATE_VARIABLES).
+        #
+        # Inputs (globals):
+        #   TD_STATE_SAVE       Gate flag (0 disables saving; non-zero enables saving).
+        #   TD_STATE_VARIABLES  Array of state specs (pipe-delimited).
+        #
+        # Behavior:
+        #   - No-op if TD_STATE_SAVE is disabled.
+        #   - Parses each TD_STATE_VARIABLES entry via td_parse_statespec().
+        #   - Collects valid state keys (identifiers) into a local list.
+        #   - Delegates persistence to td_state_save_keys <keys...>.
+        #
+        # Side effects:
+        #   - Writes state via td_state_save_keys() (implementation-owned).
+        #
+        # Returns:
+        #   0 on success or when no-op (disabled or nothing to save).
+        #   Non-zero if td_state_save_keys fails.
+        #
+        # Notes:
+        #   - Intended to be called from EXIT dispatch (e.g., __td_save_state_dispatch).
+        #   - Validation is limited to identifier checks; semantics belong to state layer.
     td_save_state(){
+
+        (( ! TD_STATE_SAVE )) && return 0
 
         saydebug "Assembling list out of TD_STATE_VARIABLES"
         local line key label def validator colorize
@@ -366,6 +453,25 @@ set -uo pipefail
     }    
 
     # td_on_exit_add
+        # Purpose:
+        #   Register a new EXIT handler to be executed by the EXIT dispatcher.
+        #
+        # Arguments:
+        #   $*  Command string to execute on process EXIT (stored as a single string).
+        #
+        # Inputs (globals):
+        #   TD_ON_EXIT_HANDLERS
+        #
+        # Behavior:
+        #   - Appends the handler command string to TD_ON_EXIT_HANDLERS.
+        #   - Handlers execute in reverse registration order (LIFO).
+        #
+        # Returns:
+        #   0 always.
+        #
+        # Notes:
+        #   - Handlers are evaluated via eval in __td_on_exit_run.
+        #   - Call td_on_exit_install() before relying on handlers running.
     td_on_exit_add() {
         # store as one string per handler: "fn arg1 arg2 ..."
         TD_ON_EXIT_HANDLERS+=( "$*" )
@@ -482,25 +588,46 @@ set -uo pipefail
     }
 
     # td_bootstrap
-        # Initialize the Testadura runtime context for the current script.
+        # Purpose:
+        #   Establish the SolidgroundUX runtime context for the current script.
         #
-        # What it does:
-        #   - Parse bootstrap selectors (UI/state/root constraints)
-        #   - Load bootstrap cfg (roots), rebase derived paths
-        #   - Source globals (td-globals.sh), then core libraries (TD_CORE_LIBS)
-        #   - Apply framework cfg domain, then parse builtins/script args as configured
+        # Arguments:
+        #   $@  Full command line (bootstrap switches + builtins + script args).
         #
-        # Contract:
-        #   - Must not call framework helpers before corelibs are sourced.
-        #   - Bootstrap cfg establishes TD_FRAMEWORK_ROOT / TD_APPLICATION_ROOT.
-        #   - Builtin flags are detected here but executed by the caller script.
+        # Inputs (globals):
+        #   TD_CORE_LIBS, TD_COMMON_LIB
+        #   TD_FRAMEWORK_SYSCFG_FILE, TD_FRAMEWORK_USRCFG_FILE
+        #   TD_SYSCFG_FILE, TD_USRCFG_FILE
         #
-        # Returns: 0 on success; non-zero on fatal initialization failure.
-        # Guarantees on success:
-        #   - Core libraries are sourced (TD_CORE_LIBS)
-        #   - Framework cfg domain has been applied
-        #   - Builtins are parsed and TD_BOOTSTRAP_REST contains remaining script args
-        #   - RUN_MODE reflects parsed builtins (commit/dryrun)
+        # Outputs (globals):
+        #   TD_BOOTSTRAP_REST
+        #     Remaining script arguments after bootstrap + builtins (+ script args if parsed).
+        #   RUN_MODE, FLAG_* and other builtin-derived selectors.
+        #
+        # Behavior:
+        #   - Initializes bootstrap environment (roots, derived paths).
+        #   - Parses bootstrap switches into exe_state/exe_root and TD_BOOTSTRAP_REST.
+        #   - Sources core libraries, then loads UI palette/style.
+        #   - Applies Framework cfg domain.
+        #   - Parses builtin args early (stop-at-unknown).
+        #   - Enforces root/non-root constraints when requested.
+        #   - Checks license acceptance (after root constraints are resolved).
+        #   - Optionally loads state and registers EXIT handlers (state/autostate).
+        #   - Applies Script cfg domain (if TD_SCRIPT_GLOBALS defined).
+        #   - Parses script args (if TD_ARGS_SPEC defined and args remain).
+        #
+        # Side effects:
+        #   - Sources multiple libraries and cfg files.
+        #   - May prompt for license acceptance.
+        #   - May register EXIT trap and handlers.
+        #
+        # Returns:
+        #   0 on success.
+        #   2 if license acceptance is declined/cancelled.
+        #   Non-zero on fatal initialization failure.
+        #
+        # Notes:
+        #   Callers own application control flow; td_bootstrap only prepares the context.
     td_bootstrap() {
         saystart "Initializing framework"
         # Definitions

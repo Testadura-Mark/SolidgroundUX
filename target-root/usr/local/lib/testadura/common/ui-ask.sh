@@ -30,12 +30,14 @@
 #   - Optional integration with ui-say.sh may exist (saydebug/saywarning/sayfail),
 #     but this module does not define message policy.
 #
-# Rules / Contract:
-#   - Interactive by design; may block waiting for user input when a TTY exists.
-#   - No application logic: callers interpret results and decide how to act.
-#   - No logging/output policy: minimal prompt rendering only (see ui-say.sh).
-#   - Safe to source multiple times (must be guarded).
-#   - Library-only: must be sourced, never executed.
+# Design rules:
+#   - Libraries define functions and constants only.
+#   - No auto-execution (must be sourced).
+#   - Avoids changing shell options beyond strict-unset/pipefail (set -u -o pipefail).
+#     (No set -e; no shopt.)
+#   - No path detection or root resolution (bootstrap owns path resolution).
+#   - No global behavior changes (UI routing, logging policy, shell options).
+#   - Safe to source multiple times (idempotent load guard).
 #
 # Non-goals:
 #   - Non-interactive/batch input processing
@@ -73,34 +75,33 @@ set -uo pipefail
     
 # --- Helpers ---------------------------------------------------------------------
     # __expand_choices
+        # Purpose:
+        #   Expand a comma-separated choice specification into individual allowed values.
         #
-        # Expand a comma-separated choice specification into a newline-separated list
-        # of individual allowed values.
+        # Arguments:
+        #   $1  Choice spec string. Supports:
+        #       - Literal tokens: "dev,acc,prod"
+        #       - Simple ranges:  "A-Z", "0-9" (single ASCII [[:alnum:]] endpoints)
+        #       - Optional whitespace around tokens: "A-Z, 1-3, foo"
         #
-        # Supports:
-        #   - Literal tokens: "dev,acc,prod"
-        #   - Simple ranges:  "A-Z", "0-9"  (single ASCII alnum endpoints)
-        #   - Whitespace trimming around tokens: "A-Z, 1-3, foo"
+        # Behavior:
+        #   - Splits on commas, trims whitespace per token.
+        #   - Expands valid ASCII ranges X-Y into X..Y (inclusive).
+        #   - Rejects reverse ranges (e.g. "Z-A") and skips them (warns if saywarning exists).
+        #   - Leaves non-range tokens as-is (including empty tokens, if present in input).
         #
-        # Range rules:
-        #   - Ranges must be of the form X-Y where X and Y are single [[:alnum:]] chars.
-        #   - Expansion is ASCII-based (uses character codes).
-        #   - Reverse ranges (e.g. "Z-A") are rejected and skipped.
+        # Outputs:
+        #   Prints one expanded value per line (suitable for `mapfile -t`).
         #
-        # Output:
-        #   - Prints one expanded value per line (suitable for `mapfile -t`).
+        # Returns:
+        #   0 always (expansion helper; invalid ranges are skipped, not fatal).
         #
         # Dependencies:
-        #   - saywarning (optional): used to warn about invalid ranges.
+        #   saywarning (optional) : used when rejecting a range.
         #
-        # Example:
+        # Examples:
         #   mapfile -t opts < <(__expand_choices "A-C, x, 1-3")
         #   # opts => ( "A" "B" "C" "x" "1" "2" "3" )
-        #
-        # Example (validation use):
-        #   if printf '%s\n' "${opts[@]}" | grep -qiFx -- "$user_value"; then
-        #       ...
-        #   fi
     __expand_choices() {
         local spec="$1"
         local -a out=()
@@ -141,48 +142,52 @@ set -uo pipefail
             printf '%b\n' "$part"
         done
     }
+
 # --- ask -------------------------------------------------------------------------
     # ask
-        #
-        # Prompt for interactive input with optional defaulting, validation, and output.
-        #
-        # Intent:
-        #   Provide a consistent, themed prompt mechanism for framework tools while
-        #   supporting:
-        #     - Editable defaults (readline `-i`)
-        #     - Optional validation callbacks
-        #     - Either "assign to variable" or "echo result" output modes
+        # Purpose:
+        #   Prompt for interactive input from the controlling terminal (/dev/tty),
+        #   with optional defaulting, validation, and result delivery.
         #
         # Usage:
         #   ask [--label TEXT] [--default VALUE] [--colorize MODE]
         #       [--validate FUNC] [--echo] [--var NAME] [--] [LABEL]
         #
+        # Arguments:
+        #   LABEL (positional) : used as label when --label is omitted.
+        #
         # Options:
-        #   --label TEXT       Prompt label (or first positional token if --label omitted)
+        #   --label TEXT       Prompt label text.
         #   --default VALUE    Editable default (readline -i). Empty entry uses default.
-        #   --validate FUNC    Validator callback: FUNC "$value"
-        #                      - return 0  → accept
-        #                      - return !=0 → reject (re-prompt)
-        #   --colorize MODE    none|label|input|both (controls prompt coloring)
-        #   --var NAME         Assign result to variable NAME (preferred for callers)
-        #   --echo             Print result to stdout (only used when --var not supplied)
+        #   --validate FUNC    Validation callback invoked as: FUNC "$value"
+        #                      - return 0   => accept
+        #                      - return !=0 => reject and re-prompt
+        #   --colorize MODE    none|label|input|both (default: both)
+        #   --var NAME         Store the accepted value into shell variable NAME.
+        #   --echo             Additionally echo the typed value with ✓/✗ feedback to /dev/tty.
+        #                      (Also prints the accepted value to stdout when --var is not used.)
         #
-        # Return:
-        #   - This function primarily communicates via --var or stdout (--echo).
-        #   - Re-prompts on validation failure (interactive flow).
+        # Inputs (globals):
+        #   Theme: TUI_LABEL, TUI_INPUT, TUI_VALID, TUI_INVALID, RESET
         #
-        # Notes / Caveats:
-        #   - For "stdin-independent" behavior in piped scripts, this function should
-        #     read from the controlling terminal (/dev/tty) rather than stdin.
-        #   - Implementation reads from /dev/tty (via read -u), so it is stdin-independent
-        #     and safe to use in piped/redirected scripts.
-        #   - Validation retry currently uses recursion; keep retry depth small or
-        #     convert to a loop if you expect repeated failures.
-        #   - When both --var and --echo are omitted, the value is not returned/printed.
+        # Behavior:
+        #   - Reads from /dev/tty via `read -u`, not stdin (safe in piped/redirected scripts).
+        #   - Uses readline editing (-e) and optional prefill (-i).
+        #   - If validation fails, prints an error message and re-prompts.
         #
-        # Examples:
-        #   ask --label "IP" --default "127.0.0.1" --validate validate_ip --var BIND_IP
-        #   email="$(ask --label "Email" --default "user@example.com" --echo)"
+        # Outputs:
+        #   - If --var is set: assigns result to that variable (no stdout output).
+        #   - Else if --echo is set: prints accepted value to stdout (one line).
+        #   - If --echo is set: prints ✓/✗ feedback to /dev/tty regardless of --var.
+        #
+        # Returns:
+        #   0  on success (accepted input)
+        #   2  if /dev/tty cannot be opened (no TTY available)
+        #
+        # Notes:
+        #   - Re-prompt uses recursion (ask calls itself). Consider a loop if you expect
+        #     unbounded invalid attempts.
+        #   - When neither --var nor --echo is provided, the accepted value is not emitted.
     ask(){
         local label="" var_name="" colorize="both"
         local validate_fn="" def_value="" echo_input=0
@@ -286,27 +291,24 @@ set -uo pipefail
     # Convenience wrappers around ask() for common prompt patterns.
 
     # ask_yesno
+        # Purpose:
+        #   Prompt a Yes/No question (default: Yes).
         #
-        # Prompt the user with a Yes/No question (default: Yes).
+        # Usage:
+        #   ask_yesno "Question text"
         #
         # Arguments:
-        #   $1  Prompt text (without suffix)
+        #   $1  Prompt text (without suffix).
         #
         # Behavior:
         #   - Displays: "<prompt> [Y/n]"
-        #   - Default selection is Yes
-        #   - Case-insensitive input
+        #   - Default is "Y" (Enter counts as Yes).
+        #   - Accepts y/yes/n/no case-insensitively.
+        #   - Unrecognized input falls back to No.
         #
         # Returns:
-        #   0  → Yes
-        #   1  → No (or invalid input fallback)
-        #
-        # Example:
-        #   if ask_yesno "Continue installation?"; then
-        #       sayinfo "Proceeding..."
-        #   else
-        #       saywarn "Cancelled by user."
-        #   fi
+        #   0  Yes
+        #   1  No (including invalid input)
     ask_yesno(){
         local prompt="$1"
         local yn_response
@@ -319,26 +321,26 @@ set -uo pipefail
             *)     return 1 ;; # fallback to No
         esac
     }
+
     # ask_noyes
+        # Purpose:
+        #   Prompt a Yes/No question (default: No).
         #
-        # Prompt the user with a Yes/No question (default: No).
+        # Usage:
+        #   ask_noyes "Question text"
         #
         # Arguments:
-        #   $1  Prompt text (without suffix)
+        #   $1  Prompt text (without suffix).
         #
         # Behavior:
         #   - Displays: "<prompt> [y/N]"
-        #   - Default selection is No
-        #   - Case-insensitive input
+        #   - Default is "N" (Enter counts as No).
+        #   - Accepts y/yes/n/no case-insensitively.
+        #   - Unrecognized input falls back to No.
         #
         # Returns:
-        #   0  → Yes
-        #   1  → No (or invalid input fallback)
-        #
-        # Example:
-        #   if ask_noyes "Enable experimental mode?"; then
-        #       enable_experimental
-        #   fi
+        #   0  Yes
+        #   1  No (including invalid input)
     ask_noyes() {
         local prompt="$1"
         local ny_response
@@ -353,27 +355,24 @@ set -uo pipefail
     }
 
     # ask_okcancel
+        # Purpose:
+        #   Prompt an OK/Cancel confirmation (default: OK).
         #
-        # Prompt the user with an OK/Cancel confirmation.
+        # Usage:
+        #   ask_okcancel "Apply changes?"
         #
         # Arguments:
-        #   $1  Prompt text (without suffix)
+        #   $1  Prompt text (without suffix).
         #
         # Behavior:
         #   - Displays: "<prompt> [OK/Cancel]"
-        #   - Default selection is OK
-        #   - Case-insensitive input
+        #   - Default is OK.
+        #   - Accepts OK / CANCEL case-insensitively.
+        #   - Unrecognized input falls back to Cancel.
         #
         # Returns:
-        #   0  → OK
-        #   1  → Cancel (or invalid input fallback)
-        #
-        # Example:
-        #   if ask_okcancel "Apply changes?"; then
-        #       apply_changes
-        #   else
-        #       rollback
-        #   fi
+        #   0  OK
+        #   1  Cancel (including invalid input)
     ask_okcancel() {
         local prompt="$1"
         local oc_response
@@ -388,34 +387,42 @@ set -uo pipefail
     }
 
     # ask_ok_redo_quit
+        # Purpose:
+        #   Prompt for an OK / Redo / Quit decision, optionally with an auto-confirm countdown.
         #
-        # Prompt the user with an OK / Redo / Quit decision.
+        # Usage:
+        #   ask_ok_redo_quit "Proceed?" [auto_confirm_seconds]
         #
         # Arguments:
-        #   $1  Prompt text (without suffix)
+        #   $1  Prompt text (without suffix).
+        #   $2  Auto-confirm seconds (default: 0).
+        #       - 0 disables countdown and uses the typed prompt immediately.
         #
         # Behavior:
-        #   - Displays: "<prompt> [OK/Redo/Quit]"
-        #   - Default is OK (Enter counts as OK)
-        #   - Trims leading/trailing whitespace
-        #   - Accepts abbreviations: O, R, Q
+        #   - Non-interactive (no TTY on stdin/stdout): returns OK immediately.
+        #   - If seconds > 0:
+        #       - Shows a countdown prompt and accepts single-key commands:
+        #           o / Enter : OK
+        #           r         : Redo
+        #           q / c / Esc : Quit/Cancel
+        #           p         : pause (then uses blocking single-key read)
+        #           other key : falls back to full typed prompt
+        #       - If countdown reaches 0 without input: returns OK.
+        #   - Typed prompt mode:
+        #       - Uses ask() to read a token; trims whitespace; accepts:
+        #           "" / OK / O          => OK
+        #           REDO / R             => Redo
+        #           QUIT / Q / EXIT / CANCEL / C => Quit
+        #           otherwise            => Invalid
+        #
+        # Inputs (globals):
+        #   Styling: WHITE, FX_ITALIC, RESET, MSG_CLR_CNCL (and td_sgr)
         #
         # Returns:
-        #   0  → OK
-        #   1  → Redo
-        #   2  → Quit (or Exit)
-        #   3  → Invalid / unrecognized input
-        #
-        # Example:
-        #   while true; do
-        #       ask_ok_redo_quit "Proceed with applying changes?"
-        #       case $? in
-        #           0) apply_changes; break ;;
-        #           1) sayinfo "Redoing selection..."; continue ;;
-        #           2) saywarn "User quit."; return 1 ;;
-        #           3) saywarning "Invalid response."; continue ;;
-        #       esac
-        #   done  
+        #   0  OK
+        #   1  Redo
+        #   2  Quit/Cancel
+        #   3  Invalid input (typed prompt only)
     ask_ok_redo_quit() {
         local prompt="${1-}"
         local seconds="${2:-0}"   # 0 = no auto-continue
@@ -497,23 +504,22 @@ set -uo pipefail
     }
 
     # ask_continue
+        # Purpose:
+        #   Pause execution until the user presses Enter.
         #
-        # Pause execution until the user presses Enter.
+        # Usage:
+        #   ask_continue ["Prompt text"]
         #
         # Arguments:
-        #   $1  Optional prompt text (default: "Press Enter to continue...")
+        #   $1  Optional prompt text.
+        #       Default: "Press Enter to continue..."
+        #
+        # Behavior:
+        #   - Reads from /dev/tty so it does not consume stdin.
+        #   - If no TTY is available, returns immediately (non-blocking).
         #
         # Returns:
-        #   Always returns 0.
-        #
-        # Notes:
-        #   - Uses `read -r -p` and stores input in a throwaway variable.
-        #   - Intended for interactive / TUI flows.
-        #
-        # Example:
-        #   sayinfo "Step 1 completed."
-        #   ask_continue
-        #   sayinfo "Continuing..."
+        #   0 always.
     ask_continue() {
         local prompt="${1:-Press Enter to continue...}"
         local tty_fd
@@ -523,30 +529,29 @@ set -uo pipefail
     }
 
     # ask_autocontinue
+        # Purpose:
+        #   Auto-continue after N seconds with interactive override keys.
         #
-        # Auto-continue after N seconds, with interactive controls:
-        #   - any key: continue immediately
-        #   - p: pause (then any key continues, c cancels)
-        #   - c/q/ESC: cancel
+        # Usage:
+        #   ask_autocontinue [seconds]
         #
         # Arguments:
-        #   $1  Optional seconds (default: 5)
+        #   $1  Countdown seconds (default: 5).
         #
         # Behavior:
-        #   - If stdin or stdout is not a TTY, returns immediately (non-interactive safe).
+        #   - Non-interactive (no TTY on stdin/stdout): returns immediately (continue).
+        #   - Countdown mode accepts single-key commands:
+        #       - any key : continue immediately
+        #       - p       : pause (then any key continues, c/q/Esc cancels)
+        #       - c/q/Esc : cancel
+        #   - If countdown reaches 0 without input: continues.
+        #
+        # Inputs (globals):
+        #   Styling: WHITE, FX_ITALIC, RESET, MSG_CLR_CNCL (and td_sgr)
         #
         # Returns:
-        #   0  → continue
-        #   1  → cancelled
-        #
-        # Example:
-        #   sayinfo "About to run destructive action."
-        #   if ask_autocontinue 10; then
-        #       do_it
-        #   else
-        #       saywarning "Cancelled."
-        #       return 1
-        #   fi
+        #   0  continue
+        #   1  cancelled
     ask_autocontinue() {
         # Usage: AutoContinue [seconds]
         # Returns:
@@ -602,36 +607,42 @@ set -uo pipefail
     } 
 
     # td_choose
-        #
-        # Prompt for a user choice with optional validation and retry logic.
+        # Purpose:
+        #   Prompt for a user choice, optionally constrained to a set/range of allowed values.
         #
         # Usage:
         #   td_choose "Enter value" --var VALUE
-        #   td_choose --label "Select option" --choices "A,B,C" --var CHOICE
+        #   td_choose --label "Environment" --choices "dev,acc,prod" --var env
+        #   td_choose --label "Drive" --choices "A-D, X" --var drive
         #
         # Options:
-        #   --label TEXT          Prompt label (if omitted, first non-option arg becomes label)
-        #   --var NAME            Variable name to receive the chosen value (default: "choice")
-        #   --choices LIST        Comma-separated list of allowed values (optional)
-        #   --displaychoices 0|1  Append "[choices]" to the label (default: 1)
-        #   --keepasking 0|1      If invalid input, keep prompting (default: 1)
-        #   --colorize MODE       Passed through to ask --colorize (default: "both")
+        #   --label TEXT            Prompt label (fallback: first positional token).
+        #   --var NAME              Destination variable name (default: "choice").
+        #   --choices LIST          Allowed values (comma-separated tokens and/or ranges).
+        #   --displaychoices 0|1    Append "[choices]" to the label (default: 1).
+        #   --keepasking 0|1        Re-prompt on invalid input (default: 1).
+        #   --colorize MODE         Passed through to ask --colorize (default: both).
         #
         # Behavior:
-        #   - If --choices is omitted/empty: accepts any input.
-        #   - If --choices is provided: validates case-insensitively.
-        #   - Always assigns the raw user input (as returned by ask) to --var.
+        #   - Always prompts via ask() and captures raw user input.
+        #   - If --choices is empty: accepts any input.
+        #   - If --choices is provided:
+        #       - Expands ranges via __expand_choices
+        #       - Validates case-insensitively
+        #       - On invalid input:
+        #           - warns (saywarning)
+        #           - re-prompts if keepasking=1
+        #   - Always assigns the final captured value to --var (even if invalid and keepasking=0).
+        #
+        # Outputs:
+        #   None (communication is via variable assignment).
         #
         # Returns:
-        #   No explicit return value contract (primarily communicates via --var).
-        #   (You can add one later if you want: 0=valid, 1=invalid/no-keepasking.)
+        #   0 always (no validity contract yet).
         #
-        # Example:
-        #   td_choose --label "Environment" --choices "dev,acc,prod" --var env
-        #   sayinfo "Selected env: $env"
-        #
-        # Example (free input):
-        #   td_choose "Enter customer id" --var customer_id
+        # Notes:
+        #   - If you want a validity signal later, a clean contract is:
+        #       0=valid, 1=invalid (when keepasking=0)
     td_choose() {
         local label=""
         local choices=""
@@ -700,22 +711,15 @@ set -uo pipefail
     
 # --- File system validations -----------------------------------------------------
     # validate_file_exists
-        #
-        # Validate that a path exists and is a regular file.
+        # Purpose:
+        #   Validate that PATH exists and is a regular file.
         #
         # Arguments:
-        #   $1  Path
+        #   $1  PATH
         #
         # Returns:
-        #   0  → exists and is a file
-        #   1  → missing or not a file
-        #
-        # Example:
-        #   if validate_file_exists "$cfg"; then
-        #       td_cfg_load "$cfg"
-        #   else
-        #       saywarning "Missing config: $cfg"
-        #   fi
+        #   0  valid
+        #   1  invalid
     validate_file_exists() {
         local path="$1"
 
@@ -724,8 +728,8 @@ set -uo pipefail
     }
 
     # validate_path_exists
-        #
-        # Validate that a path exists (file/dir/symlink/etc).
+        # Purpose:
+        #   Validate that a path exists (file/dir/symlink/etc).
         #
         # Arguments:
         #   $1  Path
@@ -733,17 +737,14 @@ set -uo pipefail
         # Returns:
         #   0  → exists
         #   1  → does not exist
-        #
-        # Example:
-        #   validate_path_exists "/etc" || saywarning "No /etc?!"
     validate_path_exists() {
         [[ -e "$1" ]] && return 0
         return 1
     }
 
     # validate_dir_exists
-        #
-        # Validate that a path exists and is a directory.
+        # Purpose:
+        #   Validate that a path exists and is a directory.
         #
         # Arguments:
         #   $1  Path
@@ -751,17 +752,14 @@ set -uo pipefail
         # Returns:
         #   0  → exists and is a directory
         #   1  → missing or not a directory
-        #
-        # Example:
-        #   validate_dir_exists "$TD_STATE_DIR" || mkdir -p "$TD_STATE_DIR"
     validate_dir_exists() {
         [[ -d "$1" ]] && return 0
         return 1
     }
 
     # validate_executable
-        #
-        # Validate that a path exists and is executable.
+        # Purpose:
+        #   Validate that a path exists and is executable.
         #
         # Arguments:
         #   $1  Path
@@ -778,8 +776,8 @@ set -uo pipefail
     }
 
     # validate_file_not_exists
-        #
-        # Validate that a file path does NOT exist as a regular file.
+        # Purpose:
+        #   Validate that a file path does NOT exist as a regular file.
         #
         # Arguments:
         #   $1  Path

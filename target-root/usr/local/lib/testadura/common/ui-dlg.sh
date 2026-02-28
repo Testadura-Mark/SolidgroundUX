@@ -24,13 +24,14 @@
 #   - Theme variables and RESET exist (e.g., TUI_TEXT, TUI_LABEL, RESET).
 #   - No full-screen mode is assumed; the caller controls broader UI flow.
 #
-# Rules / Contract:
-#   - Library-only: must be sourced, never executed.
-#   - Safe to source multiple times (must be guarded).
-#   - Dialog helpers return status codes; callers decide what to do next.
-#   - No logging policy decisions and no application-specific branching.
-#   - Must not change global shell options (no set -euo pipefail, no stty side
-#     effects left behind without restoration).
+# Design rules:
+#   - Libraries define functions and constants only.
+#   - No auto-execution (must be sourced).
+#   - Avoids changing shell options beyond strict-unset/pipefail (set -u -o pipefail).
+#     (No set -e; no shopt.)
+#   - No path detection or root resolution (bootstrap owns path resolution).
+#   - No global behavior changes (UI routing, logging policy, shell options).
+#   - Safe to source multiple times (idempotent load guard).
 #
 # Non-goals:
 #   - General-purpose prompting (see ui-ask.sh)
@@ -68,8 +69,31 @@ set -uo pipefail
 
 # --- Internal helpers ------------------------------------------------------------
     # __dlg_keymap
-        # Build a human-readable key legend for the current dialog state.
-        # Usage: __dlg_keymap CHOICES PAUSED     
+        # Purpose:
+        #   Build a human-readable key legend string for a dialog's current state.
+        #
+        # Usage:
+        #   __dlg_keymap CHOICES [PAUSED]
+        #
+        # Arguments:
+        #   $1  CHOICES : choice string (typically uppercase) describing enabled keys.
+        #   $2  PAUSED  : 1 if dialog is currently paused, otherwise 0 (default: 0).
+        #
+        # Behavior:
+        #   - Builds a semicolon-separated legend based on CHOICES:
+        #       E => "Enter=continue"
+        #       R => "R=redo"
+        #       C => "C/Esc=cancel"
+        #       Q => "Q=quit"
+        #       A => "Press any key to continue"
+        #       P => "P/Space=pause" or "P/Space=resume" depending on PAUSED
+        #   - Trims the trailing delimiter.
+        #
+        # Outputs:
+        #   Prints the legend string to stdout (no newline policy implied by caller).
+        #
+        # Returns:
+        #   0 always.
     __dlg_keymap(){
         local choices="$1"
         local keymap=""
@@ -95,35 +119,59 @@ set -uo pipefail
 
         printf '%s' "$keymap"
     }
+
 # --- Public API ------------------------------------------------------------------
-    # td_dlg_autocontinue 
-        # Interactive auto-continue dialog with countdown and key controls.
+    # td_dlg_autocontinue
+        # Purpose:
+        #   Render a non-blocking/timed "soft dialog" on /dev/tty with a countdown
+        #   and simple key-driven decisions.
+        #
         # Usage:
         #   td_dlg_autocontinue [SECONDS] [MESSAGE] [CHOICES]
         #
-        # CHOICES:
-        #   Reserved actions:
-        #     A = any key → continue
-        #     E = Enter → continue
-        #     R = R → redo
-        #     C = C or Esc → cancel
-        #     P = P or Space → pause/resume countdown
-        #     Q = Q → quit
-        #     H = hide keymap
+        # Arguments:
+        #   $1  SECONDS : countdown seconds until auto-continue (default: 5).
+        #   $2  MESSAGE : optional message shown above the countdown/key legend.
+        #   $3  CHOICES : enabled key set (default: "AERCPQ").
+        #                Case-insensitive; internally normalized to uppercase.
         #
-        #   Extra keys:
-        #     Any other single-character keys included in CHOICES are treated as
-        #     "custom return keys". They do not perform an action; the dialog simply
-        #     returns a code:
-        #       10 for the first custom key, 11 for the second, etc.
+        # CHOICES (reserved actions):
+        #   A  Any key => continue (fallback behavior for unrecognized keys)
+        #   E  Enter   => continue
+        #   R  R       => redo
+        #   C  C/Esc   => cancel
+        #   P  P/Space => pause/resume countdown
+        #   Q  Q       => quit
+        #   H  Hide key legend line
+        #
+        # CHOICES (custom keys):
+        #   Any other single-character keys included in CHOICES are treated as custom return keys.
+        #   They do not trigger an action; instead the function returns:
+        #     10 for the first custom key (in encounter order),
+        #     11 for the second, etc.
+        #
+        # Behavior:
+        #   - Writes the dialog block to /dev/tty (stdin/stdout redirection-safe).
+        #   - Redraws in-place using minimal cursor movement (up N lines + carriage return).
+        #   - If paused, blocks waiting for a key; otherwise checks for a key with a 1s timeout
+        #     and decrements the countdown.
+        #   - If /dev/tty is not readable/writable, returns immediately (no dialog shown).
+        #
+        # Inputs (globals):
+        #   Styling: TUI_TEXT, WHITE, FX_ITALIC, RESET (and td_sgr).
         #
         # Returns:
-        #   0 = continue (Enter, any-key if A enabled, or allowed continue keys)
-        #   1 = auto-continued (timeout)
-        #   2 = cancel
-        #   3 = redo
-        #   4 = quit
-        #   10+ = custom key index (first custom key = 10)
+        #   0   continue (Enter if E enabled; any key if A enabled; or allowed continue key)
+        #   1   auto-continued (timeout reached)
+        #   2   cancel
+        #   3   redo
+        #   4   quit
+        #   10+ custom key index (first custom key = 10)
+        #
+        # Notes:
+        #   - "A" acts as a fallback only after checking for reserved/custom handling.
+        #   - The redraw assumes the block height equals:
+        #       (optional message line) + (optional keymap line) + countdown line.
     td_dlg_autocontinue() {
         local seconds="${1:-5}"
         local msg="${2:-}"
@@ -309,6 +357,48 @@ set -uo pipefail
     }
 
     # td_prompt_fromlist
+        # Purpose:
+        #   Prompt for a list of state/config entries described by "state spec" lines,
+        #   assigning results directly to the variables named by each entry.
+        #
+        # Usage:
+        #   td_prompt_fromlist [--labelwidth N] [--autoalign] [--colorize MODE] -- SPEC...
+        #
+        # Options:
+        #   --labelwidth N     Pad labels to width N using td_fill_right (default: 0 = no padding).
+        #   --autoalign        Compute label width from the longest label across SPEC lines
+        #                      (only if labelwidth is 0/not provided).
+        #   --colorize MODE    Passed through to ask --colorize (default: both).
+        #   --                End of options; remaining args are SPEC lines.
+        #
+        # SPEC format:
+        #   Each SPEC line is parsed by td_parse_statespec and is expected to yield:
+        #     __statekey        variable name to assign
+        #     __statelabel      display label (optional; defaults to key)
+        #     __statedefault    default value (optional)
+        #     __statevalidate   validator function name (optional)
+        #
+        # Behavior:
+        #   - For each SPEC line:
+        #       - Parses it via td_parse_statespec.
+        #       - Skips invalid keys (must be a valid identifier; uses __td_is_ident).
+        #       - Determines current value from the existing shell variable (if set),
+        #         otherwise uses the default from the spec.
+        #       - Calls ask() with --default and optional --validate.
+        #       - Stores the accepted value into the variable named by the spec key.
+        #   - If --autoalign is enabled, the function scans all SPEC lines first to
+        #     compute a label width (based on label text or key fallback).
+        #
+        # Inputs (globals / dependencies):
+        #   - td_parse_statespec (must set $__statekey, $__statelabel, $__statedefault, $__statevalidate)
+        #   - __td_is_ident, td_trim, td_fill_right, ask
+        #   - saywarning (optional)
+        #
+        # Outputs:
+        #   None on stdout (interactive prompting happens on /dev/tty via ask()).
+        #
+        # Returns:
+        #   0 always (prompt/orchestration helper; skips invalid entries).
     td_prompt_fromlist() {
         local labelwidth=0
         local autoalign=0

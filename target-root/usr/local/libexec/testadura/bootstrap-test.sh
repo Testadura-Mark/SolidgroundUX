@@ -142,6 +142,8 @@ set -uo pipefail
     TD_ON_EXIT_HANDLERS=(
     )
 
+    TD_STATE_SAVE=1
+
 # --- Local script Declarations -------------------------------------------------
     : "${TD_SYS_STRING:=system-default}"
     : "${TD_SYS_INT:=0}"
@@ -218,9 +220,9 @@ set -uo pipefail
             local rc=$?
             saydebug "Return received: $rc"
             case $rc in
-                0) saydebug "0 detected"; td_save_state; break ;;
+                0) saydebug "0 detected"; TD_STATE_SAVE=1; td_save_state; break ;;
                 1) sayinfo "Redoing selection..."; saydebug "Redo detected"; continue ;;
-                2) saywarning "User quit.";saydebug "Quit"; break ;;
+                2) saywarning "User quit."; TD_STATE_SAVE=0; saydebug "Quit"; break ;;
                 3) saywarning "Invalid response."; saydebug "Invalid Response"; continue ;;
             esac
         done
