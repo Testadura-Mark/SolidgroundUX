@@ -1,2 +1,2 @@
 #!/usr/bin/env bash
-exec bash /home/sysadmin/dev/solidgroundux/target-root/var/lib/testadura/releases/td-install.sh "$@"
+exec bash /var/lib/testadura/releases/td-install.sh "$@"

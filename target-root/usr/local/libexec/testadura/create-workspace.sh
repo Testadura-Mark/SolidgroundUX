@@ -355,8 +355,12 @@ set -uo pipefail
     {
         local d template_dir
         local -a DIRS
-        
-        mkdir -p "$PROJECT_FOLDER"
+        if [[ "$FLAG_DRYRUN" -eq 1 ]]; then
+            sayinfo "Would have created folder ${PROJECT_FOLDER}"
+        else
+            saydebug "Creating folder ${PROJECT_FOLDER}"
+            mkdir -p "$PROJECT_FOLDER"
+        fi
         
         DIRS=(
         "target-root"
@@ -366,7 +370,9 @@ set -uo pipefail
         "target-root/usr/local/sbin"
         "target-root/usr/local/libexec"
         "target-root/usr/local/lib/testadura/templates"
-        "target-root/usr/local/share/doc"
+        "target-root/usr/local/share/doc/$PROJECT_NAME/"
+        "target-root/var/lib/testadura/releases"
+        "target-root/var/state"
         )
         
 
