@@ -454,6 +454,118 @@ set -uo pipefail
         sayinfo "Created VS Code workspace file ${workspace_file}"
     }
 
+    # __create_gitignore_file
+        # Purpose:
+        #   Create a standard .gitignore file in the project workspace root.
+        #
+        # Usage:
+        #   __create_gitignore_file
+        #
+        # Behavior:
+        #   - Generates a predefined .gitignore containing common exclusions
+        #     for Testadura/SolidGround development environments.
+        #   - Covers typical noise sources such as:
+        #       * OS artifacts (e.g., .DS_Store, Thumbs.db)
+        #       * Editor/IDE metadata (.vscode, .idea)
+        #       * Logs and runtime state files
+        #       * Temporary and build directories
+        #       * Archives and packaging artifacts
+        #       * Environment files (.env)
+        #       * Miscellaneous backup/swap files
+        #
+        #   - The file is written directly to:
+        #       ${PROJECT_FOLDER}/.gitignore
+        #
+        #   - If FLAG_DRYRUN is enabled:
+        #       * No file is created.
+        #       * A message is emitted indicating the action that would
+        #         have been performed.
+        #
+        # Inputs (globals):
+        #   PROJECT_FOLDER   Target project workspace directory.
+        #   FLAG_DRYRUN      If set to 1, suppresses file creation.
+        #
+        # Output:
+        #   Creates or overwrites .gitignore in the project root.
+        #
+        # Returns:
+        #   0  Success (or simulated success when FLAG_DRYRUN=1)
+        #
+        # Notes:
+        #   - The ignore rules are intentionally generic and safe for
+        #     most Bash/script-based projects.
+        #   - Additional project-specific ignore patterns can be appended
+        #     manually if required.
+    __create_gitignore_file(){
+        if [[ "$FLAG_DRYRUN" -eq 1 ]]; then
+            sayinfo "Would have created .gitignore" 
+            return 0
+        fi
+
+        sayinfo "Creating .gitignore"
+        saydebug "${PROJECT_FOLDER}/.gitignore"
+
+        printf '%s\n' \
+        '# --------------------------------------------------' \
+        '# OS junk' \
+        '# --------------------------------------------------' \
+        '.DS_Store' \
+        'Thumbs.db' \
+        '*~' \
+        '' \
+        '# --------------------------------------------------' \
+        '# Editors / IDE' \
+        '# --------------------------------------------------' \
+        '.vscode/*' \
+        '!.vscode/settings.json' \
+        '!.vscode/extensions.json' \
+        '.idea/' \
+        '' \
+        '# --------------------------------------------------' \
+        '# Logs' \
+        '# --------------------------------------------------' \
+        '*.log' \
+        'logs/' \
+        '' \
+        '# --------------------------------------------------' \
+        '# Runtime / state' \
+        '# --------------------------------------------------' \
+        '*.state' \
+        '*.pid' \
+        '*.lock' \
+        'tmp/' \
+        'temp/' \
+        '' \
+        '# --------------------------------------------------' \
+        '# Build / packaging' \
+        '# --------------------------------------------------' \
+        'build/' \
+        'dist/' \
+        'release/' \
+        '' \
+        '# --------------------------------------------------' \
+        '# Archives' \
+        '# --------------------------------------------------' \
+        '*.zip' \
+        '*.tar' \
+        '*.tar.gz' \
+        '*.tgz' \
+        '' \
+        '# --------------------------------------------------' \
+        '# Environment / secrets' \
+        '# --------------------------------------------------' \
+        '.env' \
+        '.env.*' \
+        '' \
+        '# --------------------------------------------------' \
+        '# Misc' \
+        '# --------------------------------------------------' \
+        '*.bak' \
+        '*.swp' \
+        '*.swo' \
+        > "${PROJECT_FOLDER}/.gitignore"
+    }
+
 # --- main -----------------------------------------------------------------------
     # main MUST BE LAST function in script
     main() {
@@ -490,6 +602,7 @@ set -uo pipefail
             # For 0 (OK) and 2 (skip template) we still create repo + workspace
             __create_repository
             __create_workspace_file
+            __create_gitignore_file
             
             if [[ "$FLAG_DRYRUN" -eq 1 ]]; then
                 sayinfo "Would have fixed ownership and permissions"
