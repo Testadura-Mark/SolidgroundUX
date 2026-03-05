@@ -197,7 +197,7 @@ set -uo pipefail
       #   Does not return on failure (exits rc=1).
   td_need_writable(){ [[ -w "$1" ]] || { _sh_err "Not writable: $1"; exit 1; }; }
 
- # -- Non lethal requirement checks (return 1 on failure, do not exit) ------------
+  # -- Non lethal requirement checks (return 1 on failure, do not exit) ------------
   # td_need_tty
       # Purpose:
       #   Require stdout to be a TTY; return non-zero if not.
@@ -403,8 +403,7 @@ set -uo pipefail
       #
       # Returns:
       #   0 on success; non-zero on failure.
-  td_mktemp_file(){ ... }
-    td_mktemp_file(){ TMPDIR=${TMPDIR:-/tmp} mktemp "${TMPDIR%/}/XXXXXX"; }
+  td_mktemp_file(){ TMPDIR=${TMPDIR:-/tmp} mktemp "${TMPDIR%/}/XXXXXX"; }
 
   # td_slugify
       # Purpose:
@@ -637,6 +636,183 @@ set -uo pipefail
     esac
   }
 
+  # td_real_user
+    #   Determine the "real" user account when running under sudo.
+    #
+    # Description:
+    #   When a script is executed via sudo, the effective user becomes "root"
+    #   while the original invoking user is stored in the SUDO_USER environment
+    #   variable. This helper resolves the actual user account that initiated
+    #   the command.
+    #
+    #   If SUDO_USER is defined and not "root", that value is returned.
+    #   Otherwise the current effective user is returned.
+    #
+    # Arguments:
+    #   None
+    #
+    # Output:
+    #   Prints the resolved username to stdout (no newline suppression).
+    #
+    # Returns:
+    #   0 always.
+    #
+    # Notes:
+    #   Useful for scripts that must create files owned by the invoking user
+    #   even when the script itself runs with elevated privileges.
+  td_real_user() {
+      if [[ -n "${SUDO_USER-}" && "${SUDO_USER}" != "root" ]]; then
+          printf '%s\n' "${SUDO_USER}"
+      else
+          id -un
+      fi
+  }
+
+  # td_real_home
+    #   Determine the home directory of the invoking user.
+    #
+    # Description:
+    #   Resolves the home directory belonging to the "real" user as determined
+    #   by td_real_user(). This avoids relying on $HOME, which may point to
+    #   /root when running under sudo.
+    #
+    #   The home directory is resolved via the system user database using
+    #   the getent passwd lookup.
+    #
+    # Arguments:
+    #   None
+    #
+    # Output:
+    #   Prints the absolute home directory path to stdout.
+    #
+    # Returns:
+    #   0 always.
+    #
+    # Notes:
+    #   Requires the `getent` utility and a standard passwd database.
+    #   Works correctly for both local and directory-backed accounts
+    #   (e.g. LDAP or similar NSS providers).
+  td_real_home() {
+      local user
+      user="$(td_real_user)"
+      getent passwd "${user}" | cut -d: -f6
+  }
+
+  # td_run_as_real_user
+    #   Execute a command as the invoking (non-root) user when running under sudo.
+    #
+    # Description:
+    #   Determines the "real" user via td_real_user(). If the script is currently
+    #   running as root (typically via sudo) and the invoking user is not root,
+    #   the provided command is executed using:
+    #
+    #       sudo -u <user> -H
+    #
+    #   This ensures the command runs with the invoking user's permissions and
+    #   environment, including the correct HOME directory.
+    #
+    #   If the script is not running as root, or the resolved user is already
+    #   root, the command is executed directly without sudo.
+    #
+    # Arguments:
+    #   $@  Command and arguments to execute.
+    #
+    # Output:
+    #   Inherits stdout/stderr from the executed command.
+    #
+    # Returns:
+    #   Returns the exit status of the executed command.
+    #
+    # Notes:
+    #   Uses td_real_user() to determine the invoking user.
+    #
+    #   The -H flag ensures HOME is set correctly for the target user,
+    #   preventing tools from writing into /root when a script is invoked
+    #   through sudo.
+    #
+    # Example:
+    #   td_run_as_real_user mkdir -p "$(td_real_home)/workspace"
+    #
+    #   td_run_as_real_user cp template.txt "$target_dir/"
+  td_run_as_real_user() {
+      local user
+      user="$(td_real_user)"
+
+      if (( EUID == 0 )) && [[ "${user}" != "root" ]]; then
+          sudo -u "${user}" -H -- "$@"
+      else
+          "$@"
+      fi
+  }
+
+  # td_fix_ownership
+    #   Recursively set ownership of a path to the invoking user.
+    #
+    # Description:
+    #   Determines the real user and their primary group, then recursively
+    #   applies ownership to the specified path using chown.
+    #
+    #   This is primarily used after files are created by root (for example
+    #   during sudo execution) but should ultimately belong to the user who
+    #   invoked the script.
+    #
+    # Arguments:
+    #   $1  Path whose ownership should be corrected.
+    #
+    # Output:
+    #   None.
+    #
+    # Returns:
+    #   0 on success
+    #   Non-zero if chown fails.
+    #
+    # Notes:
+    #   Uses:
+    #     td_real_user()
+    #     id -gn <user>
+    #
+    #   Requires sufficient privileges to change ownership (typically root).
+  td_fix_ownership() {
+      local path="$1"
+      local user group
+      user="$(td_real_user)"
+      group="$(id -gn "${user}")"
+
+      chown -R "${user}:${group}" "${path}"
+  }
+  
+  # td_fix_permissions
+    #   Normalize permissions for directories and files under a path.
+    #
+    # Description:
+    #   Applies common Unix permissions recursively:
+    #
+    #     Directories : 755 (rwxr-xr-x)
+    #     Files       : 644 (rw-r--r--)
+    #
+    #   This helper is intended to sanitize permissions after copying or
+    #   generating files to ensure predictable access for the user and group.
+    #
+    # Arguments:
+    #   $1  Root path whose permissions should be normalized.
+    #
+    # Output:
+    #   None.
+    #
+    # Returns:
+    #   0 on success
+    #   Non-zero if any chmod operation fails.
+    #
+    # Notes:
+    #   Executable bits are not preserved. If executable scripts must remain
+    #   executable, they should be corrected afterward (e.g. chmod +x *.sh).
+  td_fix_permissions() {
+      local path="$1"
+
+      # Directories: 755, files: 644 (tweak if you want executable scripts kept executable)
+      find "${path}" -type d -exec chmod 755 {} +
+      find "${path}" -type f -exec chmod 644 {} +
+  }
 # --- Process & State Helpers -----------------------------------------------------
   # td_proc_exists
     # Purpose:
@@ -716,6 +892,11 @@ set -uo pipefail
               "${BASH_LINENO[$((i-1))]}" \
               "${FUNCNAME[$i]}"
       done
+  }
+
+  # td_has_tty
+  td_has_tty() {
+      [[ -r /dev/tty && -w /dev/tty ]]
   }
 # --- Version & OS Helpers --------------------------------------------------------
   # td_get_os
@@ -1062,19 +1243,17 @@ set -uo pipefail
     # Returns:
     #   Does not return.
   td_die() {
-      local msg="${1-}"
-      local rc="${2-1}"
+    local msg="${1-}"
+    local rc="${2-1}"
 
-      local ci=""
-      if (( ${FLAG_VERBOSE:-0} )); then
-          # td_stack_trace should PRINT the trace to stdout
-          ci="$(td_stack_trace)"
-      else
-          ci="$(td_caller_id 2)"
-      fi
-
-      sayfail "$rc ${msg:-Fatal error} ($ci)"
-      exit "$rc"
+    local ci=""
+    if (( ${FLAG_VERBOSE:-0} )); then
+        sayfail "$rc ${msg:-Fatal error}"
+        td_stack_trace
+    else
+        sayfail "$rc ${msg:-Fatal error} ($(td_caller_id 2))"
+    fi
+    exit "$rc"
   }
 
   # td_require

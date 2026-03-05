@@ -346,10 +346,11 @@ set -uo pipefail
             fi
 
 
-            if (( ! paused )); then
+            if (( ! paused )); then      
                 ((seconds--))
-                if (( seconds <= 0 )); then
+                if (( seconds < 0 )); then
                     printf '\r\e[%dB\n' "$((lines-1))" >"$tty"
+                    printf '%s\n' "${TUI_TEXT}Auto-continued.${RESET}" >"$tty"
                     return 1
                 fi
             fi

@@ -166,6 +166,47 @@ set -uo pipefail
         td_prompt_fromlist --autoalign "${TD_STATE_VARIABLES[@]}" 
     }
 
+    ask_test(){
+        echo "stdin tty?  $([[ -t 0 ]] && echo yes || echo no)"
+        echo "stdout tty? $([[ -t 1 ]] && echo yes || echo no)"
+        echo "/dev/tty rw? $([[ -r /dev/tty && -w /dev/tty ]] && echo yes || echo no)"
+
+        echo
+        echo "---------------------------------------------"
+        echo "ask_yesno (default YES)"
+        ask_yesno "Continue?" 10
+        echo "rc=$?"
+
+        echo
+        echo "---------------------------------------------"
+        echo "ask_noyes (default NO)"
+        ask_noyes "Continue?" 12
+        echo "rc=$?"
+
+        echo
+        echo "---------------------------------------------"
+        echo "ask_okcancel (default OK)"
+        ask_okcancel "Apply changes?" 15
+        echo "rc=$?"
+
+        echo
+        echo "---------------------------------------------"
+        echo "ask_ok_redo_quit"
+        ask_ok_redo_quit "Run job?" 10
+        echo "rc=$?"
+
+        echo
+        echo "---------------------------------------------"
+        echo "ask_continue" 12
+        ask_continue "Press enter to continue..." 
+        echo "rc=$?"
+
+        echo
+        echo "---------------------------------------------"
+        echo "ask_continue"
+        ask_continue "Press enter to continue..." 
+        echo "rc=$?"
+    }
 # --- Main ----------------------------------------------------------------------
     # main MUST BE LAST function in script
         # Main entry point for the executable script.
@@ -226,6 +267,8 @@ set -uo pipefail
                 3) saywarning "Invalid response."; saydebug "Invalid Response"; continue ;;
             esac
         done
+
+        ask_test
     }
 
     # Entrypoint: td_bootstrap will split framework args from script args.

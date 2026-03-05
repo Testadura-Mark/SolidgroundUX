@@ -432,24 +432,28 @@ set -uo pipefail
 
         (( ! TD_STATE_SAVE )) && return 0
 
-        saydebug "Assembling list out of TD_STATE_VARIABLES"
-        local line key label def validator colorize
-        local keys=()
+        if [[ "$FLAG_DRYRUN" -eq 1 ]]; then
+            sayinfo "Would have saved state variables from list"
+        else
+            saydebug "Assembling list out of TD_STATE_VARIABLES"
+            local line key label def validator colorize
+            local keys=()
 
-        [[ ${#TD_STATE_VARIABLES[@]} -gt 0 ]] || return 0
-        saystart "Saving state variables"
-        for line in "${TD_STATE_VARIABLES[@]}"; do
-            td_parse_statespec "$line"
-            key="$(td_trim "$__statekey")"
-            __td_is_ident "$key" || continue
-            keys+=( "$key" )
-        done
+            [[ ${#TD_STATE_VARIABLES[@]} -gt 0 ]] || return 0
+            saystart "Saving state variables"
+            for line in "${TD_STATE_VARIABLES[@]}"; do
+                td_parse_statespec "$line"
+                key="$(td_trim "$__statekey")"
+                __td_is_ident "$key" || continue
+                keys+=( "$key" )
+            done
 
-        saydebug "Saving state variables from array"
-        # Only save if the array exists and has elements
-         [[ ${#keys[@]} -gt 0 ]] || return 0
-        td_state_save_keys "${keys[@]}"
-        sayend "Done saving state variables."
+            saydebug "Saving state variables from array"
+            # Only save if the array exists and has elements
+            [[ ${#keys[@]} -gt 0 ]] || return 0
+            td_state_save_keys "${keys[@]}"
+            sayend "Done saving state variables."
+        fi
     }    
 
     # td_on_exit_add
@@ -586,7 +590,7 @@ set -uo pipefail
         # shellcheck source=/dev/null
         source "$style_path"
     }
-
+ # --- Main ------------------------------------------------------------------------
     # td_bootstrap
         # Purpose:
         #   Establish the SolidgroundUX runtime context for the current script.

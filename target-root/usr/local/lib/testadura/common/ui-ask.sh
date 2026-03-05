@@ -143,6 +143,61 @@ set -uo pipefail
         done
     }
 
+    # td__ask_action
+        # Purpose:
+        #   Shared helper for ask_* wrappers:
+        #     - non-interactive default
+        #     - optional timed dialog via td_dlg_autocontinue
+        #     - normalize dialog outcome into a small set of action tokens
+        #
+        # Usage:
+        #   action="$(td__ask_action DEFAULT_ACTION ENTER_ACTION PROMPT SECONDS CHOICES)"
+        #
+        # Arguments:
+        #   $1  DEFAULT_ACTION  Token used for non-interactive and timeout (e.g. YES, NO, OK).
+        #   $2  ENTER_ACTION    Token used when Enter is accepted by the dialog (usually same as default).
+        #   $3  PROMPT          Prompt text including suffix (e.g. "Proceed? [Y/n]").
+        #   $4  SECONDS         Countdown seconds; 0 disables timed dialog.
+        #   $5  CHOICES         td_dlg_autocontinue CHOICES string (must include T if you want TYPE fallback).
+        #
+        # Output:
+        #   Prints one token: DEFAULT_ACTION/ENTER_ACTION/REDO/CANCEL/QUIT/TYPE
+        #
+        # Notes:
+        #   - Expects td_dlg_autocontinue to return:
+        #       0=continue, 1=timeout, 2=cancel, 3=redo, 4=quit, 5=typed-fallback (T)
+    td__ask_action() {
+        local default_action="${1:?}"
+        local enter_action="${2:?}"
+        local prompt="${3:?}"
+        local seconds="${4:-0}"
+        local choices="${5:-}"
+
+        # Non-interactive → default answer
+        td_has_tty ||
+        {
+            printf '%s' "$default_action"
+            return 0
+        }
+
+        if (( seconds > 0 )); then
+            td_dlg_autocontinue "$seconds" "$prompt" "$choices"
+            local rc=$?
+
+            case "$rc" in
+                0) printf '%s' "$enter_action" ;;
+                1) printf '%s' "$default_action" ;;
+                2) printf '%s' "CANCEL" ;;
+                3) printf '%s' "REDO" ;;
+                4) printf '%s' "QUIT" ;;
+                5) printf '%s' "TYPE" ;;
+                *) printf '%s' "TYPE" ;;
+            esac
+            return 0
+        fi
+
+        printf '%s' "TYPE"
+    }
 # --- ask -------------------------------------------------------------------------
     # ask
         # Purpose:
@@ -291,320 +346,124 @@ set -uo pipefail
     # Convenience wrappers around ask() for common prompt patterns.
 
     # ask_yesno
-        # Purpose:
-        #   Prompt a Yes/No question (default: Yes).
+        # Prompt a Yes/No question (default: Yes), optionally with auto-continue.
         #
         # Usage:
-        #   ask_yesno "Question text"
-        #
-        # Arguments:
-        #   $1  Prompt text (without suffix).
-        #
-        # Behavior:
-        #   - Displays: "<prompt> [Y/n]"
-        #   - Default is "Y" (Enter counts as Yes).
-        #   - Accepts y/yes/n/no case-insensitively.
-        #   - Unrecognized input falls back to No.
+        #   ask_yesno "Question?" [AUTO_CONFIRM_SECONDS]
         #
         # Returns:
         #   0  Yes
-        #   1  No (including invalid input)
-    ask_yesno(){
-        local prompt="$1"
-        local yn_response
+        #   1  No
+    ask_yesno() {
+        local prompt="${1:?}"
+        local seconds="${2:-0}"
+        local yn_response=""
+        local action=""
+
+        action="$(td__ask_action "YES" "YES" "$prompt [Y/n]" "$seconds" "ECPQT")"
+
+        case "$action" in
+            YES)    return 0 ;;
+            CANCEL|QUIT) return 1 ;;
+            TYPE) ;;
+        esac
 
         ask --label "$prompt [Y/n]" --default "Y" --var yn_response
 
         case "${yn_response^^}" in
-            Y|YES) return 0 ;;
-            N|NO)  return 1 ;;
-            *)     return 1 ;; # fallback to No
+            Y|YES|"") return 0 ;;
+            N|NO)     return 1 ;;
+            *)        return 1 ;;
         esac
     }
 
     # ask_noyes
-        # Purpose:
-        #   Prompt a Yes/No question (default: No).
+        # Prompt a Yes/No question (default: No), optionally with auto-continue.
         #
         # Usage:
-        #   ask_noyes "Question text"
-        #
-        # Arguments:
-        #   $1  Prompt text (without suffix).
-        #
-        # Behavior:
-        #   - Displays: "<prompt> [y/N]"
-        #   - Default is "N" (Enter counts as No).
-        #   - Accepts y/yes/n/no case-insensitively.
-        #   - Unrecognized input falls back to No.
+        #   ask_noyes "Question?" [AUTO_CONFIRM_SECONDS]
         #
         # Returns:
         #   0  Yes
-        #   1  No (including invalid input)
+        #   1  No
     ask_noyes() {
-        local prompt="$1"
-        local ny_response
+        local prompt="${1:?}"
+        local seconds="${2:-0}"
+        local ny_response=""
+        local action=""
+
+        action="$(td__ask_action "NO" "NO" "$prompt [y/N]" "$seconds" "ECPQT")"
+
+        case "$action" in
+            NO)     return 1 ;;     # default/enter/timeout
+            CANCEL|QUIT) return 1 ;;
+            TYPE) ;;
+        esac
 
         ask --label "$prompt [y/N]" --default "N" --var ny_response
 
         case "${ny_response^^}" in
-            Y|YES) return 0 ;;
-            N|NO)  return 1 ;;
-            *)     return 1 ;;
+            Y|YES)   return 0 ;;
+            N|NO|"") return 1 ;;
+            *)       return 1 ;;
         esac
     }
 
     # ask_okcancel
-        # Purpose:
-        #   Prompt an OK/Cancel confirmation (default: OK).
+        # Prompt an OK/Cancel confirmation (default: OK), optionally with auto-continue.
         #
         # Usage:
-        #   ask_okcancel "Apply changes?"
-        #
-        # Arguments:
-        #   $1  Prompt text (without suffix).
-        #
-        # Behavior:
-        #   - Displays: "<prompt> [OK/Cancel]"
-        #   - Default is OK.
-        #   - Accepts OK / CANCEL case-insensitively.
-        #   - Unrecognized input falls back to Cancel.
+        #   ask_okcancel "Apply changes?" [AUTO_CONFIRM_SECONDS]
         #
         # Returns:
         #   0  OK
-        #   1  Cancel (including invalid input)
+        #   1  Cancel
     ask_okcancel() {
-        local prompt="$1"
-        local oc_response
+        local prompt="${1:?}"
+        local seconds="${2:-0}"
+        local oc_response=""
+        local action=""
+
+        action="$(td__ask_action "OK" "OK" "$prompt [OK/Cancel]" "$seconds" "ECPQT")"
+
+        case "$action" in
+            OK)     return 0 ;;
+            CANCEL|QUIT) return 1 ;;
+            TYPE) ;;
+        esac
 
         ask --label "$prompt [OK/Cancel]" --default "OK" --var oc_response
 
         case "${oc_response^^}" in
-            OK)     return 0 ;;
-            CANCEL) return 1 ;;
-            *)      return 1 ;;
-        esac
-    }
-
-    # ask_ok_redo_quit
-        # Purpose:
-        #   Prompt for an OK / Redo / Quit decision, optionally with an auto-confirm countdown.
-        #
-        # Usage:
-        #   ask_ok_redo_quit "Proceed?" [auto_confirm_seconds]
-        #
-        # Arguments:
-        #   $1  Prompt text (without suffix).
-        #   $2  Auto-confirm seconds (default: 0).
-        #       - 0 disables countdown and uses the typed prompt immediately.
-        #
-        # Behavior:
-        #   - Non-interactive (no TTY on stdin/stdout): returns OK immediately.
-        #   - If seconds > 0:
-        #       - Shows a countdown prompt and accepts single-key commands:
-        #           o / Enter : OK
-        #           r         : Redo
-        #           q / c / Esc : Quit/Cancel
-        #           p         : pause (then uses blocking single-key read)
-        #           other key : falls back to full typed prompt
-        #       - If countdown reaches 0 without input: returns OK.
-        #   - Typed prompt mode:
-        #       - Uses ask() to read a token; trims whitespace; accepts:
-        #           "" / OK / O          => OK
-        #           REDO / R             => Redo
-        #           QUIT / Q / EXIT / CANCEL / C => Quit
-        #           otherwise            => Invalid
-        #
-        # Inputs (globals):
-        #   Styling: WHITE, FX_ITALIC, RESET, MSG_CLR_CNCL (and td_sgr)
-        #
-        # Returns:
-        #   0  OK
-        #   1  Redo
-        #   2  Quit/Cancel
-        #   3  Invalid input (typed prompt only)
-    ask_ok_redo_quit() {
-        local prompt="${1-}"
-        local seconds="${2:-0}"   # 0 = no auto-continue
-        local orq_response=""
-
-        # Non-interactive: never block; default OK
-        if [[ ! -t 0 || ! -t 1 ]]; then
-            return 0
-        fi
-
-        # Optional auto-confirm phase
-        if (( seconds > 0 )); then
-            local paused=0
-            local key=""
-            local clr
-            clr="$(td_sgr "$WHITE" "$FX_ITALIC")"
-
-            while true; do
-                if (( paused )); then
-                    printf "%s\nPaused. (o=ok, r=redo, q=quit, any other key=type)%s" "$clr" "$RESET"
-                    IFS= read -r -n 1 -s key
-                else
-                    printf "\r\033[K%s%s [OK/Redo/Quit] default=OK in %ds… (o/r/q, p=pause)%s" \
-                        "$clr" "$prompt" "$seconds" "$RESET"
-                    IFS= read -r -n 1 -s -t 1 key || key=""
-                fi
-
-                if [[ -n "$key" ]]; then
-                    case "$key" in
-                        p|P)
-                            paused=1
-                            printf "\n"
-                            continue
-                            ;;
-                        o|O|$'\n'|$'\r')
-                            printf "\n"
-                            return 0
-                            ;;
-                        r|R)
-                            printf "\n"
-                            return 1
-                            ;;
-                        q|Q|c|C|$'\e')
-                            printf "\n${MSG_CLR_CNCL}Cancelled.${RESET}\n"
-                            return 2
-                            ;;
-                        *)
-                            # Any other key drops to the full typed prompt
-                            printf "\n"
-                            break
-                            ;;
-                    esac
-                fi
-
-                if (( ! paused )); then
-                    ((seconds--))
-                    if (( seconds <= 0 )); then
-                        printf "\n"
-                        return 0
-                    fi
-                fi
-            done
-        fi
-
-        # Full typed prompt (original behavior)
-        ask --label "$prompt [OK/Redo/Quit]" --var orq_response
-
-        # Trim whitespace
-        orq_response="${orq_response#"${orq_response%%[![:space:]]*}"}"
-        orq_response="${orq_response%"${orq_response##*[![:space:]]}"}"
-
-        local upper="${orq_response^^}"
-        case "$upper" in
-            ""|OK|O)                    return 0 ;;
-            REDO|R)                     return 1 ;;
-            QUIT|Q|EXIT|CANCEL|C)       return 2 ;;
-            *)                          return 3 ;;
+            OK|"")     return 0 ;;
+            CANCEL)    return 1 ;;
+            *)         return 1 ;;
         esac
     }
 
     # ask_continue
-        # Purpose:
-        #   Pause execution until the user presses Enter.
+        # Pause execution until Enter is pressed, optionally auto-continuing.
         #
         # Usage:
-        #   ask_continue ["Prompt text"]
-        #
-        # Arguments:
-        #   $1  Optional prompt text.
-        #       Default: "Press Enter to continue..."
-        #
-        # Behavior:
-        #   - Reads from /dev/tty so it does not consume stdin.
-        #   - If no TTY is available, returns immediately (non-blocking).
+        #   ask_continue ["Prompt"] [AUTO_SECONDS]
         #
         # Returns:
-        #   0 always.
+        #   0 always
     ask_continue() {
         local prompt="${1:-Press Enter to continue...}"
+        local seconds="${2:-0}"
+        local action=""
+
+        action="$(td__ask_action "OK" "OK" "$prompt" "$seconds" "EPT")"
+        if [[ "$action" != "TYPE" ]]; then
+            return 0
+        fi
+
         local tty_fd
         exec {tty_fd}</dev/tty || return 0
         IFS= read -u "$tty_fd" -r -p "$prompt" _
         exec {tty_fd}<&-
     }
-
-    # ask_autocontinue
-        # Purpose:
-        #   Auto-continue after N seconds with interactive override keys.
-        #
-        # Usage:
-        #   ask_autocontinue [seconds]
-        #
-        # Arguments:
-        #   $1  Countdown seconds (default: 5).
-        #
-        # Behavior:
-        #   - Non-interactive (no TTY on stdin/stdout): returns immediately (continue).
-        #   - Countdown mode accepts single-key commands:
-        #       - any key : continue immediately
-        #       - p       : pause (then any key continues, c/q/Esc cancels)
-        #       - c/q/Esc : cancel
-        #   - If countdown reaches 0 without input: continues.
-        #
-        # Inputs (globals):
-        #   Styling: WHITE, FX_ITALIC, RESET, MSG_CLR_CNCL (and td_sgr)
-        #
-        # Returns:
-        #   0  continue
-        #   1  cancelled
-    ask_autocontinue() {
-        # Usage: AutoContinue [seconds]
-        # Returns:
-        #   0 = continue
-        #   1 = cancelled
-        local seconds="${1:-5}"
-
-        # Non-interactive: never block
-        if [[ ! -t 0 || ! -t 1 ]]; then
-            return 0
-        fi
-
-        local paused=0
-        local key=""
-        local clr
-        clr="$(td_sgr "$WHITE" "$FX_ITALIC")"
-
-        while true; do
-            if (( paused )); then
-                printf "%s\nPaused. Press any key to continue, or 'c' to cancel...%s" "$clr" "$RESET"
-                IFS= read -r -n 1 -s key
-            else
-                printf "\r\033[K%sContinuing in %ds… (any key=now, p=pause, c=cancel)%s" "$clr" "$seconds" "$RESET"
-                IFS= read -r -n 1 -s -t 1 key || key=""
-            fi
-
-            if [[ -n "$key" ]]; then
-                case "$key" in
-                    p|P)
-                        paused=1
-                        printf "\n"
-                        continue
-                        ;;
-                    c|C|q|Q|$'\e')
-                        printf "\n${MSG_CLR_CNCL}Cancelled.${RESET}\n"
-                        return 1
-                        ;;
-                    *)
-                        printf "\n"
-                        return 0
-                        ;;
-                esac
-            fi
-
-            if (( ! paused )); then
-                ((seconds--))
-                if (( seconds <= 0 )); then
-                    printf "\n"
-                    return 0
-                fi
-            fi
-        done
-    } 
 
     # td_choose
         # Purpose:
@@ -709,6 +568,114 @@ set -uo pipefail
         printf -v "$varname" '%s' "$_choice"
     }
     
+    # ask_ok_redo_quit
+        # Purpose:
+        #   Convenience wrapper for a standard OK / Redo / Quit decision prompt.
+        #
+        #   Provides a simple API that optionally uses the timed soft-dialog engine
+        #   (td_dlg_autocontinue) for a countdown confirmation phase, while preserving
+        #   the traditional typed prompt fallback via ask().
+        #
+        #   This function normalizes the dialog result into a stable ORQ return
+        #   contract so calling code does not need to understand the dialog engine.
+        #
+        # Usage:
+        #   ask_ok_redo_quit "Proceed with operation?" [AUTO_CONFIRM_SECONDS]
+        #
+        # Arguments:
+        #   $1  Prompt text (without suffix).
+        #
+        #   $2  AUTO_CONFIRM_SECONDS
+        #       Optional countdown before automatically continuing.
+        #
+        #       0 (default)
+        #           Skip timed dialog and immediately show the typed prompt.
+        #
+        #       >0
+        #           Display a non-blocking timed dialog using td_dlg_autocontinue().
+        #           If no key is pressed before timeout, OK is assumed.
+        #
+        # Behavior:
+        #   Non-interactive environment:
+        #       If stdin/stdout are not attached to a TTY, the function returns OK
+        #       immediately to avoid blocking scripts or pipelines.
+        #
+        #   Timed dialog phase (if seconds > 0):
+        #       Delegates UI handling to td_dlg_autocontinue().
+        #
+        #       Supported actions:
+        #           Enter        => OK
+        #           R            => Redo
+        #           C / Esc      => Cancel (treated as Quit)
+        #           Q            => Quit
+        #           P / Space    => Pause/resume countdown
+        #           Other key    => Switch to typed prompt mode
+        #
+        #       Timeout:
+        #           Automatically continues with OK.
+        #
+        #   Typed prompt phase:
+        #       Uses ask() to read a token and interprets the response.
+        #
+        #       Accepted inputs (case-insensitive):
+        #           "" / OK / O                => OK
+        #           REDO / R                   => Redo
+        #           QUIT / Q / EXIT / CANCEL   => Quit
+        #
+        # Inputs (globals):
+        #   ask()                 Interactive input helper
+        #   td_dlg_autocontinue() Timed dialog engine
+        #
+        # Returns:
+        #   0  OK / Continue
+        #   1  Redo
+        #   2  Quit / Cancel
+        #   3  Invalid input (typed prompt only)
+        #
+        # Notes:
+        #   - This function defines the canonical ORQ interaction pattern used
+        #     throughout the Testadura script framework.
+        #   - The timed dialog UI and key handling are implemented by
+        #     td_dlg_autocontinue(); this function only maps the results into
+        #     the ORQ return contract.
+    ask_ok_redo_quit() {
+        local prompt="${1-}"
+        local seconds="${2:-0}"
+        local orq_response=""
+
+        # Non-interactive: never block; default OK
+        td_has_tty || return 0  
+
+        if (( seconds > 0 )); then
+            # Use tty-based soft dialog for the timed phase:
+            # E=Enter->OK, R=redo, C=cancel, P=pause, Q=quit, T=typed fallback, H=hide key legend
+            td_dlg_autocontinue "$seconds" "$prompt [OK/Redo/Quit]" "ERCPQTH"
+            local rc=$?
+
+            case "$rc" in
+                0|1)  return 0 ;;  # Enter or timeout => OK
+                3)    return 1 ;;  # redo
+                2|4)  return 2 ;;  # cancel/quit => Quit/Cancel
+                5)    ;;           # typed fallback requested
+                *)    ;;           # ignore anything else and fall through to typed
+            esac
+        fi
+
+        # Full typed prompt (original behavior)
+        ask --label "$prompt [OK/Redo/Quit]" --var orq_response
+
+        # Trim whitespace
+        orq_response="${orq_response#"${orq_response%%[![:space:]]*}"}"
+        orq_response="${orq_response%"${orq_response##*[![:space:]]}"}"
+
+        local upper="${orq_response^^}"
+        case "$upper" in
+            ""|OK|O)                    return 0 ;;
+            REDO|R)                     return 1 ;;
+            QUIT|Q|EXIT|CANCEL|C)       return 2 ;;
+            *)                          return 3 ;;
+        esac
+    }
 # --- File system validations -----------------------------------------------------
     # validate_file_exists
         # Purpose:
@@ -928,6 +895,7 @@ set -uo pipefail
 
         return 0
     }
+
     # validate_cidr
         #
         # Validate an IPv4 CIDR prefix length (0..32).

@@ -601,11 +601,13 @@ set -uo pipefail
         # Info-only builtins: perform action and EXIT.
         if (( FLAG_HELP )); then
             td_show_help
+            sayend "Information displayed"
             exit 0
         fi
 
         if (( FLAG_SHOWARGS )); then
             td_print_args
+            sayend "Information displayed"
             exit 0
         fi
 
@@ -613,6 +615,7 @@ set -uo pipefail
             td_print_metadata
             td_print
             td_print_framework_metadata
+            sayend "Information displayed"
             exit 0
         fi
         
@@ -621,28 +624,33 @@ set -uo pipefail
             td_print_cfg TD_SCRIPT_GLOBALS both
             td_print_sectionheader --border "-" --text "Framework configuration ($TD_FRAMEWORK_CFG_BASENAME)"
             td_print_cfg TD_FRAMEWORK_GLOBALS both
+            sayend "Information displayed"
             exit 0
         fi
 
         if (( FLAG_SHOWSTATE )); then
             td_print_state
+            sayend "Information displayed"
             exit 0
         fi
 
         if (( FLAG_SHOWENV )); then
             td_showenvironment
+            sayend "Information displayed"
             exit 0
         fi
 
         if (( FLAG_SHOWLICENSE )); then
             saydebug "Showing license as requested"
             td_print_license
+            sayend "Information displayed"
             exit 0
         fi
 
         if (( FLAG_SHOWREADME )); then
             saydebug "Showing README as requested"
             td_print_readme
+            sayend "Information displayed"
             exit 0
         fi
 

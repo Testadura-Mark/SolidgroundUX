@@ -54,7 +54,7 @@ set -uo pipefail
             printf "  - common dir (the folder that contains td-bootstrap.sh), e.g. /home/me/dev/solidgroundux/target-root/usr/local/lib/testadura/common\n"
             printf "  - full path to td-bootstrap.sh\n\n"
 
-            read -r -p "Path (empty to abort): " _root <dev/tty
+            read -r -p "Path (empty to abort): " _root </dev/tty
             [[ -n "$_root" ]] || exit 127
 
             if [[ "$_root" == */td-bootstrap.sh ]]; then
@@ -83,6 +83,7 @@ set -uo pipefail
     TD_SCRIPT_DIR="$(cd -- "$(dirname -- "$TD_SCRIPT_FILE")" && pwd)"
     TD_SCRIPT_BASE="$(basename -- "$TD_SCRIPT_FILE")"
     TD_SCRIPT_NAME="${TD_SCRIPT_BASE%.sh}"
+    TD_SCRIPT_TITLE="${TD_SCRIPT_NAME}"
     : "${TD_SCRIPT_DESC:=Canonical executable template for Testadura scripts}"
     : "${TD_SCRIPT_VERSION:=1.0}"
     : "${TD_SCRIPT_BUILD:=20250110}"
@@ -224,32 +225,40 @@ set -uo pipefail
 # --- Local script functions -------------------------------------------------------
 
  # --- Main ------------------------------------------------------------------------
-    # main MUST BE LAST function in script
-        # Main entry point for the executable script.
+    # main
+        #   Script entry point for preparing a release archive.
+        #
+        # Description:
+        #   Initializes the Testadura framework via td_bootstrap, handles builtin
+        #   framework arguments, then resolves parameters and builds the release.
         #
         # Execution flow:
-        #   1) Invoke td_bootstrap to initialize the framework environment, parse
-        #      framework-level arguments, and optionally load UI, state, and config.
-        #   2) Abort immediately if bootstrap reports an error condition.
-        #   3) Enact framework builtin arguments (help, showargs, state reset, etc.).
-        #      Info-only builtins terminate execution; mutating builtins may continue.
-        #   4) Continue with script-specific logic.
+        #   1) td_bootstrap --state --needroot -- "$@"
+        #      - Initializes framework runtime, UI, logging, and argument parsing
+        #      - Loads persistent state (required for --auto reuse)
+        #      - Enforces root privileges (required for consistent staging/output paths)
+        #   2) td_builtinarg_handler
+        #      - Executes builtin flags (help/showargs/resetstate/etc.)
+        #      - Info-only builtins exit immediately
+        #   3) td_print_titlebar
+        #      - Prints standard script header UI
+        #   4) __get_parameters
+        #      - Resolve and confirm parameter set (or reuse in auto mode)
+        #   5) __create_tar
+        #      - Stage workspace and generate tarball + manifest + checksums
         #
-        # The script author explicitly selects which framework features to enable.
-        # None of these options are required; include only what this script needs.
+        # Arguments:
+        #   $@  Script command-line arguments (framework + script-specific).
         #
-        # Available bootstrap options:
-        #   --state        Enable persistent state loading/saving.
-        #   --needroot     Require execution as root.
-        #   --cannotroot   Require execution as non-root.
-        #   --log          Enable logging to file.
-        #   --console      Enable logging to console output.
-        #   --             End of bootstrap options; remaining args are script arguments.
+        # Output:
+        #   Produces release artifacts under STAGING_ROOT.
+        #
+        # Returns:
+        #   Exits with the status returned by the release creation steps.
         #
         # Notes:
-        #   - Builtin argument handling is centralized in td_builtinarg_handler.
-        #   - Scripts may override builtin handling, but doing so transfers
-        #     responsibility for correct behavior to the script author.
+        #   This script requires --state to support reproducible "auto" runs and
+        #   parameter persistence between executions.
     main() {
         # -- Bootstrap
             td_bootstrap -- "$@"

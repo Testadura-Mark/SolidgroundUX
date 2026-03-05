@@ -15,10 +15,6 @@
 		{
 			"name": "testadura",
 			"path": "../../.state/testadura"
-		},
-		{
-			"name": "solidgroundux",
-			"path": "../../../../usr/local/share/solidgroundux"
 		}
 	],
 	"settings": {
