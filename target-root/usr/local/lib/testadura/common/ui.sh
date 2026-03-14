@@ -726,7 +726,7 @@ set -uo pipefail
         local sub="${TD_SCRIPT_DESC:-""}"
         local subclr="$(td_sgr "$WHITE" "" "$FX_ITALIC")"
         local subjust="C"
-        local border="="
+        local border="$DL_H"
         local borderclr="${TUI_BORDER}"
         local padleft=4
         local maxwidth=80

@@ -1,652 +1,0 @@
-Script started on 2026-03-12 02:07:48+00:00 [TERM="xterm-256color" TTY="/dev/pts/3" COLUMNS="134" LINES="109"]
-[?2004h]0;sysadmin@ubuntu-template: ~/dev/SolidgroundUX/target-root/usr/local/libexec/testadura[01;32msysadmin@ubuntu-template[00m:[01;34m~/dev/SolidgroundUX/target-root/usr/local/libexec/testadura[00m$ ./bootstrap-test.sh --verbose --debug
-[?2004ldeclare -- bootstrap="/home/sysadmin/dev/SolidgroundUX/target-root/usr/local/lib/testadura/common/td-bootstrap.sh"
-[38;5;82mSTART[0m	Initializing framework
-[38;5;250mINFO[0m 	Initializing bootstrap...
-[38;5;250mINFO[0m 	Sourcing bootstrap environment
-[38;5;250mINFO[0m 	Rebasing directories
-[38;5;250mINFO[0m 	Making sure directories exist
-[38;5;250mINFO[0m 	Creating framework directories
-[38;5;250mINFO[0m 	Trying /home/sysadmin/dev/SolidgroundUX/target-root/usr/local/lib/testadura/common
-[38;5;250mINFO[0m 	Trying /home/sysadmin/dev/SolidgroundUX/target-root/etc/testadura
-[38;5;250mINFO[0m 	Trying /home/sysadmin/.config/testadura
-[38;5;250mINFO[0m 	Set user rights
-[38;5;250mINFO[0m 	Trying /home/sysadmin/.state/testadura
-[38;5;250mINFO[0m 	Set user rights
-[38;5;250mINFO[0m 	Trying /home/sysadmin/dev/SolidgroundUX/target-root/usr/local/lib/testadura/styles
-[38;5;250mINFO[0m 	Trying /home/sysadmin/dev/SolidgroundUX/target-root/usr/local/share/doc/solidgroundux
-[38;5;250mINFO[0m 	Trying /home/sysadmin/dev/SolidgroundUX/target-root/var/log/testadura
-[38;5;250mINFO[0m 	Trying /home/sysadmin/.log/testadura
-[38;5;250mINFO[0m 	Set user rights
-[38;5;250mINFO[0m 	Parsing bootstrap arguments...
-[38;5;250mINFO[0m 	Loading core libraries...
-[38;5;214mWARNING [0m  [Framework] system cfg not found: /home/sysadmin/dev/SolidgroundUX/target-root/etc/testadura/td_framework_globals.cfg (using default settings; installer should create it) [0m
-[38;5;201mDEBUG   [0m  Finalizing initial settings [td-bootstrap.sh:td_bootstrap:668] [0m
-[0;38;5;250mINFO    [0m  Applying bootstrap options [0m
-[0;38;5;250mINFO    [0m  Script requires root permissions [0m
-[sudo] password for sysadmin: 
-sudo: a password is required
-[?2004h]0;sysadmin@ubuntu-template: ~/dev/SolidgroundUX/target-root/usr/local/libexec/testadura[01;32msysadmin@ubuntu-template[00m:[01;34m~/dev/SolidgroundUX/target-root/usr/local/libexec/testadura[00m$ ./bootstrap-test.sh --verbose --debugclear[K./bootstrap-test.sh --verbose --debug[K./bootstrap-test.sh --verbose --debugclear[K./prepare-release.sh --dryrun --verbose --debugclear[K./bootstrap-test.sh --verbose --debug[K./bootstrap-test.sh --verbose --debugclear[K./prepare-release.sh --dryrun --verbose --debugdeploy-workspace.sh --dryrun --verbose --debug [A[C[C[C[C[C[C[C[C[C[C[C[C[C[C[C[C[C[C[C[C[C[C[C[C[C[C[C[C[C[C[C[C[C[C[C[C[C[C[C[C[C[C[C[C[C[C[C[C[C[C[C[C[C[C[C[C[C[C[C[C[C[C[C[C[C[C[C[C[C[C[C[C[C[C[C[C[C[C[C[C[C[C[C[C[C[C[C[C[18Pcreate-workspace.sh --dryrun
-[K[A[C[C[C[C[C[C[C[C[C[C[C[C[C[C[C[C[C[C[C[C[C[C[C[C[C[C[C[C[C[C[C[C[C[C[C[C[C[C[C[C[C[C[C[C[C[C[C[C[C[C[C[C[C[C[C[C[C[C[C[C[C[C[C[C[C[C[C[C[C[C[C[C[C[C[C[C[C[C[C[C[C[C[C[C[C[C[C[C[C[C[C[C[C[C[C[C[C[C[C[C[C[C[C[C[C[C[C[C[C[C[C[C[C[C[C[C[1Pbootstrap-test.sh --dryrun --verbose --debugclear[K./bootstrap-test.sh --dryrun --verbose --debug[Kcreate-workspace.sh --dryrundeploy-workspace.sh --dryrun --verbose --debug [A[C[C[C[C[C[C[C[C[C[C[C[C[C[C[C[C[C[C[C[C[C[C[C[C[C[C[C[C[C[C[C[C[C[C[C[C[C[C[C[C[C[C[C[C[C[C[C[C[C[C[C[C[C[C[C[C[C[C[C[C[C[C[C[C[C[C[C[C[C[C[C[C[C[C[C[C[C[C[C[C[C[C[C[C[C[C[C[C[1Pprepare-releas
-[K[A[C[C[C[C[C[C[C[C[C[C[C[C[C[C[C[C[C[C[C[C[C[C[C[C[C[C[C[C[C[C[C[C[C[C[C[C[C[C[C[C[C[C[C[C[C[C[C[C[C[C[C[C[C[C[C[C[C[C[C[C[C[C[C[C[C[C[C[C[C[C[C[C[C[C[C[C[C[C[C[C[C[C[C[C[C[C[C[C[C[C[C[C[C[C[C[C[C[C[C[C[C[C[C[C[C[C[C[C[C[C[C[C[C[C[C[C[C[C[C[C[C[C[C[C[C[C[C[C[C[C[C[C[Cclear[K./bootstrap-test.sh --verbose --debug[K./sgnd-console.sh 
-[?2004ldeclare -- bootstrap="/home/sysadmin/dev/SolidgroundUX/target-root/usr/local/lib/testadura/common/td-bootstrap.sh"
-[38;5;82mSTART[0m	Initializing framework
-[38;5;250mINFO[0m 	Initializing bootstrap...
-[38;5;250mINFO[0m 	Sourcing bootstrap environment
-[38;5;250mINFO[0m 	Rebasing directories
-[38;5;250mINFO[0m 	Making sure directories exist
-[38;5;250mINFO[0m 	Creating framework directories
-[38;5;250mINFO[0m 	Trying /home/sysadmin/dev/SolidgroundUX/target-root/usr/local/lib/testadura/common
-[38;5;250mINFO[0m 	Trying /home/sysadmin/dev/SolidgroundUX/target-root/etc/testadura
-[38;5;250mINFO[0m 	Trying /home/sysadmin/.config/testadura
-[38;5;250mINFO[0m 	Set user rights
-[38;5;250mINFO[0m 	Trying /home/sysadmin/.state/testadura
-[38;5;250mINFO[0m 	Set user rights
-[38;5;250mINFO[0m 	Trying /home/sysadmin/dev/SolidgroundUX/target-root/usr/local/lib/testadura/styles
-[38;5;250mINFO[0m 	Trying /home/sysadmin/dev/SolidgroundUX/target-root/usr/local/share/doc/solidgroundux
-[38;5;250mINFO[0m 	Trying /home/sysadmin/dev/SolidgroundUX/target-root/var/log/testadura
-[38;5;250mINFO[0m 	Trying /home/sysadmin/.log/testadura
-[38;5;250mINFO[0m 	Set user rights
-[38;5;250mINFO[0m 	Parsing bootstrap arguments...
-[38;5;250mINFO[0m 	Loading core libraries...
-[38;5;214mWARNING [0m  [Framework] system cfg not found: /home/sysadmin/dev/SolidgroundUX/target-root/etc/testadura/td_framework_globals.cfg (using default settings; installer should create it) [0m
-[38;5;46mEND     [0m  Finished bootstrap [0m
-[38;5;51m================================================================================[0m
-    [0;37;1mSolidgroundUX Console[0m                                                 [0;37;1m[38;5;196mCOMMIT[0m[0m
-[0;37;3m                            Interactive script host                             [0m
-[38;5;51m================================================================================[0m
- 1) Sample message -- Show a simple demo message
- q) Quit
-[?2004h[0;38;5;250mSelect[0m: [0;33m1
-[?2004l[0m[K[0;38;5;250mPress enter to continue[0m
-[K[0;38;5;250mEnter=continue; P/Space=pause[0m
-[K[0;37;3mContinuing in 15s...[0m[2A[K[0;38;5;250mPress enter to continue[0m
-[K[0;38;5;250mEnter=continue; P/Space=pause[0m
-[K[0;37;3mContinuing in 14s...[0m[2A[K[0;38;5;250mPress enter to continue[0m
-[K[0;38;5;250mEnter=continue; P/Space=pause[0m
-[K[0;37;3mContinuing in 13s...[0m[2A[K[0;38;5;250mPress enter to continue[0m
-[K[0;38;5;250mEnter=continue; P/Space=pause[0m
-[K[0;37;3mContinuing in 12s...[0m[2A[K[0;38;5;250mPress enter to continue[0m
-[K[0;38;5;250mEnter=continue; P/Space=pause[0m
-[K[0;37;3mContinuing in 11s...[0m[2A[K[0;38;5;250mPress enter to continue[0m
-[K[0;38;5;250mEnter=continue; P/Space=pause[0m
-[K[0;37;3mContinuing in 10s...[0m[2A[K[0;38;5;250mPress enter to continue[0m
-[K[0;38;5;250mEnter=continue; P/Space=pause[0m
-[K[0;37;3mContinuing in 9s...[0m[2A[K[0;38;5;250mPress enter to continue[0m
-[K[0;38;5;250mEnter=continue; P/Space=pause[0m
-[K[0;37;3mContinuing in 8s...[0m[2A[K[0;38;5;250mPress enter to continue[0m
-[K[0;38;5;250mEnter=continue; P/Space=pause[0m
-[K[0;37;3mContinuing in 7s...[0m[2A[K[0;38;5;250mPress enter to continue[0m
-[K[0;38;5;250mEnter=continue; P/Space=pause[0m
-[K[0;37;3mContinuing in 6s...[0m[2A[K[0;38;5;250mPress enter to continue[0m
-[K[0;38;5;250mEnter=continue; P/Space=pause[0m
-[K[0;37;3mContinuing in 5s...[0m[2A[K[0;38;5;250mPress enter to continue[0m
-[K[0;38;5;250mEnter=continue; P/Space=pause[0m
-[K[0;37;3mContinuing in 4s...[0m[2A[K[0;38;5;250mPress enter to continue[0m
-[K[0;38;5;250mEnter=continue; P/Space=pause[0m
-[K[0;37;3mContinuing in 3s...[0m[2A[K[0;38;5;250mPress enter to continue[0m
-[K[0;38;5;250mEnter=continue; P/Space=pause[0m
-[K[0;37;3mContinuing in 2s...[0m[2A[K[0;38;5;250mPress enter to continue[0m
-[K[0;38;5;250mEnter=continue; P/Space=pause[0m
-[K[0;37;3mContinuing in 1s...[0m[2A[K[0;38;5;250mPress enter to continue[0m
-[K[0;38;5;250mEnter=continue; P/Space=pause[0m
-[K[0;37;3mContinuing in 0s...[0m[2A[2B
-[0;38;5;250mAuto-continued.[0m
-[38;5;51m================================================================================[0m
-    [0;37;1mSolidgroundUX Console[0m                                                 [0;37;1m[38;5;196mCOMMIT[0m[0m
-[0;37;3m                            Interactive script host                             [0m
-[38;5;51m================================================================================[0m
- 1) Sample message -- Show a simple demo message
- q) Quit
-[?2004h[0;38;5;250mSelect[0m: [0;33mq
-[?2004l[0m[?2004h]0;sysadmin@ubuntu-template: ~/dev/SolidgroundUX/target-root/usr/local/libexec/testadura[01;32msysadmin@ubuntu-template[00m:[01;34m~/dev/SolidgroundUX/target-root/usr/local/libexec/testadura[00m$ ./sgnd-console.sh 
-[?2004ldeclare -- bootstrap="/home/sysadmin/dev/SolidgroundUX/target-root/usr/local/lib/testadura/common/td-bootstrap.sh"
-[38;5;82mSTART[0m	Initializing framework
-[38;5;250mINFO[0m 	Initializing bootstrap...
-[38;5;250mINFO[0m 	Sourcing bootstrap environment
-[38;5;250mINFO[0m 	Rebasing directories
-[38;5;250mINFO[0m 	Making sure directories exist
-[38;5;250mINFO[0m 	Creating framework directories
-[38;5;250mINFO[0m 	Trying /home/sysadmin/dev/SolidgroundUX/target-root/usr/local/lib/testadura/common
-[38;5;250mINFO[0m 	Trying /home/sysadmin/dev/SolidgroundUX/target-root/etc/testadura
-[38;5;250mINFO[0m 	Trying /home/sysadmin/.config/testadura
-[38;5;250mINFO[0m 	Set user rights
-[38;5;250mINFO[0m 	Trying /home/sysadmin/.state/testadura
-[38;5;250mINFO[0m 	Set user rights
-[38;5;250mINFO[0m 	Trying /home/sysadmin/dev/SolidgroundUX/target-root/usr/local/lib/testadura/styles
-[38;5;250mINFO[0m 	Trying /home/sysadmin/dev/SolidgroundUX/target-root/usr/local/share/doc/solidgroundux
-[38;5;250mINFO[0m 	Trying /home/sysadmin/dev/SolidgroundUX/target-root/var/log/testadura
-[38;5;250mINFO[0m 	Trying /home/sysadmin/.log/testadura
-[38;5;250mINFO[0m 	Set user rights
-[38;5;250mINFO[0m 	Parsing bootstrap arguments...
-[38;5;250mINFO[0m 	Loading core libraries...
-[38;5;214mWARNING [0m  [Framework] system cfg not found: /home/sysadmin/dev/SolidgroundUX/target-root/etc/testadura/td_framework_globals.cfg (using default settings; installer should create it) [0m
-[38;5;46mEND     [0m  Finished bootstrap [0m
-[38;5;196mERROR   [0m  Handler not defined for menu key 'sample-message': Show a simple demo message [0m
-[38;5;196mERROR   [0m  Failed to load module: /home/sysadmin/dev/SolidgroundUX/target-root/usr/local/libexec/testadura/console-modules/console-mod-sample.sh [0m
-[?2004h]0;sysadmin@ubuntu-template: ~/dev/SolidgroundUX/target-root/usr/local/libexec/testadura[01;32msysadmin@ubuntu-template[00m:[01;34m~/dev/SolidgroundUX/target-root/usr/local/libexec/testadura[00m$ ./sgnd-console.sh bootstrap-test.sh --verbose --debug[19Psgnd-console.sh 
-[?2004ldeclare -- bootstrap="/home/sysadmin/dev/SolidgroundUX/target-root/usr/local/lib/testadura/common/td-bootstrap.sh"
-[38;5;82mSTART[0m	Initializing framework
-[38;5;250mINFO[0m 	Initializing bootstrap...
-[38;5;250mINFO[0m 	Sourcing bootstrap environment
-[38;5;250mINFO[0m 	Rebasing directories
-[38;5;250mINFO[0m 	Making sure directories exist
-[38;5;250mINFO[0m 	Creating framework directories
-[38;5;250mINFO[0m 	Trying /home/sysadmin/dev/SolidgroundUX/target-root/usr/local/lib/testadura/common
-[38;5;250mINFO[0m 	Trying /home/sysadmin/dev/SolidgroundUX/target-root/etc/testadura
-[38;5;250mINFO[0m 	Trying /home/sysadmin/.config/testadura
-[38;5;250mINFO[0m 	Set user rights
-[38;5;250mINFO[0m 	Trying /home/sysadmin/.state/testadura
-[38;5;250mINFO[0m 	Set user rights
-[38;5;250mINFO[0m 	Trying /home/sysadmin/dev/SolidgroundUX/target-root/usr/local/lib/testadura/styles
-[38;5;250mINFO[0m 	Trying /home/sysadmin/dev/SolidgroundUX/target-root/usr/local/share/doc/solidgroundux
-[38;5;250mINFO[0m 	Trying /home/sysadmin/dev/SolidgroundUX/target-root/var/log/testadura
-[38;5;250mINFO[0m 	Trying /home/sysadmin/.log/testadura
-[38;5;250mINFO[0m 	Set user rights
-[38;5;250mINFO[0m 	Parsing bootstrap arguments...
-[38;5;250mINFO[0m 	Loading core libraries...
-[38;5;214mWARNING [0m  [Framework] system cfg not found: /home/sysadmin/dev/SolidgroundUX/target-root/etc/testadura/td_framework_globals.cfg (using default settings; installer should create it) [0m
-[38;5;46mEND     [0m  Finished bootstrap [0m
-[38;5;51m================================================================================[0m
-    [0;37;1mSolidgroundUX Console[0m                                                 [0;37;1m[38;5;196mCOMMIT[0m[0m
-[0;37;3m                            Interactive script host                             [0m
-[38;5;51m================================================================================[0m
-
-System tools
-General system operations
-   1) System status -- Show system status
-
-console-mod-sample
-   2) Sample message -- Show a simple demo message
- q) Quit
-[?2004h[0;38;5;250mSelect[0m: [0;33m1
-[?2004l[0m[K[0;38;5;250mPress Enter to continue...[0m
-[K[0;38;5;250mEnter=continue; P/Space=pause[0m
-[K[0;37;3mContinuing in 15s...[0m[2A[K[0;38;5;250mPress Enter to continue...[0m
-[K[0;38;5;250mEnter=continue; P/Space=pause[0m
-[K[0;37;3mContinuing in 14s...[0m[2A[K[0;38;5;250mPress Enter to continue...[0m
-[K[0;38;5;250mEnter=continue; P/Space=pause[0m
-[K[0;37;3mContinuing in 13s...[0m[2A[K[0;38;5;250mPress Enter to continue...[0m
-[K[0;38;5;250mEnter=continue; P/Space=pause[0m
-[K[0;37;3mContinuing in 12s...[0m[2A[K[0;38;5;250mPress Enter to continue...[0m
-[K[0;38;5;250mEnter=continue; P/Space=pause[0m
-[K[0;37;3mContinuing in 11s...[0m[2A[K[0;38;5;250mPress Enter to continue...[0m
-[K[0;38;5;250mEnter=continue; P/Space=pause[0m
-[K[0;37;3mContinuing in 10s...[0m[2A[K[0;38;5;250mPress Enter to continue...[0m
-[K[0;38;5;250mEnter=continue; P/Space=pause[0m
-[K[0;37;3mContinuing in 9s...[0m[2A[K[0;38;5;250mPress Enter to continue...[0m
-[K[0;38;5;250mEnter=continue; P/Space=pause[0m
-[K[0;37;3mContinuing in 8s...[0m[2A[K[0;38;5;250mPress Enter to continue...[0m
-[K[0;38;5;250mEnter=continue; P/Space=resume[0m
-[K[0;37;3mPaused... Press P or Space to resume countdown[0m[2A[K[0;38;5;250mPress Enter to continue...[0m
-[K[0;38;5;250mEnter=continue; P/Space=pause[0m
-[K[0;37;3mContinuing in 8s...[0m[2A[K[0;38;5;250mPress Enter to continue...[0m
-[K[0;38;5;250mEnter=continue; P/Space=pause[0m
-[K[0;37;3mContinuing in 7s...[0m[2A[K[0;38;5;250mPress Enter to continue...[0m
-[K[0;38;5;250mEnter=continue; P/Space=pause[0m
-[K[0;37;3mContinuing in 6s...[0m[2A[K[0;38;5;250mPress Enter to continue...[0m
-[K[0;38;5;250mEnter=continue; P/Space=pause[0m
-[K[0;37;3mContinuing in 5s...[0m[2A[K[0;38;5;250mPress Enter to continue...[0m
-[K[0;38;5;250mEnter=continue; P/Space=pause[0m
-[K[0;37;3mContinuing in 4s...[0m[2A[K[0;38;5;250mPress Enter to continue...[0m
-[K[0;38;5;250mEnter=continue; P/Space=pause[0m
-[K[0;37;3mContinuing in 3s...[0m[2A[K[0;38;5;250mPress Enter to continue...[0m
-[K[0;38;5;250mEnter=continue; P/Space=pause[0m
-[K[0;37;3mContinuing in 2s...[0m[2A[K[0;38;5;250mPress Enter to continue...[0m
-[K[0;38;5;250mEnter=continue; P/Space=pause[0m
-[K[0;37;3mContinuing in 1s...[0m[2A[2B
-[38;5;51m================================================================================[0m
-    [0;37;1mSolidgroundUX Console[0m                                                 [0;37;1m[38;5;196mCOMMIT[0m[0m
-[0;37;3m                            Interactive script host                             [0m
-[38;5;51m================================================================================[0m
-
-System tools
-General system operations
-   1) System status -- Show system status
-
-console-mod-sample
-   2) Sample message -- Show a simple demo message
- q) Quit
-[?2004h[0;38;5;250mSelect[0m: [0;33mq
-[?2004l[0m[?2004h]0;sysadmin@ubuntu-template: ~/dev/SolidgroundUX/target-root/usr/local/libexec/testadura[01;32msysadmin@ubuntu-template[00m:[01;34m~/dev/SolidgroundUX/target-root/usr/local/libexec/testadura[00m$ ./sgnd-console.sh 
-[?2004ldeclare -- bootstrap="/home/sysadmin/dev/SolidgroundUX/target-root/usr/local/lib/testadura/common/td-bootstrap.sh"
-[38;5;82mSTART[0m	Initializing framework
-[38;5;250mINFO[0m 	Initializing bootstrap...
-[38;5;250mINFO[0m 	Sourcing bootstrap environment
-[38;5;250mINFO[0m 	Rebasing directories
-[38;5;250mINFO[0m 	Making sure directories exist
-[38;5;250mINFO[0m 	Creating framework directories
-[38;5;250mINFO[0m 	Trying /home/sysadmin/dev/SolidgroundUX/target-root/usr/local/lib/testadura/common
-[38;5;250mINFO[0m 	Trying /home/sysadmin/dev/SolidgroundUX/target-root/etc/testadura
-[38;5;250mINFO[0m 	Trying /home/sysadmin/.config/testadura
-[38;5;250mINFO[0m 	Set user rights
-[38;5;250mINFO[0m 	Trying /home/sysadmin/.state/testadura
-[38;5;250mINFO[0m 	Set user rights
-[38;5;250mINFO[0m 	Trying /home/sysadmin/dev/SolidgroundUX/target-root/usr/local/lib/testadura/styles
-[38;5;250mINFO[0m 	Trying /home/sysadmin/dev/SolidgroundUX/target-root/usr/local/share/doc/solidgroundux
-[38;5;250mINFO[0m 	Trying /home/sysadmin/dev/SolidgroundUX/target-root/var/log/testadura
-[38;5;250mINFO[0m 	Trying /home/sysadmin/.log/testadura
-[38;5;250mINFO[0m 	Set user rights
-[38;5;250mINFO[0m 	Parsing bootstrap arguments...
-[38;5;250mINFO[0m 	Loading core libraries...
-[38;5;214mWARNING [0m  [Framework] system cfg not found: /home/sysadmin/dev/SolidgroundUX/target-root/etc/testadura/td_framework_globals.cfg (using default settings; installer should create it) [0m
-[38;5;46mEND     [0m  Finished bootstrap [0m
-[38;5;51m================================================================================[0m
-    [0;37;1mSolidgroundUX Console[0m                                                 [0;37;1m[38;5;196mCOMMIT[0m[0m
-[0;37;3m                            Interactive script host                             [0m
-[38;5;51m================================================================================[0m
-
-System tools
-General system operations
-   1) System status -- Show system status
-
-console-mod-sample
-   2) Sample message -- Show a simple demo message
- q) Quit
-[?2004h[0;38;5;250mSelect[0m: [0;33m1
-[?2004l[0m[K[0;38;5;250m [0m
-[K[0;38;5;250mEnter=continue; P/Space=pause[0m
-[K[0;37;3mContinuing in 15s...[0m[2A[K[0;38;5;250m [0m
-[K[0;38;5;250mEnter=continue; P/Space=pause[0m
-[K[0;37;3mContinuing in 14s...[0m[2A[K[0;38;5;250m [0m
-[K[0;38;5;250mEnter=continue; P/Space=pause[0m
-[K[0;37;3mContinuing in 13s...[0m[2A[K[0;38;5;250m [0m
-[K[0;38;5;250mEnter=continue; P/Space=pause[0m
-[K[0;37;3mContinuing in 12s...[0m[2A[K[0;38;5;250m [0m
-[K[0;38;5;250mEnter=continue; P/Space=pause[0m
-[K[0;37;3mContinuing in 11s...[0m[2A[K[0;38;5;250m [0m
-[K[0;38;5;250mEnter=continue; P/Space=pause[0m
-[K[0;37;3mContinuing in 10s...[0m[2A[K[0;38;5;250m [0m
-[K[0;38;5;250mEnter=continue; P/Space=pause[0m
-[K[0;37;3mContinuing in 9s...[0m[2A[K[0;38;5;250m [0m
-[K[0;38;5;250mEnter=continue; P/Space=resume[0m
-[K[0;37;3mPaused... Press P or Space to resume countdown[0m[2A[K[0;38;5;250m [0m
-[K[0;38;5;250mEnter=continue; P/Space=pause[0m
-[K[0;37;3mContinuing in 9s...[0m[2A[K[0;38;5;250m [0m
-[K[0;38;5;250mEnter=continue; P/Space=pause[0m
-[K[0;37;3mContinuing in 8s...[0m[2A[K[0;38;5;250m [0m
-[K[0;38;5;250mEnter=continue; P/Space=pause[0m
-[K[0;37;3mContinuing in 7s...[0m[2A[2B
-[38;5;51m================================================================================[0m
-    [0;37;1mSolidgroundUX Console[0m                                                 [0;37;1m[38;5;196mCOMMIT[0m[0m
-[0;37;3m                            Interactive script host                             [0m
-[38;5;51m================================================================================[0m
-
-System tools
-General system operations
-   1) System status -- Show system status
-
-console-mod-sample
-   2) Sample message -- Show a simple demo message
- q) Quit
-[?2004h[0;38;5;250mSelect[0m: [0;33m^C[?2004l
-[?2004h]0;sysadmin@ubuntu-template: ~/dev/SolidgroundUX/target-root/usr/local/libexec/testadura[01;32msysadmin@ubuntu-template[00m:[01;34m~/dev/SolidgroundUX/target-root/usr/local/libexec/testadura[00m$ ./sgnd-console.sh 
-[?2004ldeclare -- bootstrap="/home/sysadmin/dev/SolidgroundUX/target-root/usr/local/lib/testadura/common/td-bootstrap.sh"
-[38;5;82mSTART[0m	Initializing framework
-[38;5;250mINFO[0m 	Initializing bootstrap...
-[38;5;250mINFO[0m 	Sourcing bootstrap environment
-[38;5;250mINFO[0m 	Rebasing directories
-[38;5;250mINFO[0m 	Making sure directories exist
-[38;5;250mINFO[0m 	Creating framework directories
-[38;5;250mINFO[0m 	Trying /home/sysadmin/dev/SolidgroundUX/target-root/usr/local/lib/testadura/common
-[38;5;250mINFO[0m 	Trying /home/sysadmin/dev/SolidgroundUX/target-root/etc/testadura
-[38;5;250mINFO[0m 	Trying /home/sysadmin/.config/testadura
-[38;5;250mINFO[0m 	Set user rights
-[38;5;250mINFO[0m 	Trying /home/sysadmin/.state/testadura
-[38;5;250mINFO[0m 	Set user rights
-[38;5;250mINFO[0m 	Trying /home/sysadmin/dev/SolidgroundUX/target-root/usr/local/lib/testadura/styles
-[38;5;250mINFO[0m 	Trying /home/sysadmin/dev/SolidgroundUX/target-root/usr/local/share/doc/solidgroundux
-[38;5;250mINFO[0m 	Trying /home/sysadmin/dev/SolidgroundUX/target-root/var/log/testadura
-[38;5;250mINFO[0m 	Trying /home/sysadmin/.log/testadura
-[38;5;250mINFO[0m 	Set user rights
-[38;5;250mINFO[0m 	Parsing bootstrap arguments...
-[38;5;250mINFO[0m 	Loading core libraries...
-[38;5;214mWARNING [0m  [Framework] system cfg not found: /home/sysadmin/dev/SolidgroundUX/target-root/etc/testadura/td_framework_globals.cfg (using default settings; installer should create it) [0m
-[38;5;46mEND     [0m  Finished bootstrap [0m
-[38;5;51m================================================================================[0m
-    [0;37;1msgnd-console[0m                                                          [0;37;1m[38;5;196mCOMMIT[0m[0m
-[0;37;3m                           SolidGroundUX console host                           [0m
-[38;5;51m================================================================================[0m
-[38;5;51m---- [0m[0;37;1mSystem tools[0m [38;5;51m--------------------------------------------------------------[0m
-[0;38;5;250m1) System status -- Show system status                                          [0m
-
-[38;5;51m---- [0m[0;37;1mconsole-mod-sample[0m [38;5;51m--------------------------------------------------------[0m
-[0;38;5;250m2) Sample message -- Show a simple demo message                                 [0m
-
-[38;5;51m--------------------------------------------------------------------------------[0m
-[0;38;5;250mq) Quit                                                                         [0m
-
-[?2004h[0;38;5;250mSelect[0m: [0;33mq
-[?2004l[0m./sgnd-console.sh: line 766: args.: command not found
-declare -- bootstrap="/home/sysadmin/dev/SolidgroundUX/target-root/usr/local/lib/testadura/common/td-bootstrap.sh"
-[38;5;46mSTART   [0m  Initializing framework [0m
-[38;5;46mEND     [0m  Finished bootstrap [0m
-[38;5;196mERROR   [0m  Duplicate menu key: sys-status [0m
-[38;5;196mERROR   [0m  Duplicate menu key: sample-message [0m
-[38;5;196mERROR   [0m  Failed to load module: /home/sysadmin/dev/SolidgroundUX/target-root/usr/local/libexec/testadura/console-modules/console-mod-sample.sh [0m
-[?2004h]0;sysadmin@ubuntu-template: ~/dev/SolidgroundUX/target-root/usr/local/libexec/testadura[01;32msysadmin@ubuntu-template[00m:[01;34m~/dev/SolidgroundUX/target-root/usr/local/libexec/testadura[00m$ ./sgnd-console.sh 
-[?2004ldeclare -- bootstrap="/home/sysadmin/dev/SolidgroundUX/target-root/usr/local/lib/testadura/common/td-bootstrap.sh"
-[38;5;82mSTART[0m	Initializing framework
-[38;5;250mINFO[0m 	Initializing bootstrap...
-[38;5;250mINFO[0m 	Sourcing bootstrap environment
-[38;5;250mINFO[0m 	Rebasing directories
-[38;5;250mINFO[0m 	Making sure directories exist
-[38;5;250mINFO[0m 	Creating framework directories
-[38;5;250mINFO[0m 	Trying /home/sysadmin/dev/SolidgroundUX/target-root/usr/local/lib/testadura/common
-[38;5;250mINFO[0m 	Trying /home/sysadmin/dev/SolidgroundUX/target-root/etc/testadura
-[38;5;250mINFO[0m 	Trying /home/sysadmin/.config/testadura
-[38;5;250mINFO[0m 	Set user rights
-[38;5;250mINFO[0m 	Trying /home/sysadmin/.state/testadura
-[38;5;250mINFO[0m 	Set user rights
-[38;5;250mINFO[0m 	Trying /home/sysadmin/dev/SolidgroundUX/target-root/usr/local/lib/testadura/styles
-[38;5;250mINFO[0m 	Trying /home/sysadmin/dev/SolidgroundUX/target-root/usr/local/share/doc/solidgroundux
-[38;5;250mINFO[0m 	Trying /home/sysadmin/dev/SolidgroundUX/target-root/var/log/testadura
-[38;5;250mINFO[0m 	Trying /home/sysadmin/.log/testadura
-[38;5;250mINFO[0m 	Set user rights
-[38;5;250mINFO[0m 	Parsing bootstrap arguments...
-[38;5;250mINFO[0m 	Loading core libraries...
-[38;5;214mWARNING [0m  [Framework] system cfg not found: /home/sysadmin/dev/SolidgroundUX/target-root/etc/testadura/td_framework_globals.cfg (using default settings; installer should create it) [0m
-[38;5;46mEND     [0m  Finished bootstrap [0m
-[38;5;51m================================================================================[0m
-    [0;37;1msgnd-console[0m                                                          [0;37;1m[38;5;196mCOMMIT[0m[0m
-[0;37;3m                           SolidGroundUX console host                           [0m
-[38;5;51m================================================================================[0m
-
-[38;5;51m---- [0;37;1mSystem tools[0m
-[0;38;5;250m    1) System status -- Show system status                                      [0m
-
-[38;5;51m---- [0;37;1mconsole-mod-sample[0m
-[0;38;5;250m    2) Sample message -- Show a simple demo message                             [0m
-
-[38;5;51m--------------------------------------------------------------------------------[0m
-[0;38;5;250mq) Quit                                                                         [0m
-
-[?2004h[0;38;5;250mSelect[0m: [0;33m^C[?2004l
-[?2004h]0;sysadmin@ubuntu-template: ~/dev/SolidgroundUX/target-root/usr/local/libexec/testadura[01;32msysadmin@ubuntu-template[00m:[01;34m~/dev/SolidgroundUX/target-root/usr/local/libexec/testadura[00m$ ./sgnd-console.sh 
-[?2004ldeclare -- bootstrap="/home/sysadmin/dev/SolidgroundUX/target-root/usr/local/lib/testadura/common/td-bootstrap.sh"
-[38;5;82mSTART[0m	Initializing framework
-[38;5;250mINFO[0m 	Initializing bootstrap...
-[38;5;250mINFO[0m 	Sourcing bootstrap environment
-[38;5;250mINFO[0m 	Rebasing directories
-[38;5;250mINFO[0m 	Making sure directories exist
-[38;5;250mINFO[0m 	Creating framework directories
-[38;5;250mINFO[0m 	Trying /home/sysadmin/dev/SolidgroundUX/target-root/usr/local/lib/testadura/common
-[38;5;250mINFO[0m 	Trying /home/sysadmin/dev/SolidgroundUX/target-root/etc/testadura
-[38;5;250mINFO[0m 	Trying /home/sysadmin/.config/testadura
-[38;5;250mINFO[0m 	Set user rights
-[38;5;250mINFO[0m 	Trying /home/sysadmin/.state/testadura
-[38;5;250mINFO[0m 	Set user rights
-[38;5;250mINFO[0m 	Trying /home/sysadmin/dev/SolidgroundUX/target-root/usr/local/lib/testadura/styles
-[38;5;250mINFO[0m 	Trying /home/sysadmin/dev/SolidgroundUX/target-root/usr/local/share/doc/solidgroundux
-[38;5;250mINFO[0m 	Trying /home/sysadmin/dev/SolidgroundUX/target-root/var/log/testadura
-[38;5;250mINFO[0m 	Trying /home/sysadmin/.log/testadura
-[38;5;250mINFO[0m 	Set user rights
-[38;5;250mINFO[0m 	Parsing bootstrap arguments...
-[38;5;250mINFO[0m 	Loading core libraries...
-[38;5;214mWARNING [0m  [Framework] system cfg not found: /home/sysadmin/dev/SolidgroundUX/target-root/etc/testadura/td_framework_globals.cfg (using default settings; installer should create it) [0m
-[38;5;46mEND     [0m  Finished bootstrap [0m
-[38;5;51m================================================================================[0m
-    [0;37;1msgnd-console[0m                                                          [0;37;1m[38;5;196mCOMMIT[0m[0m
-[0;37;3m                           SolidGroundUX console host                           [0m
-[38;5;51m================================================================================[0m
-
-[38;5;51m---- [0;37;1mSystem tools[0m
-[0;38;5;250m  1) System status -- Show system status                                        [0m
-
-[38;5;51m---- [0;37;1mconsole-mod-sample[0m
-[0;38;5;250m  2) Sample message -- Show a simple demo message                               [0m
-
-[38;5;51m--------------------------------------------------------------------------------[0m
-[0;38;5;250mq) Quit                                                                         [0m
-
-[?2004h[0;38;5;250mSelect[0m: [0;33m^C[?2004l
-[?2004h]0;sysadmin@ubuntu-template: ~/dev/SolidgroundUX/target-root/usr/local/libexec/testadura[01;32msysadmin@ubuntu-template[00m:[01;34m~/dev/SolidgroundUX/target-root/usr/local/libexec/testadura[00m$ ./sgnd-console.sh 
-[?2004ldeclare -- bootstrap="/home/sysadmin/dev/SolidgroundUX/target-root/usr/local/lib/testadura/common/td-bootstrap.sh"
-[38;5;82mSTART[0m	Initializing framework
-[38;5;250mINFO[0m 	Initializing bootstrap...
-[38;5;250mINFO[0m 	Sourcing bootstrap environment
-[38;5;250mINFO[0m 	Rebasing directories
-[38;5;250mINFO[0m 	Making sure directories exist
-[38;5;250mINFO[0m 	Creating framework directories
-[38;5;250mINFO[0m 	Trying /home/sysadmin/dev/SolidgroundUX/target-root/usr/local/lib/testadura/common
-[38;5;250mINFO[0m 	Trying /home/sysadmin/dev/SolidgroundUX/target-root/etc/testadura
-[38;5;250mINFO[0m 	Trying /home/sysadmin/.config/testadura
-[38;5;250mINFO[0m 	Set user rights
-[38;5;250mINFO[0m 	Trying /home/sysadmin/.state/testadura
-[38;5;250mINFO[0m 	Set user rights
-[38;5;250mINFO[0m 	Trying /home/sysadmin/dev/SolidgroundUX/target-root/usr/local/lib/testadura/styles
-[38;5;250mINFO[0m 	Trying /home/sysadmin/dev/SolidgroundUX/target-root/usr/local/share/doc/solidgroundux
-[38;5;250mINFO[0m 	Trying /home/sysadmin/dev/SolidgroundUX/target-root/var/log/testadura
-[38;5;250mINFO[0m 	Trying /home/sysadmin/.log/testadura
-[38;5;250mINFO[0m 	Set user rights
-[38;5;250mINFO[0m 	Parsing bootstrap arguments...
-[38;5;250mINFO[0m 	Loading core libraries...
-[38;5;214mWARNING [0m  [Framework] system cfg not found: /home/sysadmin/dev/SolidgroundUX/target-root/etc/testadura/td_framework_globals.cfg (using default settings; installer should create it) [0m
-[38;5;46mEND     [0m  Finished bootstrap [0m
-[38;5;51m================================================================================[0m
-    [0;37;1mSolidground Console[0m                                                   [0;37;1m[38;5;196mCOMMIT[0m[0m
-[0;37;3m                    Interactive scalable console module host                    [0m
-[38;5;51m================================================================================[0m
-
-[38;5;51m---- [0;37;1mSystem tools[0m
-[0;38;5;250m  1) System status -- Show system status                                        [0m
-
-[38;5;51m---- [0;37;1mconsole-mod-sample[0m
-[0;38;5;250m  2) Sample message -- Show a simple demo message                               [0m
-
-[38;5;51m--------------------------------------------------------------------------------[0m
-[0;38;5;250mq) Quit                                                                         [0m
-
-[?2004h[0;38;5;250mSelect[0m: [0;33m^C[?2004l
-[?2004h]0;sysadmin@ubuntu-template: ~/dev/SolidgroundUX/target-root/usr/local/libexec/testadura[01;32msysadmin@ubuntu-template[00m:[01;34m~/dev/SolidgroundUX/target-root/usr/local/libexec/testadura[00m$ ./sgnd-console.sh 
-[?2004ldeclare -- bootstrap="/home/sysadmin/dev/SolidgroundUX/target-root/usr/local/lib/testadura/common/td-bootstrap.sh"
-[38;5;82mSTART[0m	Initializing framework
-[38;5;250mINFO[0m 	Initializing bootstrap...
-[38;5;250mINFO[0m 	Sourcing bootstrap environment
-[38;5;250mINFO[0m 	Rebasing directories
-[38;5;250mINFO[0m 	Making sure directories exist
-[38;5;250mINFO[0m 	Creating framework directories
-[38;5;250mINFO[0m 	Trying /home/sysadmin/dev/SolidgroundUX/target-root/usr/local/lib/testadura/common
-[38;5;250mINFO[0m 	Trying /home/sysadmin/dev/SolidgroundUX/target-root/etc/testadura
-[38;5;250mINFO[0m 	Trying /home/sysadmin/.config/testadura
-[38;5;250mINFO[0m 	Set user rights
-[38;5;250mINFO[0m 	Trying /home/sysadmin/.state/testadura
-[38;5;250mINFO[0m 	Set user rights
-[38;5;250mINFO[0m 	Trying /home/sysadmin/dev/SolidgroundUX/target-root/usr/local/lib/testadura/styles
-[38;5;250mINFO[0m 	Trying /home/sysadmin/dev/SolidgroundUX/target-root/usr/local/share/doc/solidgroundux
-[38;5;250mINFO[0m 	Trying /home/sysadmin/dev/SolidgroundUX/target-root/var/log/testadura
-[38;5;250mINFO[0m 	Trying /home/sysadmin/.log/testadura
-[38;5;250mINFO[0m 	Set user rights
-[38;5;250mINFO[0m 	Parsing bootstrap arguments...
-[38;5;250mINFO[0m 	Loading core libraries...
-[38;5;214mWARNING [0m  [Framework] system cfg not found: /home/sysadmin/dev/SolidgroundUX/target-root/etc/testadura/td_framework_globals.cfg (using default settings; installer should create it) [0m
-[38;5;46mEND     [0m  Finished bootstrap [0m
-./sgnd-console.sh: line 669: SGND_GROUP_RUNMODES: unbound variable
-[?2004h]0;sysadmin@ubuntu-template: ~/dev/SolidgroundUX/target-root/usr/local/libexec/testadura[01;32msysadmin@ubuntu-template[00m:[01;34m~/dev/SolidgroundUX/target-root/usr/local/libexec/testadura[00m$ ./sgnd-console.sh 
-[?2004ldeclare -- bootstrap="/home/sysadmin/dev/SolidgroundUX/target-root/usr/local/lib/testadura/common/td-bootstrap.sh"
-[38;5;82mSTART[0m	Initializing framework
-[38;5;250mINFO[0m 	Initializing bootstrap...
-[38;5;250mINFO[0m 	Sourcing bootstrap environment
-[38;5;250mINFO[0m 	Rebasing directories
-[38;5;250mINFO[0m 	Making sure directories exist
-[38;5;250mINFO[0m 	Creating framework directories
-[38;5;250mINFO[0m 	Trying /home/sysadmin/dev/SolidgroundUX/target-root/usr/local/lib/testadura/common
-[38;5;250mINFO[0m 	Trying /home/sysadmin/dev/SolidgroundUX/target-root/etc/testadura
-[38;5;250mINFO[0m 	Trying /home/sysadmin/.config/testadura
-[38;5;250mINFO[0m 	Set user rights
-[38;5;250mINFO[0m 	Trying /home/sysadmin/.state/testadura
-[38;5;250mINFO[0m 	Set user rights
-[38;5;250mINFO[0m 	Trying /home/sysadmin/dev/SolidgroundUX/target-root/usr/local/lib/testadura/styles
-[38;5;250mINFO[0m 	Trying /home/sysadmin/dev/SolidgroundUX/target-root/usr/local/share/doc/solidgroundux
-[38;5;250mINFO[0m 	Trying /home/sysadmin/dev/SolidgroundUX/target-root/var/log/testadura
-[38;5;250mINFO[0m 	Trying /home/sysadmin/.log/testadura
-[38;5;250mINFO[0m 	Set user rights
-[38;5;250mINFO[0m 	Parsing bootstrap arguments...
-[38;5;250mINFO[0m 	Loading core libraries...
-[38;5;214mWARNING [0m  [Framework] system cfg not found: /home/sysadmin/dev/SolidgroundUX/target-root/etc/testadura/td_framework_globals.cfg (using default settings; installer should create it) [0m
-[38;5;46mEND     [0m  Finished bootstrap [0m
-./sgnd-console.sh: line 570: __sgnd_console_refresh_builtin_labels: command not found
-[38;5;51m================================================================================[0m
-    [0;37;1mSolidground Console[0m                                                   [0;37;1m[38;5;196mCOMMIT[0m[0m
-[0;37;3m                    Interactive scalable console module host                    [0m
-[38;5;51m================================================================================[0m
-[38;5;51m---- [0m[0;37;1mRun modes[0m [38;5;51m-----------------------------------------------------------------[0m
-[0;38;5;250m1) Dry-run: Off -- Toggle dry-run mode                                          [0m
-[0;38;5;250m2) Debug: Off -- Toggle debug output                                            [0m
-[0;38;5;250m3) Verbose: Off -- Toggle verbose output                                        [0m
-
-[38;5;51m---- [0m[0;37;1mSystem tools[0m [38;5;51m--------------------------------------------------------------[0m
-[0;38;5;250m4) System status -- Show system status                                          [0m
-
-[38;5;51m---- [0m[0;37;1mconsole-mod-sample[0m [38;5;51m--------------------------------------------------------[0m
-[0;38;5;250m5) Sample message -- Show a simple demo message                                 [0m
-
-[38;5;51m--------------------------------------------------------------------------------[0m
-[0;38;5;250mq) Quit                                                                         [0m
-
-[?2004h[0;38;5;250mSelect[0m: [0;33m1
-[?2004l[0m[K[0;38;5;250m [0m
-[K[0;38;5;250mEnter=continue; P/Space=pause[0m
-[K[0;37;3mContinuing in 15s...[0m[2A[K[0;38;5;250m [0m
-[K[0;38;5;250mEnter=continue; P/Space=pause[0m
-[K[0;37;3mContinuing in 14s...[0m[2A[2B
-./sgnd-console.sh: line 570: __sgnd_console_refresh_builtin_labels: command not found
-[38;5;51m================================================================================[0m
-    [0;37;1mSolidground Console[0m                                                   [0;37;1m[38;5;196mCOMMIT[0m[0m
-[0;37;3m                    Interactive scalable console module host                    [0m
-[38;5;51m================================================================================[0m
-[38;5;51m---- [0m[0;37;1mRun modes[0m [38;5;51m-----------------------------------------------------------------[0m
-[0;38;5;250m1) Dry-run: Off -- Toggle dry-run mode                                          [0m
-[0;38;5;250m2) Debug: Off -- Toggle debug output                                            [0m
-[0;38;5;250m3) Verbose: Off -- Toggle verbose output                                        [0m
-
-[38;5;51m---- [0m[0;37;1mSystem tools[0m [38;5;51m--------------------------------------------------------------[0m
-[0;38;5;250m4) System status -- Show system status                                          [0m
-
-[38;5;51m---- [0m[0;37;1mconsole-mod-sample[0m [38;5;51m--------------------------------------------------------[0m
-[0;38;5;250m5) Sample message -- Show a simple demo message                                 [0m
-
-[38;5;51m--------------------------------------------------------------------------------[0m
-[0;38;5;250mq) Quit                                                                         [0m
-
-[?2004h[0;38;5;250mSelect[0m: [0;33m2
-[?2004l[0m[K[0;38;5;250m [0m
-[K[0;38;5;250mEnter=continue; P/Space=pause[0m
-[K[0;37;3mContinuing in 15s...[0m[2A[2B
-./sgnd-console.sh: line 570: __sgnd_console_refresh_builtin_labels: command not found
-[38;5;51m================================================================================[0m
-    [0;37;1mSolidground Console[0m                                                   [0;37;1m[0;32mDRYRUN[0m[0m
-[0;37;3m                    Interactive scalable console module host                    [0m
-[38;5;51m================================================================================[0m
-[38;5;51m---- [0m[0;37;1mRun modes[0m [38;5;51m-----------------------------------------------------------------[0m
-[0;38;5;250m1) Dry-run: Off -- Toggle dry-run mode                                          [0m
-[0;38;5;250m2) Debug: Off -- Toggle debug output                                            [0m
-[0;38;5;250m3) Verbose: Off -- Toggle verbose output                                        [0m
-
-[38;5;51m---- [0m[0;37;1mSystem tools[0m [38;5;51m--------------------------------------------------------------[0m
-[0;38;5;250m4) System status -- Show system status                                          [0m
-
-[38;5;51m---- [0m[0;37;1mconsole-mod-sample[0m [38;5;51m--------------------------------------------------------[0m
-[0;38;5;250m5) Sample message -- Show a simple demo message                                 [0m
-
-[38;5;51m--------------------------------------------------------------------------------[0m
-[0;38;5;250mq) Quit                                                                         [0m
-
-[?2004h[0;38;5;250mSelect[0m: [0;33m3
-[?2004l[0m[38;5;201mDEBUG   [0m  td_choose: choices=[Q,QUIT,EXIT,1,toggle-dryrun,2,toggle-debug,3,toggle-verbose,4,sys-status,5,sample-message] expanded=[Q QUIT EXIT 1 toggle-dryrun 2 toggle-debug 3 toggle-verbose 4 sys-status 5 sample-message] [0m
-[0;38;5;250mINFO    [0m  Verbose enabled [0m
-[K[0;38;5;250m [0m
-[K[0;38;5;250mEnter=continue; P/Space=pause[0m
-[K[0;37;3mContinuing in 15s...[0m[2A[K[0;38;5;250m [0m
-[K[0;38;5;250mEnter=continue; P/Space=pause[0m
-[K[0;37;3mContinuing in 14s...[0m[2A[K[0;38;5;250m [0m
-[K[0;38;5;250mEnter=continue; P/Space=pause[0m
-[K[0;37;3mContinuing in 13s...[0m[2A[K[0;38;5;250m [0m
-[K[0;38;5;250mEnter=continue; P/Space=pause[0m
-[K[0;37;3mContinuing in 12s...[0m[2A[K[0;38;5;250m [0m
-[K[0;38;5;250mEnter=continue; P/Space=pause[0m
-[K[0;37;3mContinuing in 11s...[0m[2A[K[0;38;5;250m [0m
-[K[0;38;5;250mEnter=continue; P/Space=pause[0m
-[K[0;37;3mContinuing in 10s...[0m[2A[K[0;38;5;250m [0m
-[K[0;38;5;250mEnter=continue; P/Space=pause[0m
-[K[0;37;3mContinuing in 9s...[0m[2A[K[0;38;5;250m [0m
-[K[0;38;5;250mEnter=continue; P/Space=pause[0m
-[K[0;37;3mContinuing in 8s...[0m[2A[K[0;38;5;250m [0m
-[K[0;38;5;250mEnter=continue; P/Space=pause[0m
-[K[0;37;3mContinuing in 7s...[0m[2A[K[0;38;5;250m [0m
-[K[0;38;5;250mEnter=continue; P/Space=pause[0m
-[K[0;37;3mContinuing in 6s...[0m[2A[K[0;38;5;250m [0m
-[K[0;38;5;250mEnter=continue; P/Space=pause[0m
-[K[0;37;3mContinuing in 5s...[0m[2A[K[0;38;5;250m [0m
-[K[0;38;5;250mEnter=continue; P/Space=pause[0m
-[K[0;37;3mContinuing in 4s...[0m[2A[K[0;38;5;250m [0m
-[K[0;38;5;250mEnter=continue; P/Space=pause[0m
-[K[0;37;3mContinuing in 3s...[0m[2A[K[0;38;5;250m [0m
-[K[0;38;5;250mEnter=continue; P/Space=pause[0m
-[K[0;37;3mContinuing in 2s...[0m[2A[K[0;38;5;250m [0m
-[K[0;38;5;250mEnter=continue; P/Space=pause[0m
-[K[0;37;3mContinuing in 1s...[0m[2A[K[0;38;5;250m [0m
-[K[0;38;5;250mEnter=continue; P/Space=pause[0m
-[K[0;37;3mContinuing in 0s...[0m[2A[2B
-[0;38;5;250mAuto-continued.[0m
-./sgnd-console.sh: line 570: __sgnd_console_refresh_builtin_labels: command not found
-[38;5;51m================================================================================[0m
-    [0;37;1mSolidground Console[0m                                                   [0;37;1m[0;32mDRYRUN[0m[0m
-[0;37;3m                    Interactive scalable console module host                    [0m
-[38;5;51m================================================================================[0m
-[38;5;51m---- [0m[0;37;1mRun modes[0m [38;5;51m-----------------------------------------------------------------[0m
-[0;38;5;250m1) Dry-run: Off -- Toggle dry-run mode                                          [0m
-[0;38;5;250m2) Debug: Off -- Toggle debug output                                            [0m
-[0;38;5;250m3) Verbose: Off -- Toggle verbose output                                        [0m
-
-[38;5;51m---- [0m[0;37;1mSystem tools[0m [38;5;51m--------------------------------------------------------------[0m
-[0;38;5;250m4) System status -- Show system status                                          [0m
-
-[38;5;51m---- [0m[0;37;1mconsole-mod-sample[0m [38;5;51m--------------------------------------------------------[0m
-[0;38;5;250m5) Sample message -- Show a simple demo message                                 [0m
-
-[38;5;51m--------------------------------------------------------------------------------[0m
-[0;38;5;250mq) Quit                                                                         [0m
-
-[?2004h[0;38;5;250mSelect[0m: [0;33m5
-[?2004l[0m[38;5;201mDEBUG   [0m  td_choose: choices=[Q,QUIT,EXIT,1,toggle-dryrun,2,toggle-debug,3,toggle-verbose,4,sys-status,5,sample-message] expanded=[Q QUIT EXIT 1 toggle-dryrun 2 toggle-debug 3 toggle-verbose 4 sys-status 5 sample-message] [ui-ask.sh:td_choose:560] [0m
-[0;38;5;250mINFO    [0m  Sample module action executed [0m
-[K[0;38;5;250m [0m
-[K[0;38;5;250mEnter=continue; P/Space=pause[0m
-[K[0;37;3mContinuing in 15s...[0m[2A[K[0;38;5;250m [0m
-[K[0;38;5;250mEnter=continue; P/Space=pause[0m
-[K[0;37;3mContinuing in 14s...[0m[2A[K[0;38;5;250m [0m
-[K[0;38;5;250mEnter=continue; P/Space=pause[0m
-[K[0;37;3mContinuing in 13s...[0m[2A[K[0;38;5;250m [0m
-[K[0;38;5;250mEnter=continue; P/Space=pause[0m
-[K[0;37;3mContinuing in 12s...[0m[2A[K[0;38;5;250m [0m
-[K[0;38;5;250mEnter=continue; P/Space=pause[0m
-[K[0;37;3mContinuing in 11s...[0m[2A[K[0;38;5;250m [0m
-[K[0;38;5;250mEnter=continue; P/Space=pause[0m
-[K[0;37;3mContinuing in 10s...[0m[2A[K[0;38;5;250m [0m
-[K[0;38;5;250mEnter=continue; P/Space=pause[0m
-[K[0;37;3mContinuing in 9s...[0m[2A[K[0;38;5;250m [0m
-[K[0;38;5;250mEnter=continue; P/Space=pause[0m
-[K[0;37;3mContinuing in 8s...[0m[2A[K[0;38;5;250m [0m
-[K[0;38;5;250mEnter=continue; P/Space=pause[0m
-[K[0;37;3mContinuing in 7s...[0m[2A[K[0;38;5;250m [0m
-[K[0;38;5;250mEnter=continue; P/Space=pause[0m
-[K[0;37;3mContinuing in 6s...[0m[2A[K[0;38;5;250m [0m
-[K[0;38;5;250mEnter=continue; P/Space=pause[0m
-[K[0;37;3mContinuing in 5s...[0m
-[?2004h]0;sysadmin@ubuntu-template: ~/dev/SolidgroundUX/target-root/usr/local/libexec/testadura[01;32msysadmin@ubuntu-template[00m:[01;34m~/dev/SolidgroundUX/target-root/usr/local/libexec/testadura[00m$ ./sgnd-console.sh 
-[?2004ldeclare -- bootstrap="/home/sysadmin/dev/SolidgroundUX/target-root/usr/local/lib/testadura/common/td-bootstrap.sh"
-[38;5;82mSTART[0m	Initializing framework
-[38;5;250mINFO[0m 	Initializing bootstrap...
-[38;5;250mINFO[0m 	Sourcing bootstrap environment
-[38;5;250mINFO[0m 	Rebasing directories
-[38;5;250mINFO[0m 	Making sure directories exist
-[38;5;250mINFO[0m 	Creating framework directories
-[38;5;250mINFO[0m 	Trying /home/sysadmin/dev/SolidgroundUX/target-root/usr/local/lib/testadura/common
-[38;5;250mINFO[0m 	Trying /home/sysadmin/dev/SolidgroundUX/target-root/etc/testadura
-[38;5;250mINFO[0m 	Trying /home/sysadmin/.config/testadura
-[38;5;250mINFO[0m 	Set user rights
-[38;5;250mINFO[0m 	Trying /home/sysadmin/.state/testadura
-[38;5;250mINFO[0m 	Set user rights
-[38;5;250mINFO[0m 	Trying /home/sysadmin/dev/SolidgroundUX/target-root/usr/local/lib/testadura/styles
-[38;5;250mINFO[0m 	Trying /home/sysadmin/dev/SolidgroundUX/target-root/usr/local/share/doc/s

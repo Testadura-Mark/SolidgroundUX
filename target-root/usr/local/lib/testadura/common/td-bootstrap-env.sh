@@ -111,6 +111,7 @@ set -uo pipefail
         ui-say.sh
         ui-ask.sh
         ui-dlg.sh
+        ui-glyphs.sh
     )
 
     TD_FRAMEWORK_DIRS=(

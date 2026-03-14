@@ -1171,6 +1171,41 @@ set -uo pipefail
       printf '%s%s%s' "$pad_left" "$source" "$pad_right"
   }
 
+  td_visible_length() {
+      local text="${1-}"
+
+      text="$(printf '%s' "$text" | sed -E 's/\x1B\[[0-9;]*[[:alpha:]]//g')"
+      printf '%s' "$text" | wc -m
+  }
+
+  td_terminal_width() {
+      local term_width=80
+      local max_render_width="${SGND_MAX_RENDER_WIDTH:-140}"
+
+      if command -v tput >/dev/null 2>&1; then
+          term_width="$(tput cols 2>/dev/null || printf '80')"
+      fi
+      [[ "$term_width" =~ ^[0-9]+$ ]] || term_width=80
+
+      (( term_width > max_render_width )) && term_width="$max_render_width"
+      (( term_width < 40 )) && term_width=40
+
+      printf '%s\n' "$term_width"
+  }
+
+  td_padded_visible() {
+      local text="${1-}"
+      local width="${2:-0}"
+      local visible_len=0
+      local pad_len=0
+
+      visible_len="$(td_visible_length "$text")"
+      pad_len=$(( width - visible_len ))
+      (( pad_len < 0 )) && pad_len=0
+
+      printf '%s%*s' "$text" "$pad_len" ""
+  }
+
   # td_wrap_words
       # Purpose:
       #   Word-wrap a text string to a given width.

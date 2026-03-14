@@ -232,7 +232,11 @@ set -uo pipefail
 
     # Minimal UI
     saystart()   { printf '%sSTART%s\t%s\n' "${MSG_CLR_STRT-}" "${RESET-}" "$*" >&2; }
-    sayinfo()    { printf '%sINFO%s \t%s\n' "${MSG_CLR_INFO-}" "${RESET-}" "$*" >&2; }
+    sayinfo()    { 
+        if (( ${FLAG_VERBOSE:-0} )); then
+            printf '%sINFO%s \t%s\n' "${MSG_CLR_INFO-}" "${RESET-}" "$*" >&2; 
+        fi
+    }
     sayok()      { printf '%sOK%s   \t%s\n' "${MSG_CLR_OK-}"   "${RESET-}" "$*" >&2; }
     saywarning() { printf '%sWARN%s \t%s\n' "${MSG_CLR_WARN-}" "${RESET-}" "$*" >&2; }
     sayfail()    { printf '%sFAIL%s \t%s\n' "${MSG_CLR_FAIL-}" "${RESET-}" "$*" >&2; }
@@ -250,7 +254,7 @@ set -uo pipefail
     TD_SCRIPT_BASE="$(basename -- "$TD_SCRIPT_FILE")"
     TD_SCRIPT_NAME="${TD_SCRIPT_BASE%.sh}"
     TD_SCRIPT_TITLE="Solidground Console"
-    : "${TD_SCRIPT_DESC:=Interactive scalable console module host}"
+    : "${TD_SCRIPT_DESC:=Interactive console module host}"
     : "${TD_SCRIPT_VERSION:=1.0}"
     : "${TD_SCRIPT_BUILD:=20260312}"
     : "${TD_SCRIPT_DEVELOPERS:=Mark Fieten}"
@@ -268,6 +272,7 @@ set -uo pipefail
         #
         # Leave empty if no extra libs are needed.
     TD_USING=(
+        td-datatable.sh
     )
 
     # TD_ARGS_SPEC 
@@ -387,22 +392,16 @@ set -uo pipefail
         #   2) call td_bootstrap --state
     TD_STATE_SAVE=0
 
-
 # --- Local scripts and definitions ------------------------------------------------d
  # -- Console state
-    declare -ag SGND_GROUP_KEYS=()
-    declare -ag SGND_GROUP_LABELS=()
-    declare -ag SGND_GROUP_DESCS=()
-    declare -ag SGND_GROUP_SOURCES=()
+    SGND_GROUP_SCHEMA="key|label|desc|source|builtin"
+    declare -ag SGND_GROUP_ROWS=()
 
-    declare -ag SGND_MENU_KEYS=()
-    declare -ag SGND_MENU_GROUPS=()
-    declare -ag SGND_MENU_LABELS=()
-    declare -ag SGND_MENU_HANDLERS=()
-    declare -ag SGND_MENU_DESCS=()
-    declare -ag SGND_MENU_SOURCES=()
-    declare -ag SGND_MENU_BUILTIN=()
-    declare -ag SGND_MENU_WAITSECS=()
+    SGND_ITEM_SCHEMA="key|group|label|handler|desc|source|builtin|waitsecs"
+    declare -ag SGND_ITEM_ROWS=()
+
+    SGND_MODULE_SCHEMA="id|name|desc|source"
+    declare -ag SGND_MODULE_ROWS=()
 
     SGND_CONSOLE_TITLE="Solidground Console"
     SGND_CONSOLE_DESC="Interactive scalable console module host"
@@ -410,44 +409,62 @@ set -uo pipefail
     SGND_CURRENT_MODULE=""
     SGND_LAST_WAITSECS=15
 
-    SGND_CLEAR_ONRENDER=0
+    SGND_CLEAR_ONRENDER=1
 
  # -- Module loading and registration 
 
     __sgnd_console_register_builtin_items() {
-        SGND_GROUP_BUILTIN="Run-time"
+        SGND_GROUP_RUNTIME="runtime"
+        SGND_GROUP_SESSION="session"
 
-        sgnd_console_register_group "$SGND_GROUP_BUILTIN" "Run-time"
+        sgnd_console_register_group "$SGND_GROUP_RUNTIME" "Runtime toggles" "" 1
+        sgnd_console_register_group "$SGND_GROUP_SESSION" "Session" "" 1
 
-        sgnd_console_register_item "D" "$SGND_GROUP_BUILTIN" "$(__sgnd_console_label_dryrun)" "__sgnd_console_toggle_dryrun" "Toggle dry-run mode" 1 0
-        sgnd_console_register_item "B" "$SGND_GROUP_BUILTIN" "$(__sgnd_console_label_debug)" "__sgnd_console_toggle_debug" "Toggle debug output" 1 0
-        sgnd_console_register_item "V" "$SGND_GROUP_BUILTIN" "$(__sgnd_console_label_verbose)" "__sgnd_console_toggle_verbose" "Toggle verbose output" 1 0
-        sgnd_console_register_item "L" "$SGND_GROUP_BUILTIN" "$(__sgnd_console_label_logfile)" "__sgnd_console_toggle_logfile" "Toggle logfile output" 1 0
-        sgnd_console_register_item "Q" "$SGND_GROUP_BUILTIN" "Quit" "__sgnd_console_quit" "Exit console" 1 0
+        sgnd_console_register_item "B" "$SGND_GROUP_RUNTIME" "$(__sgnd_console_label_debug)" "__sgnd_console_toggle_debug" "Toggle debug output" 1 0
+        sgnd_console_register_item "D" "$SGND_GROUP_RUNTIME" "$(__sgnd_console_label_dryrun)" "__sgnd_console_toggle_dryrun" "Toggle dry-run mode" 1 0
+        sgnd_console_register_item "L" "$SGND_GROUP_RUNTIME" "$(__sgnd_console_label_logfile)" "__sgnd_console_toggle_logfile" "Toggle logfile output" 1 0
+        sgnd_console_register_item "V" "$SGND_GROUP_RUNTIME" "$(__sgnd_console_label_verbose)" "__sgnd_console_toggle_verbose" "Toggle verbose output" 1 0
+
+        sgnd_console_register_item "C" "$SGND_GROUP_SESSION" "$(__sgnd_console_label_clearonrender)" "__sgnd_console_toggle_clearonrender" "Toggle clear screen before rendering" 1 0
+        sgnd_console_register_item "R" "$SGND_GROUP_SESSION" "Redraw menu" "__sgnd_console_redraw" "Refresh console display" 1 0
+        sgnd_console_register_item "Q" "$SGND_GROUP_SESSION" "Quit" "__sgnd_console_quit" "Exit console" 1 0
     }
 
     __sgnd_console_register_fallback_group() {
         local key="${1:?missing group key}"
         local label="Other"
+        local module_id=""
+        local module_name=""
+        local i
+        local row_count=0
 
         case "$key" in
             module:*)
-                label="${key#module:}"
+                module_id="${key#module:}"
+                row_count="$(td_dt_row_count SGND_MODULE_ROWS)"
+
+                for (( i=0; i<row_count; i++ )); do
+                    if [[ "$(td_dt_get "$SGND_MODULE_SCHEMA" SGND_MODULE_ROWS "$i" id)" == "$module_id" ]]; then
+                        module_name="$(td_dt_get "$SGND_MODULE_SCHEMA" SGND_MODULE_ROWS "$i" name)"
+                        break
+                    fi
+                done
+
+                if [[ -n "${module_name//[[:space:]]/}" ]]; then
+                    label="$module_name"
+                else
+                    label="$module_id"
+                fi
                 ;;
         esac
 
-        sgnd_console_register_group "$key" "$label"
+        sgnd_console_register_group "$key" "$label" "" 0
     }
 
     __sgnd_console_group_exists() {
         local key="${1:?missing group key}"
-        local i
 
-        for (( i=0; i<${#SGND_GROUP_KEYS[@]}; i++ )); do
-            [[ "${SGND_GROUP_KEYS[i]}" == "$key" ]] && return 0
-        done
-
-        return 1
+        td_dt_has_row "$SGND_GROUP_SCHEMA" SGND_GROUP_ROWS key "$key"
     }
 
     __sgnd_console_load_config() {
@@ -567,12 +584,17 @@ set -uo pipefail
         local i
         local out=""
         local visible_num=0
+        local builtin=""
+        local key=""
 
-        for (( i=0; i<${#SGND_MENU_KEYS[@]}; i++ )); do
+        for (( i=0; i<$(td_dt_row_count SGND_ITEM_ROWS); i++ )); do
             [[ -n "$out" ]] && out+=","
 
-            if (( SGND_MENU_BUILTIN[i] )); then
-                out+="${SGND_MENU_KEYS[i]}"
+            builtin="$(td_dt_get "$SGND_ITEM_SCHEMA" SGND_ITEM_ROWS "$i" builtin)"
+            key="$(td_dt_get "$SGND_ITEM_SCHEMA" SGND_ITEM_ROWS "$i" key)"
+
+            if (( builtin )); then
+                out+="$key"
             else
                 visible_num=$((visible_num + 1))
                 out+="$visible_num"
@@ -583,106 +605,213 @@ set -uo pipefail
     }
 
  # -- Render menu
-    __sgnd_console_render_menu_title(){
+    __sgnd_console_calc_label_width() {
+        local i
+        local row_count=0
+        local builtin="0"
+        local display_key=""
+        local label=""
+        local left_text=""
+        local width=0
+        local max_width=0
+        local visible_num=0
+
+        row_count="$(td_dt_row_count SGND_ITEM_ROWS)"
+
+        for (( i=0; i<row_count; i++ )); do
+            builtin="$(td_dt_get "$SGND_ITEM_SCHEMA" SGND_ITEM_ROWS "$i" builtin)"
+
+            if (( builtin )); then
+                display_key="$(td_dt_get "$SGND_ITEM_SCHEMA" SGND_ITEM_ROWS "$i" key)"
+            else
+                visible_num=$((visible_num + 1))
+                display_key="$visible_num"
+            fi
+
+            label="$(td_dt_get "$SGND_ITEM_SCHEMA" SGND_ITEM_ROWS "$i" label)"
+            left_text="${display_key}) ${label}"
+            width="$(td_visible_length "$left_text")"
+
+            (( width > max_width )) && max_width="$width"
+        done
+
+        (( max_width > 35 )) && max_width=35
+        printf '%s\n' "$max_width"
+    }
+
+    __sgnd_console_render_menu() {
+        local gi
+        local row_count=0
+        local group_key=""
+        local builtin="0"
+
+        __sgnd_console_refresh_builtin_labels
+        SGND_RENDER_DISPLAY_NUM=0
+        SGND_RENDER_LABEL_WIDTH="$(__sgnd_console_calc_label_width)"
+
+        __sgnd_console_render_menu_title
+
+        row_count="$(td_dt_row_count SGND_GROUP_ROWS)"
+
+        for (( gi=0; gi<row_count; gi++ )); do
+            builtin="$(td_dt_get "$SGND_GROUP_SCHEMA" SGND_GROUP_ROWS "$gi" builtin)"
+            (( builtin )) && continue
+
+            group_key="$(td_dt_get "$SGND_GROUP_SCHEMA" SGND_GROUP_ROWS "$gi" key)"
+            __sgnd_console_render_group "$group_key"
+        done
+
+        for (( gi=0; gi<row_count; gi++ )); do
+            builtin="$(td_dt_get "$SGND_GROUP_SCHEMA" SGND_GROUP_ROWS "$gi" builtin)"
+            (( builtin )) || continue
+
+            group_key="$(td_dt_get "$SGND_GROUP_SCHEMA" SGND_GROUP_ROWS "$gi" key)"
+            __sgnd_console_render_group "$group_key"
+        done
+    }
+
+    __sgnd_console_render_menu_title() {
         (( ! SGND_CLEAR_ONRENDER )) || clear
 
-        td_print_sectionheader --border "="
-        td_print --pad 4 "${SGND_CONSOLE_TITLE}"
-        td_print --pad 4 "${SGND_CONSOLE_DESC}"
-        td_print_sectionheader --border "="
+        width="$(td_terminal_width)"
+
+        td_print_sectionheader --border "$DL_H" --maxwidth "$width"
+        td_print --pad 4 "$(td_sgr "$WHITE" "" "$FX_BOLD")${SGND_CONSOLE_TITLE}${RESET}"
+        td_print --pad 4 "$(td_sgr "$SILVER" "" "$FX_ITALIC")${SGND_CONSOLE_DESC}"
+        td_print_sectionheader --border "$LN_H" --maxwidth "$width"
         td_print
     }
 
     __sgnd_console_render_group() {
         local group_key="${1:?missing group key}"
         local _pad=2
-        local _tpad=4
+        local _tpad=3
+
         local gi
         local ii
+        local row_count=0
         local label=""
         local desc=""
         local group_label=""
         local found_group=0
         local display_key=""
+        local item_group=""
+        local builtin="0"
 
-        for (( gi=0; gi<${#SGND_GROUP_KEYS[@]}; gi++ )); do
-            [[ "${SGND_GROUP_KEYS[gi]}" == "$group_key" ]] || continue
-            group_label="${SGND_GROUP_LABELS[gi]}"
-            found_group=1
-            break
+        local left_text=""
+        local left_width=0
+        local left_width_max="${SGND_RENDER_LABEL_WIDTH:-28}"
+        local desc_width=0
+        local term_width=80
+        local gap=3
+
+        local label_clr="${SILVER}"
+        local value_clr="$(td_sgr "$SILVER" "" "$FX_ITALIC")"
+
+        row_count="$(td_dt_row_count SGND_GROUP_ROWS)"
+
+        for (( gi=0; gi<row_count; gi++ )); do
+            if [[ "$(td_dt_get "$SGND_GROUP_SCHEMA" SGND_GROUP_ROWS "$gi" key)" == "$group_key" ]]; then
+                group_label="$(td_dt_get "$SGND_GROUP_SCHEMA" SGND_GROUP_ROWS "$gi" label)"
+                found_group=1
+                break
+            fi
         done
 
         (( found_group )) || return 0
 
-        td_print_sectionheader --text "$group_label" --padleft "$_pad" --padend 0
+        term_width="$(td_terminal_width)"
+        desc_width=$(( term_width - _tpad - left_width_max - gap ))
+        (( desc_width < 20 )) && desc_width=20
 
-        for (( ii=0; ii<${#SGND_MENU_KEYS[@]}; ii++ )); do
-            [[ "${SGND_MENU_GROUPS[ii]}" == "$group_key" ]] || continue
+        td_print --text "$group_label"
+        left_width="$(td_visible_length "$group_label")"
+        td_print_sectionheader --border "$LN_H" --maxwidth "$left_width"
 
-            if (( SGND_MENU_BUILTIN[ii] )); then
-                display_key="${SGND_MENU_KEYS[ii]}"
+        row_count="$(td_dt_row_count SGND_ITEM_ROWS)"
+
+        for (( ii=0; ii<row_count; ii++ )); do
+            item_group="$(td_dt_get "$SGND_ITEM_SCHEMA" SGND_ITEM_ROWS "$ii" group)"
+            [[ "$item_group" == "$group_key" ]] || continue
+
+            builtin="$(td_dt_get "$SGND_ITEM_SCHEMA" SGND_ITEM_ROWS "$ii" builtin)"
+
+            if (( builtin )); then
+                display_key="$(td_dt_get "$SGND_ITEM_SCHEMA" SGND_ITEM_ROWS "$ii" key)"
             else
                 SGND_RENDER_DISPLAY_NUM=$((SGND_RENDER_DISPLAY_NUM + 1))
                 display_key="$SGND_RENDER_DISPLAY_NUM"
             fi
 
-            label="${SGND_MENU_LABELS[ii]}"
-            desc="${SGND_MENU_DESCS[ii]}"
+            label="$(td_dt_get "$SGND_ITEM_SCHEMA" SGND_ITEM_ROWS "$ii" label)"
+            desc="$(td_dt_get "$SGND_ITEM_SCHEMA" SGND_ITEM_ROWS "$ii" desc)"
+            left_text="${display_key}) ${label}"
 
-            if [[ -n "$desc" ]]; then
-                td_print_labeledvalue --label "${display_key}) ${label}" --value "${desc}" --pad "$_tpad"
-            else
-                td_print_labeledvalue --label "${display_key}) ${label}" --pad "$_tpad"
+            if [[ -z "$desc" ]]; then
+                printf '%*s%s' "$_tpad" "" "$label_clr"
+                td_padded_visible "$left_text" "$left_width_max"
+                printf '%s\n' "$RESET"
+                continue
             fi
-        done
 
+            local first_line=1
+            local wrapped_line=""
+
+            while IFS= read -r wrapped_line; do
+                if (( first_line )); then
+                    printf '%*s%s' "$_tpad" "" "$label_clr"
+                    td_padded_visible "$left_text" "$left_width_max"
+                    printf '%s%*s%s%s%s\n' \
+                        "$RESET" \
+                        "$gap" "" \
+                        "$value_clr" "$wrapped_line" "$RESET"
+                    first_line=0
+                else
+                    printf '%*s%*s%*s%s%s%s\n' \
+                        "$_tpad" "" \
+                        "$left_width_max" "" \
+                        "$gap" "" \
+                        "$value_clr" "$wrapped_line" "$RESET"
+                fi
+            done < <(td_wrap_words --width "$desc_width" --text "$desc")
+        done
+        
         td_print
     }
-
-    __sgnd_console_render_menu() {
-        local gi
-        local group_key=""
-
-        __sgnd_console_refresh_builtin_labels
-        SGND_RENDER_DISPLAY_NUM=0
-
-        __sgnd_console_render_menu_title
-
-        for (( gi=0; gi<${#SGND_GROUP_KEYS[@]}; gi++ )); do
-            group_key="${SGND_GROUP_KEYS[gi]}"
-            [[ "$group_key" == "$SGND_GROUP_BUILTIN" ]] && continue
-            __sgnd_console_render_group "$group_key"
-        done
-
-        __sgnd_console_render_group "$SGND_GROUP_BUILTIN"
-    }
-    
-
  # -- Menu actions
     __sgnd_console_dispatch() {
         local choice="${1:?missing choice}"
         local handler=""
         local i
+        local row_count=0
         local visible_num=0
+        local builtin="0"
+        local key=""
+
+        row_count="$(td_dt_row_count SGND_ITEM_ROWS)"
 
         if [[ "$choice" =~ ^[0-9]+$ ]]; then
-            for (( i=0; i<${#SGND_MENU_KEYS[@]}; i++ )); do
-                (( SGND_MENU_BUILTIN[i] )) && continue
+            for (( i=0; i<row_count; i++ )); do
+                builtin="$(td_dt_get "$SGND_ITEM_SCHEMA" SGND_ITEM_ROWS "$i" builtin)"
+                (( builtin )) && continue
+
                 visible_num=$((visible_num + 1))
 
                 if [[ "$choice" == "$visible_num" ]]; then
-                    handler="${SGND_MENU_HANDLERS[i]}"
-                    SGND_LAST_WAITSECS="${SGND_MENU_WAITSECS[i]}"
+                    handler="$(td_dt_get "$SGND_ITEM_SCHEMA" SGND_ITEM_ROWS "$i" handler)"
+                    SGND_LAST_WAITSECS="$(td_dt_get "$SGND_ITEM_SCHEMA" SGND_ITEM_ROWS "$i" waitsecs)"
                     "$handler"
                     return $?
                 fi
             done
         fi
 
-        for (( i=0; i<${#SGND_MENU_KEYS[@]}; i++ )); do
-            if [[ "${choice^^}" == "${SGND_MENU_KEYS[i]^^}" ]]; then
-                handler="${SGND_MENU_HANDLERS[i]}"
-                SGND_LAST_WAITSECS="${SGND_MENU_WAITSECS[i]}"
+        for (( i=0; i<row_count; i++ )); do
+            key="$(td_dt_get "$SGND_ITEM_SCHEMA" SGND_ITEM_ROWS "$i" key)"
+
+            if [[ "${choice^^}" == "${key^^}" ]]; then
+                handler="$(td_dt_get "$SGND_ITEM_SCHEMA" SGND_ITEM_ROWS "$i" handler)"
+                SGND_LAST_WAITSECS="$(td_dt_get "$SGND_ITEM_SCHEMA" SGND_ITEM_ROWS "$i" waitsecs)"
                 "$handler"
                 return $?
             fi
@@ -692,6 +821,18 @@ set -uo pipefail
         return 1
     }
     
+    __sgnd_console_toggle_clearonrender() {
+        : "${SGND_CLEAR_ONRENDER:=1}"
+
+        if (( SGND_CLEAR_ONRENDER )); then
+            SGND_CLEAR_ONRENDER=0
+            sayinfo "Clear-on-render disabled"
+        else
+            SGND_CLEAR_ONRENDER=1
+            sayinfo "Clear-on-render enabled"
+        fi
+    }
+
     __sgnd_console_toggle_dryrun() {
         : "${FLAG_DRYRUN:=0}"
 
@@ -742,6 +883,9 @@ set -uo pipefail
         fi
     }
 
+    __sgnd_console_redraw() {
+        return 0
+    }
     __sgnd_console_quit() {
         return 200
     }
@@ -750,38 +894,54 @@ set -uo pipefail
 
     __sgnd_console_refresh_builtin_labels() {
         local i
+        local row_count=0
+        local key=""
 
-        for (( i=0; i<${#SGND_MENU_KEYS[@]}; i++ )); do
-            case "${SGND_MENU_KEYS[i]^^}" in
-                D)
-                    SGND_MENU_LABELS[i]="$(__sgnd_console_label_dryrun)"
-                    ;;
+        row_count="$(td_dt_row_count SGND_ITEM_ROWS)"
+
+        for (( i=0; i<row_count; i++ )); do
+            key="$(td_dt_get "$SGND_ITEM_SCHEMA" SGND_ITEM_ROWS "$i" key)"
+
+            case "${key^^}" in
                 B)
-                    SGND_MENU_LABELS[i]="$(__sgnd_console_label_debug)"
+                    td_dt_set "$SGND_ITEM_SCHEMA" SGND_ITEM_ROWS "$i" label "$(__sgnd_console_label_debug)"
                     ;;
-                V)
-                    SGND_MENU_LABELS[i]="$(__sgnd_console_label_verbose)"
+                C)
+                    td_dt_set "$SGND_ITEM_SCHEMA" SGND_ITEM_ROWS "$i" label "$(__sgnd_console_label_clearonrender)"
+                    ;;
+                D)
+                    td_dt_set "$SGND_ITEM_SCHEMA" SGND_ITEM_ROWS "$i" label "$(__sgnd_console_label_dryrun)"
                     ;;
                 L)
-                    SGND_MENU_LABELS[i]="$(__sgnd_console_label_logfile)"
+                    td_dt_set "$SGND_ITEM_SCHEMA" SGND_ITEM_ROWS "$i" label "$(__sgnd_console_label_logfile)"
                     ;;
+                V)
+                    td_dt_set "$SGND_ITEM_SCHEMA" SGND_ITEM_ROWS "$i" label "$(__sgnd_console_label_verbose)"
+                    ;;                
             esac
         done
     }
 
     __sgnd_console_onoff() {
         local value="${1:-0}"
+        local onclr="${2:-$BRIGHT_GREEN}"
+        local offclr="${3:-$DARK_SILVER}"
 
         if (( value )); then
-            printf 'On'
+            printf '%sOn%s' "$(td_sgr "$onclr")" "$RESET"
         else
-            printf 'Off'
+            printf '%sOff%s' "$(td_sgr "$offclr")" "$RESET"
         fi
+    }
+
+    __sgnd_console_label_clearonrender() {
+        : "${SGND_CLEAR_ONRENDER:=1}"
+        printf 'Clear screen: %s' "$(__sgnd_console_onoff "$SGND_CLEAR_ONRENDER")"
     }
 
     __sgnd_console_label_dryrun() {
         : "${FLAG_DRYRUN:=0}"
-        printf 'Dry-run: %s' "$(__sgnd_console_onoff "$FLAG_DRYRUN")"
+        printf 'Dry-run: %s' "$(__sgnd_console_onoff "$FLAG_DRYRUN" "$BRIGHT_GREEN" "$BRIGHT_ORANGE")"
     }
 
     __sgnd_console_label_debug() {
@@ -808,9 +968,10 @@ set -uo pipefail
         while true; do
             __sgnd_console_render_menu
             valid_choices="$(__sgnd_console_valid_choices_csv)"
-
+            
+            td_print_sectionheader --border "$DL_H" --maxwidth "$(td_terminal_width)"
             td_choose \
-                --label "Select" \
+                --label "Select option" \
                 --choices "$valid_choices" \
                 --displaychoices 0 \
                 --keepasking 1 \
@@ -831,7 +992,6 @@ set -uo pipefail
         done
     }
 
-
 # --- Public API -------------------------------------------------------------------
     sgnd_console_register_item() {
         local key="${1:?missing key}"
@@ -841,14 +1001,12 @@ set -uo pipefail
         local desc="${5:-}"
         local builtin="${6:-0}"
         local waitsecs="${7:-15}"
-        local i
+        local source="${SGND_CURRENT_MODULE:-}"
 
-        for (( i=0; i<${#SGND_MENU_KEYS[@]}; i++ )); do
-            [[ "${SGND_MENU_KEYS[i]}" == "$key" ]] && {
-                sayfail "Duplicate menu key: $key"
-                return 1
-            }
-        done
+        if td_dt_has_row "$SGND_ITEM_SCHEMA" SGND_ITEM_ROWS key "$key"; then
+            sayfail "Duplicate menu key: $key"
+            return 1
+        fi
 
         declare -F "$handler" >/dev/null || {
             sayfail "Handler not defined for menu key '$key': $handler"
@@ -863,30 +1021,29 @@ set -uo pipefail
             __sgnd_console_register_fallback_group "$group"
         fi
 
-        SGND_MENU_KEYS+=("$key")
-        SGND_MENU_GROUPS+=("$group")
-        SGND_MENU_LABELS+=("$label")
-        SGND_MENU_HANDLERS+=("$handler")
-        SGND_MENU_DESCS+=("$desc")
-        SGND_MENU_SOURCES+=("${SGND_CURRENT_MODULE:-}")
-        SGND_MENU_BUILTIN+=("$builtin")
-        SGND_MENU_WAITSECS+=("$waitsecs")
+        td_dt_append "$SGND_ITEM_SCHEMA" SGND_ITEM_ROWS \
+            "$key" "$group" "$label" "$handler" "$desc" "$source" "$builtin" "$waitsecs" || {
+            sayfail "Failed to register item: $key"
+            return 1
+        }
     }
 
     sgnd_console_register_group() {
         local key="${1:?missing group key}"
         local label="${2:?missing group label}"
         local desc="${3:-}"
-        local i
+        local builtin="${4:-0}"
+        local source="${SGND_CURRENT_MODULE:-}"
 
-        for (( i=0; i<${#SGND_GROUP_KEYS[@]}; i++ )); do
-            [[ "${SGND_GROUP_KEYS[i]}" == "$key" ]] && return 0
-        done
+        if td_dt_has_row "$SGND_GROUP_SCHEMA" SGND_GROUP_ROWS key "$key"; then
+            return 0
+        fi
 
-        SGND_GROUP_KEYS+=("$key")
-        SGND_GROUP_LABELS+=("$label")
-        SGND_GROUP_DESCS+=("$desc")
-        SGND_GROUP_SOURCES+=("${SGND_CURRENT_MODULE:-}")
+        td_dt_append "$SGND_GROUP_SCHEMA" SGND_GROUP_ROWS \
+            "$key" "$label" "$desc" "$source" "$builtin" || {
+            sayfail "Failed to register group: $key"
+            return 1
+        }
     }
 # --- Main -------------------------------------------------------------------------
     # main
@@ -937,13 +1094,18 @@ set -uo pipefail
 
         
         # -- Main script logic
+
+        declare -F td_dt_append >/dev/null || {
+            sayfail "td-datatable.sh did not load correctly"
+            exit 126
+        }
         __sgnd_console_load_config || exit $?
         __sgnd_console_register_builtin_items || exit $?
         __sgnd_console_load_modules || exit $?
 
-            if (( ${#SGND_MENU_KEYS[@]} == 0 )); then
-                saywarning "No menu items registered"
-            fi
+        if (( $(td_dt_row_count SGND_ITEM_ROWS) == 0 )); then
+            saywarning "No menu items registered"
+        fi
 
             __sgnd_console_run
     }

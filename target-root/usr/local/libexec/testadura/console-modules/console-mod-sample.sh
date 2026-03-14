@@ -77,17 +77,14 @@ set -uo pipefail
 # --- Console registration --------------------------------------------------------
 # Allowed side-effect: module self-registers with sgnd-console
 
-sgnd_console_register_group \
-    "system" \
-    "System tools" \
-    "General system operations"
+sgnd_console_register_group "system" "System tools" "General system operations"
 
 sys_status() {
     sayinfo "System status"
 }
 
 sgnd_console_register_item "sys-status" "system" "System status" "sys_status" "Show system status" 0 15
-sgnd_console_register_item "other-sample-message" "system" "Another Sample message" "sample_show_message" "Show a simple demo message" 0 7
+sgnd_console_register_item "other-sample-message" "system" "Another Sample message" "sample_show_message" "Show a simple demo message, with a ridiculously long menu description so wrapping can be triggered." 0 7
 sgnd_console_register_item "sample-message" "" "Sample message" "sample_show_message" "Show a simple demo message" 0 7
 
 

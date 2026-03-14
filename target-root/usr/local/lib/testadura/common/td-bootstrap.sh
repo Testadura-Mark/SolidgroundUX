@@ -238,6 +238,43 @@ set -uo pipefail
         done
     }
 
+    # __source_usinglibs
+        # Purpose:
+        #   Source optional script-requested libraries from TD_COMMON_LIB.
+        #
+        # Inputs (globals):
+        #   TD_COMMON_LIB
+        #   TD_USING
+        #
+        # Behavior:
+        #   - If TD_USING is defined and non-empty, sources each library from:
+        #       $TD_COMMON_LIB/<lib>
+        #   - Libraries are loaded after core libraries, so they may depend on them.
+        #
+        # Returns:
+        #   0  success
+        #   Non-zero if any requested library cannot be sourced
+    __source_usinglibs() {
+        local lib path
+
+        declare -p TD_USING >/dev/null 2>&1 || return 0
+        (( ${#TD_USING[@]} > 0 )) || return 0
+
+        sayinfo "Loading optional libraries..."
+
+        for lib in "${TD_USING[@]}"; do
+            path="$TD_COMMON_LIB/$lib"
+            [[ -r "$path" ]] || {
+                sayfail "Optional library not found or unreadable: $path"
+                return 126
+            }
+
+            saydebug "Sourcing optional library: $path"
+            # shellcheck source=/dev/null
+            source "$path"
+        done
+    }
+
     # __td_on_exit_run
         # Purpose:
         #   Execute registered EXIT handlers (LIFO) while preserving the original exit code.
@@ -644,6 +681,7 @@ set -uo pipefail
             __parse_bootstrap_args "$@" || { local rc=$?; __boot_fail "Failed parsing bootstrap arguments" "$rc"; return "$rc"; }
 
             __source_corelibs || { local rc=$?; __boot_fail "Failed to load core libraries" "$rc"; return "$rc"; }
+            __source_usinglibs || { local rc=$?; __boot_fail "Failed to load optional libraries" "$rc"; return "$rc"; }
 
             sayinfo "Loading UI style"
             td_load_ui_style || { local rc=$?; __boot_fail "Failed to load UI style" "$rc"; return "$rc"; }

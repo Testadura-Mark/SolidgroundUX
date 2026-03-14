@@ -1,0 +1,2 @@
+#!/usr/bin/env bash
+exec bash /home/sysadmin/dev/SolidgroundUX/target-root/usr/local/libexec/testadura/sgnd-console.sh "$@"
