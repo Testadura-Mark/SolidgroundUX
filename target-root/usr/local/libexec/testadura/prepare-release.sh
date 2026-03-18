@@ -242,6 +242,7 @@ set -uo pipefail
     }
     saycancel() { printf '%sCANCEL%s\t%s\n' "${MSG_CLR_CNCL-}" "${RESET-}" "$*" >&2; }
     sayend() { printf '%sEND%s   \t%s\n' "${MSG_CLR_END-}" "${RESET-}" "$*" >&2; }
+    
 # --- Script metadata (identity) ---------------------------------------------------
     TD_SCRIPT_FILE="$(readlink -f "${BASH_SOURCE[0]}")"
     TD_SCRIPT_DIR="$(cd -- "$(dirname -- "$TD_SCRIPT_FILE")" && pwd)"
