@@ -649,8 +649,8 @@ set -uo pipefail
     td_bootstrap() {
         saystart "Initializing framework"
         # Definitions
-            : "${TUI_COMMIT:=$(printf '\e[38;5;130m')}"
-            : "${TUI_DRYRUN:=$(printf '\e[38;5;245m')}"
+            : "${TUI_COMMIT:=$(printf '\e[38;5;214m')}"
+            : "${TUI_DRYRUN:=$(printf '\e[38;5;214m')}"
             : "${RESET:=$(printf '\e[0m')}"
             : "${RUN_MODE:="${TUI_COMMIT}COMMIT${RESET}"}"
             : "${FLAG_DEBUG:=0}"

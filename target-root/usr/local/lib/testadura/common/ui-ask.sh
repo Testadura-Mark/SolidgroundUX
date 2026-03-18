@@ -143,6 +143,45 @@ set -uo pipefail
         done
     }
 
+    # td__choice_is_valid
+        # Purpose:
+        #   Validate a single choice against a td_choose-style choices list.
+        #
+        # Usage:
+        #   if td__choice_is_valid "$value" "$choices"; then ...
+        #
+        # Arguments:
+        #   $1  VALUE    Value to validate.
+        #   $2  CHOICES  Comma-separated tokens and/or ranges.
+        #
+        # Behavior:
+        #   - If CHOICES is empty: returns success.
+        #   - Expands CHOICES via __expand_choices.
+        #   - Compares case-insensitively.
+        #
+        # Returns:
+        #   0 if valid
+        #   1 if invalid
+    td__choice_is_valid() {
+        local value="${1-}"
+        local choices="${2-}"
+        local opt=""
+        local -a expanded=()
+
+        [[ -z "$choices" ]] && return 0
+
+        mapfile -t expanded < <(__expand_choices "$choices")
+        saydebug "td__choice_is_valid: choices=[$choices] expanded=[${expanded[*]}] value=[$value]"
+
+        for opt in "${expanded[@]}"; do
+            if [[ "${value^^}" == "${opt^^}" ]]; then
+                return 0
+            fi
+        done
+
+        return 1
+    }
+
     # td_ask_action
         # Purpose:
         #   Shared helper for ask_* wrappers:
@@ -585,18 +624,10 @@ set -uo pipefail
                 break
             fi
 
-            # --- Validate choice --------------------------------------------------
-            _valid=0
-            mapfile -t _opts < <(__expand_choices "$choices")
-            saydebug "td_choose: choices=[$choices] expanded=[${_opts[*]}]"
-            for opt in "${_opts[@]}"; do
-                if [[ "${_choice^^}" == "${opt^^}" ]]; then
-                    _valid=1
-                    break
-                fi
-            done
-
-            (( _valid )) && break
+        # --- Validate choice --------------------------------------------------
+        if td__choice_is_valid "$_choice" "$choices"; then
+            break
+        fi
 
             # --- Invalid choice ---------------------------------------------------
             saywarning "Invalid choice: $_choice"
@@ -608,6 +639,146 @@ set -uo pipefail
         printf -v "$varname" '%s' "$_choice"
     }
     
+    # td_choose_immediate
+        # Purpose:
+        #   Prompt for a user choice using immediate-capable TTY input, optionally
+        #   constrained to a set/range of allowed values.
+        #
+        # Usage:
+        #   td_choose_immediate --label "Select option" --choices "1,2,3,Q" --var choice
+        #   td_choose_immediate --label "Select option" --choices "$valid" \
+        #       --instantchoices "B,D,L,V,C" --var choice
+        #
+        # Options:
+        #   --label TEXT            Prompt label (fallback: first positional token).
+        #   --var NAME              Destination variable name (default: "choice").
+        #   --choices LIST          Allowed values (comma-separated tokens and/or ranges).
+        #   --instantchoices LIST   Choices that should be accepted immediately without
+        #                           Enter (comma-separated tokens and/or ranges).
+        #   --displaychoices 0|1    Append "[choices]" to the label (default: 1).
+        #   --keepasking 0|1        Re-prompt on invalid input (default: 1).
+        #
+        # Behavior:
+        #   - Reads input directly from /dev/tty (not stdin).
+        #   - Input matching --instantchoices is accepted immediately.
+        #   - All other input is buffered until Enter.
+        #   - Backspace edits buffered input.
+        #   - If --choices is empty: accepts any input.
+        #   - If --choices is provided:
+        #       - Expands ranges via __expand_choices
+        #       - Validates case-insensitively
+        #       - On invalid input:
+        #           - warns (saywarning)
+        #           - re-prompts if keepasking=1
+        #
+        # Outputs:
+        #   None (communication is via variable assignment).
+        #
+        # Returns:
+        #   0 always (no validity contract yet).
+        #
+        # Notes:
+        #   - Intended for menu-style UIs where some hotkeys should react immediately
+        #     while normal choices still require Enter.
+        #   - Input is uppercased before immediate-choice comparison.
+    td_choose_immediate() {
+        local label=""
+        local choices=""
+        local instantchoices=""
+        local displaychoices=1
+        local keepasking=1
+        local varname="choice"
+
+        local _choice=""
+
+        # --- Parse options --------------------------------------------------------
+        while [[ $# -gt 0 ]]; do
+            case "$1" in
+                --label)          label="$2"; shift 2 ;;
+                --var)            varname="$2"; shift 2 ;;
+                --choices)        choices="$2"; shift 2 ;;
+                --instantchoices) instantchoices="$2"; shift 2 ;;
+                --displaychoices) displaychoices="$2"; shift 2 ;;
+                --keepasking)     keepasking="$2"; shift 2 ;;
+                --) shift; break ;;
+                *)
+                    [[ -z "$label" ]] && label="$1"
+                    shift
+                    ;;
+            esac
+        done
+
+        # --- Append choices to label ---------------------------------------------
+        if [[ -n "$choices" && "$displaychoices" -eq 1 ]]; then
+            label+=" [$choices]"
+        fi
+
+        # --- Ask loop -------------------------------------------------------------
+        while :; do
+            local key=""
+            local buffer=""
+            local candidate=""
+
+            printf '%s: ' "$label" > /dev/tty
+
+            while true; do
+                IFS= read -r -s -n 1 key < /dev/tty || return 1
+
+                case "$key" in
+                    "")
+                        # Enter confirms buffered input
+                        if [[ -n "$buffer" ]]; then
+                            printf '\n' > /dev/tty
+                            _choice="$buffer"
+                            break
+                        fi
+                        ;;
+
+                    $'\177'|$'\b')
+                        # Backspace
+                        if [[ -n "$buffer" ]]; then
+                            buffer="${buffer%?}"
+                            printf '\b \b' > /dev/tty
+                        fi
+                        ;;
+
+                    *)
+                        candidate="${key^^}"
+
+                        # Immediate only for configured instant choices
+                        if [[ -n "$instantchoices" ]] && td__choice_is_valid "$candidate" "$instantchoices"; then
+                            printf '\n' > /dev/tty
+                            _choice="$candidate"
+                            break
+                        fi
+
+                        # Otherwise buffer normally
+                        buffer+="$key"
+                        printf '%s' "$key" > /dev/tty
+                        ;;
+                esac
+            done
+
+            # --- No choices constraint -------------------------------------------
+            if [[ -z "$choices" ]]; then
+                break
+            fi
+
+            # --- Validate choice --------------------------------------------------
+            if td__choice_is_valid "$_choice" "$choices"; then
+                break
+            fi
+
+            # --- Invalid choice ---------------------------------------------------
+            saywarning "Invalid choice: $_choice"
+
+            (( keepasking )) || break
+        done
+
+        # --- Assign result --------------------------------------------------------
+        printf -v "$varname" '%s' "$_choice"
+    }
+
     # ask_ok_redo_quit
         # Purpose:
         #   Convenience wrapper for a standard OK / Redo / Quit decision prompt.

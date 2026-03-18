@@ -373,10 +373,13 @@ set -uo pipefail
         #
         # Accepts:
         #   - Numeric SGR params (e.g. 1 bold, 4 underline, 7 reverse)
+        #   - Comma- or semicolon-separated numeric SGR param lists
+        #       (e.g. "1,4" or "1;4")
         #   - Full SGR escapes like: $'\e[38;5;46m'
         #
         # Behavior:
         #   - Extracts inner parameters from any ESC[...m input.
+        #   - Splits comma/semicolon-separated numeric lists into individual params.
         #   - Merges all parts into a single ESC[<joined>m sequence.
         #   - Ignores empty/unrecognized parts.
         #
@@ -391,23 +394,43 @@ set -uo pipefail
         #   - If no valid parts are provided, prints "${RESET-}" (may be empty).
     td_sgr() {
         local -a parts=()
-        local arg
-        local inner
+        local -a subparts=()
+        local arg=""
+        local inner=""
+        local sub=""
 
         for arg in "$@"; do
             [[ -z "${arg:-}" ]] && continue
 
-            # Numeric: treat as SGR parameter
+            # Numeric: treat as single SGR parameter
             if [[ "$arg" =~ ^[0-9]+$ ]]; then
                 parts+=( "$arg" )
                 continue
             fi
 
-            # Escape: extract "38;5;46" from $'\e[38;5;46m'
+            # Numeric list: allow comma or semicolon separated params
+            if [[ "$arg" =~ ^[0-9]+([,;][0-9]+)+$ ]]; then
+                inner="${arg//,/;}"
+                IFS=';' read -r -a subparts <<< "$inner"
+
+                for sub in "${subparts[@]}"; do
+                    [[ -n "$sub" ]] && parts+=( "$sub" )
+                done
+                continue
+            fi
+
+            # Escape: extract inner params from $'\e[...m'
             if [[ "$arg" == $'\e['*m ]]; then
                 inner="${arg#$'\e['}"
                 inner="${inner%m}"
-                [[ -n "$inner" ]] && parts+=( "$inner" )
+
+                if [[ "$inner" =~ ^[0-9]+([;][0-9]+)*$ ]]; then
+                    IFS=';' read -r -a subparts <<< "$inner"
+
+                    for sub in "${subparts[@]}"; do
+                        [[ -n "$sub" ]] && parts+=( "$sub" )
+                    done
+                fi
                 continue
             fi
         done

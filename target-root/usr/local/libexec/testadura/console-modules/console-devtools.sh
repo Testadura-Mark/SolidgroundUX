@@ -65,29 +65,39 @@ set -uo pipefail
 
 
 # --- Internal helpers ------------------------------------------------------------
-    # Naming:
-    #   - Prefix internal-only helpers with "__" (never "td_")
-    # Example:
-    #   __<libname>_helper() { :; }
+    __exe_createworkspace()
+    {
+            __sgnd_run_script "create-workspace.sh" --showenv
+    }
+    
+        __exe_deployworkspace()
+    {
+            __sgnd_run_script "deploy-workspace.sh" --showenv
+    }
+
+        __exe_preparerelease()
+    {
+            __sgnd_run_script "prepare-release.sh" --showenv
+    }
 # --- Public API ------------------------------------------------------------------
-    sample_show_message() {
-    justsay "Sample show message()"
-}
-    sample_show_alt_message() {
-    justsay "Sample show alt message()"
-}
+#    sample_show_message() {
+#        sayinfo "Sample module action executed"
+#    }
+
+# sys_status() {
+#     sayinfo "System status"
+# }
 
 # --- Console registration --------------------------------------------------------
 # Allowed side-effect: module self-registers with sgnd-console
 
-sgnd_console_register_group "system" "System tools" "General system operations" 0 1 100
+    sgnd_console_register_group "devtools" "Developer tools" "Tool scripts to create, deploy and release VSC-workspaces" 0 1 900
 
-sys_status() {
-    justsay "Module function sys_status was called"
-}
+    sgnd_console_register_item "createws" "devtools" "Create workspace" "__exe_createworkspace" "Create a template workspace with target-root structure" 0 15 
+    sgnd_console_register_item "deployws" "devtools" "Deploy workspace" "__exe_deployworkspace" "Deploy target-root structure from workspace to root" 0 15
+    sgnd_console_register_item "preprel" "devtools" "Prepare release" "__exe_preparerelease" "Create a tar-file from workspace with checksums and manifests" 0 15
 
-sgnd_console_register_item "sys-status" "system" "System status" "sys_status" "Show system status" 0 15 1 10
-sgnd_console_register_item "other-sample-message" "system" "Another Sample message" "sample_show_message" "Show a simple demo message, with a ridiculously long menu description so wrapping can be triggered." 0 7 2
-sgnd_console_register_item "sample-message" "" "Sample message" "sample_show_alt_message" "Show a simple demo message" 0 7 1 
+# sgnd_console_register_item "other-sample-message" "system" "Another Sample message" "sample_show_message" "Show a simple demo message" 0 7
+# sgnd_console_register_item "sample-message" "" "Sample message" "sample_show_message" "Show a simple demo message" 0 7
 
 
