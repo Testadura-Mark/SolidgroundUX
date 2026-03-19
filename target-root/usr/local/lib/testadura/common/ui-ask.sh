@@ -1080,7 +1080,7 @@ set -uo pipefail
         if (( seconds > 0 )); then
             # Use tty-based soft dialog for the timed phase:
             # E=Enter->OK, R=redo, C=cancel, P=pause, Q=quit, T=typed fallback, H=hide key legend
-            td_dlg_autocontinue "$seconds" "$prompt [OK/Redo/Quit]" "ERCPQTH"
+            td_dlg_autocontinue "$seconds" "$prompt [$KY_ENTER/Redo/Quit]" "ERCPQTH"
             local rc=$?
 
             case "$rc" in
@@ -1093,7 +1093,7 @@ set -uo pipefail
         fi
 
         # Full typed prompt (original behavior)
-        ask --label "$prompt [OK/Redo/Quit]" --var orq_response
+        ask --label "$prompt [$KY_ENTER/Redo/Quit]" --var orq_response
 
         # Trim whitespace
         orq_response="${orq_response#"${orq_response%%[![:space:]]*}"}"

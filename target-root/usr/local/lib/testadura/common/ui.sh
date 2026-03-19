@@ -956,6 +956,7 @@ set -uo pipefail
         (( maxwidth < 10 )) && maxwidth=10
         (( padleft < 0 )) && padleft=0
 
+        td_print
         td_print_sectionheader \
             --border "$border" \
             --borderclr "$borderclr" \
