@@ -1,52 +1,61 @@
 # ==================================================================================
-# Testadura Consultancy — cfg.sh
+# Testadura Consultancy — SolidGround Configuration Library
 # ----------------------------------------------------------------------------------
-# Purpose    : Minimal KEY=VALUE config and state file management
-# Author     : Mark Fieten
+# Module  : cfg.sh
+# Purpose : Lightweight KEY=VALUE configuration and state file handling.
 #
+# Scope   :
+#   - Load, read, write, and remove configuration entries
+#   - Support for application config, user config, and state files
+#   - Minimal parsing without external dependencies
+#
+# Design  :
+#   - Simple, predictable file format (KEY=VALUE)
+#   - No implicit transformations (values treated as literal)
+#   - Safe updates with minimal file mutation
+#
+# Notes   :
+#   - Used by both runtime configuration and persisted state
+#   - Complements environment-based configuration
+#
+# Author  : Mark Fieten
 # © 2025 Mark Fieten — Testadura Consultancy
 # Licensed under the Testadura Non-Commercial License (TD-NC) v1.0.
-# ----------------------------------------------------------------------------------
-# Description:
-#   Provides small helpers for loading and maintaining configuration and state
-#   stored as plain KEY=VALUE text files.
-#
-#   Conceptually:
-#   - Config files are user-editable settings (persistent inputs).
-#   - State files are script-managed runtime data (persistent outputs).
-#
-# Assumptions:
-#   - Requires bash 4.3+
-#   - This is a FRAMEWORK library (may depend on the framework as it exists).
-#   - File paths (TD_CFG_FILE / TD_STATE_FILE or equivalents) are resolved by
-#     bootstrap or the caller; this module does not perform path detection.
-#
-# Design rules:
-#   - Libraries define functions and constants only.
-#   - No auto-execution (must be sourced).
-#   - Avoids changing shell options beyond strict-unset/pipefail (set -u -o pipefail).
-#     (No set -e; no shopt.)
-#   - No path detection or root resolution (bootstrap owns path resolution).
-#   - #   - No framework policy decisions. May emit say* diagnostics and use td_print_* helpers for display.
-#   - Safe to source multiple times (idempotent load guard).
-#
-# Public API (summary):
-#   - td_cfg_load, td_cfg_set, td_cfg_unset, td_cfg_reset, td_cfg_get, td_cfg_has, td_cfg_show_keys
-#   - td_state_load, td_state_set, td_state_unset, td_state_reset, td_state_get, td_state_has, td_state_save_keys, td_state_load_keys, td_state_list_keys
-# Bootstrap/advanced (used by bootstrap):
-#   - td_cfg_domain_apply, td_cfg_ensure_files, td_cfg_write_skeleton_filtered, td_cfg_has_audience, td_cfg_warn_missing_syscfg, td_cfg_load_file
-#
-# Non-goals:
-#   - Structured formats (INI, YAML, JSON)
-#   - Schema or type enforcement
-#   - Merging/inheritance logic or config precedence policy
 # ==================================================================================
 set -uo pipefail
 # --- Library guard ----------------------------------------------------------------
-    # Library-only: must be sourced, never executed.
-    # Uses a per-file guard variable derived from the filename, e.g.:
-    #   ui.sh      -> TD_UI_LOADED
-    #   foo-bar.sh -> TD_FOO_BAR_LOADED
+    # __td_lib_guard
+        # Purpose:
+        #   Ensure the file is sourced as a library and only initialized once.
+        #
+        # Behavior:
+        #   - Derives a unique guard variable name from the current filename.
+        #   - Aborts execution if the file is executed instead of sourced.
+        #   - Sets the guard variable on first load.
+        #   - Skips initialization if the library was already loaded.
+        #
+        # Inputs:
+        #   BASH_SOURCE[0]
+        #   $0
+        #
+        # Outputs (globals):
+        #   TD_<MODULE>_LOADED
+        #
+        # Returns:
+        #   0 if already loaded or successfully initialized.
+        #   Exits with code 2 if executed instead of sourced.
+        #
+        # Usage:
+        #   __td_lib_guard
+        #
+        # Examples:
+        #   # Typical usage at top of library file
+        #   __td_lib_guard
+        #   unset -f __td_lib_guard
+        #
+        # Notes:
+        #   - Guard variable is derived dynamically (e.g. ui-glyphs.sh → TD_UI_GLYPHS_LOADED).
+        #   - Safe under `set -u` due to indirect expansion with default.
     __td_lib_guard() {
         local lib_base
         local guard
@@ -75,40 +84,64 @@ set -uo pipefail
     # - Accepts only names: [A-Za-z_][A-Za-z0-9_]*
     # - Loads via printf -v assignment (value preserved as-is)
 
-    #__td_is_ident
+    # __td_is_ident
         # Purpose:
-            #   Test whether a string is a valid Bash variable identifier.
-            #
-            # Arguments:
-            #   $1  Candidate identifier.
-            #
-            # Returns:
-            #   0 if valid ([A-Za-z_][A-Za-z0-9_]*), 1 otherwise.
-        __td_is_ident() {
+        #   Test whether a string is a valid shell identifier.
+        #
+        # Behavior:
+        #   - Validates the input against shell variable naming rules.
+        #   - Accepts names starting with a letter or underscore.
+        #   - Allows alphanumeric characters and underscores thereafter.
+        #
+        # Arguments:
+        #   $1  NAME
+        #       Candidate identifier.
+        #
+        # Returns:
+        #   0 if NAME is a valid identifier.
+        #   1 otherwise.
+        #
+        # Usage:
+        #   __td_is_ident NAME
+        #
+        # Examples:
+        #   if __td_is_ident "APP_TITLE"; then
+        #       printf 'valid\n'
+        #   fi
+    __td_is_ident() {
             [[ "${1:-}" =~ ^[A-Za-z_][A-Za-z0-9_]*$ ]]
         }
-
+   
     # __td_kv_load_file
-    # Purpose:
-    #   Load KEY=VALUE pairs from a file into shell variables.
-    #
-    # Arguments:
-    #   $1  File path.
-    #
-    # Outputs (globals):
-    #   Sets variables for each valid KEY found in the file.
-    #
-    # Behavior:
-    #   - Ignores blank lines and comment lines starting with '#'.
-    #   - Requires a literal '=' to be present.
-    #   - Trims whitespace around the KEY only (not the VALUE).
-    #   - Stores VALUE verbatim as the substring after the first '='.
-    #
-    # Returns:
-    #   0 always (missing file is not an error).
-    #
-    # Notes:
-    #   - Does not unquote or interpret escapes; this is not shell syntax parsing.
+        # Purpose:
+        #   Load KEY=VALUE pairs from a file into shell variables.
+        #
+        # Behavior:
+        #   - Reads plain KEY=VALUE lines from the target file.
+        #   - Ignores blank lines and comment lines.
+        #   - Validates keys as shell identifiers.
+        #   - Assigns values literally without unquoting or escape processing.
+        #
+        # Arguments:
+        #   $1  FILE
+        #       Path to the KEY=VALUE file.
+        #
+        # Outputs (globals):
+        #   Sets variables defined in the file.
+        #
+        # Side effects:
+        #   - May emit warnings for invalid keys.
+        #
+        # Returns:
+        #   0 always.
+        #
+        # Usage:
+        #   __td_kv_load_file FILE
+        #
+        # Examples:
+        #   __td_kv_load_file "$TD_CFG_FILE"
+        #
+        #   [[ -r "$file" ]] && __td_kv_load_file "$file"
     __td_kv_load_file() {
         local file="$1"
         [[ -f "$file" ]] || return 0
@@ -145,25 +178,37 @@ set -uo pipefail
 
     # __td_kv_set
         # Purpose:
-        #   Upsert a KEY=VALUE entry into a KEY=VALUE file.
+        #   Write or update a KEY=VALUE entry in a file.
+        #
+        # Behavior:
+        #   - Validates the key as a shell identifier.
+        #   - Replaces an existing KEY=VALUE entry when present.
+        #   - Appends a new entry when the key does not exist.
+        #   - Preserves the rest of the file content.
         #
         # Arguments:
-        #   $1  File path.
-        #   $2  Key (must be a valid identifier).
-        #   $3  Value (written verbatim).
+        #   $1  FILE
+        #       Path to the KEY=VALUE file.
+        #   $2  KEY
+        #       Key to write.
+        #   $3  VALUE
+        #       Value to assign.
         #
         # Side effects:
-        #   - Creates the parent directory if needed.
-        #   - Rewrites the file (removes existing KEY=... lines, appends new KEY=VALUE).
-        #   - Sets directory mode to 700 and file mode to 600.
-        #   - When running as root under sudo, attempts to set ownership to SUDO_UID:SUDO_GID.
+        #   - Modifies the target file.
+        #   - May emit warnings for invalid keys.
         #
         # Returns:
-        #   0 on success; non-zero on error (invalid key, mkdir/install failure, etc.).
+        #   0 on success.
+        #   1 on invalid key or write failure.
         #
-        # Notes:
-        #   - Matching/removal is line-based: any line beginning with KEY (allowing leading whitespace)
-        #     followed by optional whitespace and '=' is removed.
+        # Usage:
+        #   __td_kv_set FILE KEY VALUE
+        #
+        # Examples:
+        #   __td_kv_set "$TD_CFG_FILE" "APP_TITLE" "SolidGround"
+        #
+        #   __td_kv_set "$TD_STATE_FILE" "CURRENT_PAGE" "2"
     __td_kv_set() {
         local file="$1" key="$2" val="$3"
         [[ "$key" =~ ^[A-Za-z_][A-Za-z0-9_]*$ ]] || return 1
@@ -211,18 +256,34 @@ set -uo pipefail
 
     # __td_kv_unset
         # Purpose:
-        #   Remove a KEY entry from a KEY=VALUE file.
+        #   Remove a KEY=VALUE entry from a file.
+        #
+        # Behavior:
+        #   - Validates the key as a shell identifier.
+        #   - Removes matching KEY=VALUE lines from the file.
+        #   - Leaves the rest of the file unchanged.
         #
         # Arguments:
-        #   $1  File path.
-        #   $2  Key (must be a valid identifier).
+        #   $1  FILE
+        #       Path to the KEY=VALUE file.
+        #   $2  KEY
+        #       Key to remove.
         #
         # Side effects:
-        #   - Rewrites the file without matching KEY=... lines.
-        #   - Deletes the file if it becomes empty after removal.
+        #   - Modifies the target file.
+        #   - May emit warnings for invalid keys.
         #
         # Returns:
-        #   0 on success (missing file is not an error); non-zero on error.
+        #   0 on success.
+        #   1 on invalid key or write failure.
+        #
+        # Usage:
+        #   __td_kv_unset FILE KEY
+        #
+        # Examples:
+        #   __td_kv_unset "$TD_CFG_FILE" "APP_TITLE"
+        #
+        #   __td_kv_unset "$TD_STATE_FILE" "CURRENT_PAGE"
     __td_kv_unset() {
         local file="$1" key="$2"
         [[ "$key" =~ ^[A-Za-z_][A-Za-z0-9_]*$ ]] || return 1
@@ -262,19 +323,33 @@ set -uo pipefail
 
     # __td_kv_get
         # Purpose:
-        #   Read a KEY's value from a KEY=VALUE file.
+        #   Read a value for a key from a KEY=VALUE file.
+        #
+        # Behavior:
+        #   - Searches the file for a matching KEY=VALUE entry.
+        #   - Returns the last matching occurrence when duplicates exist.
+        #   - Does not read from the current shell variable.
         #
         # Arguments:
-        #   $1  File path.
-        #   $2  Key (must be a valid identifier).
+        #   $1  FILE
+        #       Path to the KEY=VALUE file.
+        #   $2  KEY
+        #       Key to retrieve.
         #
         # Output:
-        #   Prints the value (substring after the first '=') to stdout (no newline).
+        #   Prints the value to stdout without a trailing newline.
         #
         # Returns:
-        #   0 if found,
-        #   1 if not found,
-        #   2 on argument/read error (missing key/file not readable/invalid key).
+        #   0 if the key is found.
+        #   1 if the key is not present.
+        #
+        # Usage:
+        #   __td_kv_get FILE KEY
+        #
+        # Examples:
+        #   value="$(__td_kv_get "$TD_CFG_FILE" "APP_TITLE")" || value=""
+        #
+        #   __td_kv_get "$TD_STATE_FILE" "CURRENT_PAGE"
     __td_kv_get() {
         local file="$1" key="$2"
 
@@ -357,17 +432,35 @@ set -uo pipefail
         # Purpose:
         #   Load a config file into shell variables.
         #
+        # Behavior:
+        #   - Loads KEY=VALUE pairs from the selected config file.
+        #   - Ignores missing files.
+        #   - Accepts only valid shell identifiers as keys.
+        #
         # Arguments:
-        #   $1  Optional file path (defaults to TD_CFG_FILE).
+        #   $1  FILE
+        #       Optional config file path.
+        #       Defaults to TD_CFG_FILE when omitted.
         #
         # Inputs (globals):
-        #   TD_CFG_FILE (default path).
+        #   TD_CFG_FILE
         #
         # Outputs (globals):
-        #   Sets variables defined in the file.
+        #   Sets variables defined in the loaded file.
         #
         # Returns:
-        #   0 always (missing file is not an error).
+        #   0 always.
+        #
+        # Usage:
+        #   td_cfg_load
+        #
+        # Examples:
+        #   td_cfg_load
+        #
+        #   td_cfg_load "/etc/testadura/myapp.cfg"
+        #
+        # Notes:
+        #   - Missing files are not treated as an error.
     td_cfg_load() {
         local file="${1:-$TD_CFG_FILE}"
         __td_kv_load_file "$file"
@@ -377,9 +470,16 @@ set -uo pipefail
         # Purpose:
         #   Persist a config KEY=VALUE pair and update the current shell variable.
         #
+        # Behavior:
+        #   - Validates the key as a shell identifier.
+        #   - Writes or replaces the KEY=VALUE entry in TD_CFG_FILE.
+        #   - Updates the in-memory shell variable to the same value.
+        #
         # Arguments:
-        #   $1  Key.
-        #   $2  Value.
+        #   $1  KEY
+        #       Config variable name.
+        #   $2  VALUE
+        #       Value to persist.
         #
         # Inputs (globals):
         #   TD_CFG_FILE
@@ -388,10 +488,20 @@ set -uo pipefail
         #   Sets $KEY in the current shell.
         #
         # Side effects:
-        #   Updates TD_CFG_FILE on disk (see __td_kv_set).
+        #   - Updates TD_CFG_FILE on disk.
+        #   - May emit a warning for invalid keys.
         #
         # Returns:
-        #   0 on success; non-zero on invalid key or write error.
+        #   0 on success.
+        #   1 on invalid key or write failure.
+        #
+        # Usage:
+        #   td_cfg_set KEY VALUE
+        #
+        # Examples:
+        #   td_cfg_set "APP_TITLE" "SolidGround Console"
+        #
+        #   td_cfg_set "SGND_PAGE_MAX_ROWS" "15"
     td_cfg_set() {
         local key="$1" val="$2"
         __td_is_ident "$key" || { saywarning "Skipping invalid cfg key: '$key'"; return 1; }
@@ -405,20 +515,36 @@ set -uo pipefail
         # Purpose:
         #   Remove a config key from the file and unset it in the current shell.
         #
+        # Behavior:
+        #   - Validates the key as a shell identifier.
+        #   - Removes the KEY=VALUE entry from TD_CFG_FILE.
+        #   - Unsets the variable in the current shell (best effort).
+        #
         # Arguments:
-        #   $1  Key.
+        #   $1  KEY
+        #       Config variable name.
         #
         # Inputs (globals):
         #   TD_CFG_FILE
         #
         # Outputs (globals):
-        #   Unsets $KEY (best effort).
+        #   Unsets $KEY in the current shell.
         #
         # Side effects:
-        #   Removes KEY from TD_CFG_FILE on disk (see __td_kv_unset).
+        #   - Updates TD_CFG_FILE on disk.
+        #   - May emit a warning for invalid keys.
         #
         # Returns:
-        #   0 on success; non-zero on invalid key or write error.
+        #   0 on success.
+        #   1 on invalid key or write failure.
+        #
+        # Usage:
+        #   td_cfg_unset KEY
+        #
+        # Examples:
+        #   td_cfg_unset "APP_TITLE"
+        #
+        #   td_cfg_unset "SGND_PAGE_MAX_ROWS"
     td_cfg_unset() {
         local key="$1"
         __td_is_ident "$key" || { saywarning "Skipping invalid cfg key: '$key'"; return 1; }
@@ -430,20 +556,31 @@ set -uo pipefail
 
     # td_cfg_reset
         # Purpose:
-        #   Hard-reset the config file (delete it).
+        #   Hard-reset the config file by deleting it.
+        #
+        # Behavior:
+        #   - Resolves the target file from TD_CFG_FILE.
+        #   - Removes the file if present.
+        #   - Does not recreate a skeleton or defaults.
         #
         # Inputs (globals):
         #   TD_CFG_FILE
         #
         # Side effects:
-        #   Deletes TD_CFG_FILE.
+        #   - Deletes TD_CFG_FILE.
         #
         # Returns:
-        #   0 always (rm -f semantics).
+        #   0 always.
+        #
+        # Usage:
+        #   td_cfg_reset
+        #
+        # Examples:
+        #   td_cfg_reset
         #
         # Notes:
-        #   - Does not recreate a skeleton; bootstrap/domain code may do that.
-        td_cfg_reset() {
+        #   - Skeleton recreation is the responsibility of bootstrap/domain logic.
+    td_cfg_reset() {
         local file
         file="${TD_CFG_FILE}"
         __td_kv_reset_file "$file"
@@ -451,20 +588,37 @@ set -uo pipefail
 
     # td_cfg_get
         # Purpose:
-        #   Read a config value from file.
+        #   Read a config value from the config file.
+        #
+        # Behavior:
+        #   - Validates the requested key.
+        #   - Reads the value directly from TD_CFG_FILE.
+        #   - Does not read from the current shell variable.
         #
         # Arguments:
-        #   $1  Key.
+        #   $1  KEY
+        #       Config variable name.
         #
         # Inputs (globals):
         #   TD_CFG_FILE
         #
         # Output:
-        #   Prints value to stdout (no newline) if present.
+        #   Prints the value to stdout without a trailing newline.
+        #
+        # Side effects:
+        #   - May emit a warning for invalid keys.
         #
         # Returns:
-        #   0 if found,
-        #   1 if missing or invalid key.
+        #   0 if found.
+        #   1 if missing or invalid.
+        #
+        # Usage:
+        #   td_cfg_get KEY
+        #
+        # Examples:
+        #   value="$(td_cfg_get "APP_TITLE")" || value=""
+        #
+        #   td_cfg_get "SGND_PAGE_MAX_ROWS"
     td_cfg_get() {
         local key="$1"
         __td_is_ident "$key" || {
@@ -476,17 +630,36 @@ set -uo pipefail
 
     # td_cfg_has
         # Purpose:
-        #   Test whether a config key exists in file.
+        #   Test whether a config key exists in the config file.
+        #
+        # Behavior:
+        #   - Validates the requested key.
+        #   - Checks TD_CFG_FILE for a matching KEY=VALUE entry.
+        #   - Treats empty values as present when the key exists.
         #
         # Arguments:
-        #   $1  Key.
+        #   $1  KEY
+        #       Config variable name.
         #
         # Inputs (globals):
         #   TD_CFG_FILE
         #
+        # Side effects:
+        #   - May emit a warning for invalid keys.
+        #
         # Returns:
-        #   0 if present,
-        #   1 if not present or invalid key.
+        #   0 if present.
+        #   1 if missing or invalid.
+        #
+        # Usage:
+        #   td_cfg_has KEY
+        #
+        # Examples:
+        #   if td_cfg_has "APP_TITLE"; then
+        #       printf 'configured\n'
+        #   fi
+        #
+        #   td_cfg_has "SGND_PAGE_MAX_ROWS"
     td_cfg_has() {
         local key="$1"
         __td_is_ident "$key" || {
@@ -498,19 +671,33 @@ set -uo pipefail
     
     # td_cfg_show_keys
         # Purpose:
-        #   Display selected config keys and their values (read from file, not from shell vars).
+        #   Display selected config keys and their stored values.
+        #
+        # Behavior:
+        #   - Reads values from TD_CFG_FILE, not from in-memory shell variables.
+        #   - Renders a formatted section using td_print_* helpers.
+        #   - Shows empty values as "" and missing values as <unset>.
         #
         # Arguments:
-        #   $@  Keys to display.
+        #   $@  KEYS
+        #       Config keys to display.
         #
         # Inputs (globals):
         #   TD_CFG_FILE
         #
-        # Output:
-        #   Renders a small formatted section via td_print_* helpers.
+        # Side effects:
+        #   - Writes formatted output to stdout.
         #
         # Returns:
         #   0 always.
+        #
+        # Usage:
+        #   td_cfg_show_keys KEY [KEY ...]
+        #
+        # Examples:
+        #   td_cfg_show_keys APP_TITLE SGND_PAGE_MAX_ROWS
+        #
+        #   td_cfg_show_keys TD_FRAMEWORK_ROOT TD_USRCFG_FILE
     td_cfg_show_keys() {
         local key val
 
@@ -537,9 +724,33 @@ set -uo pipefail
     # Intended for bootstrap; stable but not part of the minimal surface area.
 
     # td_cfg_has_audience
-        # Return 0 if SPEC_ARRAY contains any entries for the given audience ("system"|"user"),
-        # or entries marked "both".
-        # Usage: td_cfg_has_audience SPEC_ARRAY_NAME system|user
+        # Purpose:
+        #   Test whether a cfg spec array contains entries for a requested audience.
+        #
+        # Behavior:
+        #   - Scans the supplied spec array.
+        #   - Matches entries marked for the requested audience.
+        #   - Treats "both" entries as matching either "system" or "user".
+        #
+        # Arguments:
+        #   $1  SPEC_ARRAY_NAME
+        #       Name of the specs array variable.
+        #   $2  AUDIENCE
+        #       Requested audience: "system" or "user".
+        #
+        # Returns:
+        #   0 if at least one matching spec exists.
+        #   1 otherwise.
+        #
+        # Usage:
+        #   td_cfg_has_audience SPEC_ARRAY_NAME system
+        #
+        # Examples:
+        #   if td_cfg_has_audience TD_CFG_SPECS "user"; then
+        #       printf 'user cfg supported\n'
+        #   fi
+        #
+        #   td_cfg_has_audience TD_CFG_SPECS "system"
     td_cfg_has_audience() {
         local spec_array_name="${1:-}"
         local want="${2:-}"          # "system" or "user"
@@ -559,9 +770,40 @@ set -uo pipefail
     }
 
     # td_cfg_warn_missing_syscfg
-        # Emit a warning when a system cfg file is missing (once per domain+path).
-        # - Suppresses duplicate warnings using TD_CFG_WARNED_SYS.
-        # - Message differs for "framework" vs "script" mode.
+        # Purpose:
+        #   Emit a warning when a required system cfg file is missing.
+        #
+        # Behavior:
+        #   - Tracks emitted warnings in TD_CFG_WARNED_SYS.
+        #   - Suppresses duplicate warnings for the same domain/path combination.
+        #   - Adjusts the wording based on framework or script mode.
+        #
+        # Arguments:
+        #   $1  DOMAIN
+        #       Logical config domain name.
+        #   $2  SYSCFG
+        #       System cfg file path.
+        #   $3  MODE
+        #       Optional mode: "framework" or "script".
+        #       Default: script
+        #
+        # Outputs (globals):
+        #   TD_CFG_WARNED_SYS
+        #
+        # Side effects:
+        #   - Updates TD_CFG_WARNED_SYS.
+        #   - Writes a warning via saywarning.
+        #
+        # Returns:
+        #   0 always.
+        #
+        # Usage:
+        #   td_cfg_warn_missing_syscfg DOMAIN SYSCFG [MODE]
+        #
+        # Examples:
+        #   td_cfg_warn_missing_syscfg "framework" "$TD_SYSCFG_FILE" "framework"
+        #
+        #   td_cfg_warn_missing_syscfg "script" "$TD_SYSCFG_FILE"
     td_cfg_warn_missing_syscfg() {
         local domain="${1:-}"
         local syscfg="${2:-}"
@@ -585,10 +827,44 @@ set -uo pipefail
     }
 
     # td_cfg_ensure_files
-        # Ensure cfg files exist based on specs:
-        # - Creates user cfg if needed.
-        # - Creates system cfg only when mode="script" and running as root.
-        # - In framework mode, system cfg is installer responsibility (no creation here).
+        # Purpose:
+        #   Ensure required config files exist for a domain based on its specs.
+        #
+        # Behavior:
+        #   - Creates a user cfg file when user-audience specs exist and the file is missing.
+        #   - Creates a system cfg file only in script mode and only when running as root.
+        #   - Defers system cfg creation in framework mode to the installer.
+        #   - Writes generated skeletons filtered by audience.
+        #
+        # Arguments:
+        #   $1  DOMAIN
+        #       Logical config domain name.
+        #   $2  SYSCFG
+        #       System cfg file path.
+        #   $3  USRCFG
+        #       User cfg file path.
+        #   $4  SPEC_ARRAY_NAME
+        #       Name of the cfg specs array.
+        #   $5  MODE
+        #       Optional mode: "framework" or "script".
+        #       Default: script
+        #
+        # Side effects:
+        #   - Creates parent directories as needed.
+        #   - Creates cfg files when required.
+        #   - Writes informational output to stdout.
+        #
+        # Returns:
+        #   0 on success.
+        #   1 on invalid arguments or file creation failure.
+        #
+        # Usage:
+        #   td_cfg_ensure_files DOMAIN SYSCFG USRCFG SPEC_ARRAY_NAME [MODE]
+        #
+        # Examples:
+        #   td_cfg_ensure_files "framework" "$TD_SYSCFG_FILE" "$TD_USRCFG_FILE" TD_FRAMEWORK_CFG_SPECS "framework"
+        #
+        #   td_cfg_ensure_files "script" "$TD_SYSCFG_FILE" "$TD_USRCFG_FILE" TD_SCRIPT_CFG_SPECS
     td_cfg_ensure_files() {
         local domain="${1:-}"
         local syscfg="${2:-}"
@@ -628,8 +904,37 @@ set -uo pipefail
     }
 
     # td_cfg_write_skeleton_filtered
-        # Write an auto-generated cfg skeleton containing only variables that match audience.
-        # Audience is "system" or "user"; specs may mark entries as "both".
+        # Purpose:
+        #   Write an auto-generated cfg skeleton filtered by audience.
+        #
+        # Behavior:
+        #   - Writes a plain KEY=VALUE config template.
+        #   - Includes only specs matching the requested audience.
+        #   - Includes specs marked "both" for either audience.
+        #   - Uses current shell values as initial defaults where available.
+        #
+        # Arguments:
+        #   $1  FILE
+        #       Target cfg file path.
+        #   $2  AUDIENCE
+        #       Audience filter: "system" or "user".
+        #   $3  SPEC_ARRAY_NAME
+        #       Name of the cfg specs array.
+        #
+        # Side effects:
+        #   - Creates or overwrites the target file.
+        #
+        # Returns:
+        #   0 on success.
+        #   1 on invalid arguments.
+        #
+        # Usage:
+        #   td_cfg_write_skeleton_filtered FILE AUDIENCE SPEC_ARRAY_NAME
+        #
+        # Examples:
+        #   td_cfg_write_skeleton_filtered "$TD_USRCFG_FILE" "user" TD_FRAMEWORK_CFG_SPECS
+        #
+        #   td_cfg_write_skeleton_filtered "$TD_SYSCFG_FILE" "system" TD_SCRIPT_CFG_SPECS
     td_cfg_write_skeleton_filtered() {
         local file="${1:-}"
         local audience_want="${2:-}"     # "system" or "user"
@@ -664,8 +969,35 @@ set -uo pipefail
     }
 
     # td_cfg_load_file
-        # Domain-level loader used by td_cfg_domain_apply.
-        # Mirrors __td_kv_load_file (kept separate for readability in bootstrap flow).
+        # Purpose:
+        #   Load a specific cfg file into shell variables for domain-level processing.
+        #
+        # Behavior:
+        #   - Reads plain KEY=VALUE lines from the target file.
+        #   - Ignores blank lines and comments.
+        #   - Accepts only valid shell identifiers as keys.
+        #   - Stores values literally without unquoting or escape processing.
+        #
+        # Arguments:
+        #   $1  FILE
+        #       Config file path to load.
+        #
+        # Outputs (globals):
+        #   Sets variables defined in the file.
+        #
+        # Returns:
+        #   0 always.
+        #
+        # Usage:
+        #   td_cfg_load_file FILE
+        #
+        # Examples:
+        #   td_cfg_load_file "$TD_SYSCFG_FILE"
+        #
+        #   [[ -r "$TD_USRCFG_FILE" ]] && td_cfg_load_file "$TD_USRCFG_FILE"
+        #
+        # Notes:
+        #   - Intended for domain/bootstrap flow readability.
     td_cfg_load_file() {
         local file="${1:-}"
         [[ -r "$file" ]] || return 0
@@ -700,11 +1032,44 @@ set -uo pipefail
     }
 
     # td_cfg_domain_apply
-        # Apply cfg for a domain by:
-        # - Ensuring cfg files exist (see td_cfg_ensure_files)
-        # - Loading system cfg (if specified and readable)
-        # - Loading user cfg (if specified and readable)
-        # Later loads override earlier loads (user overrides system).
+        # Purpose:
+        #   Apply configuration for a domain from system and user cfg files.
+        #
+        # Behavior:
+        #   - Ensures required cfg files exist for the domain.
+        #   - Loads system cfg first when applicable.
+        #   - Loads user cfg after system cfg so user values override system values.
+        #   - Warns once when a required system cfg file is missing.
+        #
+        # Arguments:
+        #   $1  DOMAIN
+        #       Logical config domain name.
+        #   $2  SYSCFG
+        #       System cfg file path.
+        #   $3  USRCFG
+        #       User cfg file path.
+        #   $4  SPEC_ARRAY_NAME
+        #       Name of the cfg specs array.
+        #   $5  MODE
+        #       Optional mode: "framework" or "script".
+        #       Default: script
+        #
+        # Side effects:
+        #   - May create cfg files.
+        #   - Loads cfg values into shell variables.
+        #   - May emit warnings for missing system cfg.
+        #
+        # Returns:
+        #   0 on success.
+        #   1 on invalid arguments or setup failure.
+        #
+        # Usage:
+        #   td_cfg_domain_apply DOMAIN SYSCFG USRCFG SPEC_ARRAY_NAME [MODE]
+        #
+        # Examples:
+        #   td_cfg_domain_apply "framework" "$TD_FRAMEWORK_SYSCFG" "$TD_FRAMEWORK_USRCFG" TD_FRAMEWORK_CFG_SPECS "framework"
+        #
+        #   td_cfg_domain_apply "script" "$TD_SYSCFG_FILE" "$TD_USRCFG_FILE" TD_SCRIPT_CFG_SPECS
     td_cfg_domain_apply() {
         local domain="${1:-}"
         local syscfg="${2:-}"
@@ -731,10 +1096,15 @@ set -uo pipefail
         return 0
     }
 
-# --- Public API: State ------------------------------------------------------------
+# --- Bootstrap/advanced: State loading --------------------------------------------
     # td_state_load
         # Purpose:
         #   Load the state file into shell variables.
+        #
+        # Behavior:
+        #   - Reads KEY=VALUE pairs from TD_STATE_FILE.
+        #   - Ignores missing files.
+        #   - Emits a debug message before loading.
         #
         # Inputs (globals):
         #   TD_STATE_FILE
@@ -742,8 +1112,17 @@ set -uo pipefail
         # Outputs (globals):
         #   Sets variables found in the file.
         #
+        # Side effects:
+        #   - May write a debug message.
+        #
         # Returns:
-        #   0 always (missing file is not an error).
+        #   0 always.
+        #
+        # Usage:
+        #   td_state_load
+        #
+        # Examples:
+        #   td_state_load
     td_state_load() {
         saydebug "Loading state from file ${TD_STATE_FILE}"
         __td_kv_load_file "$TD_STATE_FILE"
@@ -753,9 +1132,17 @@ set -uo pipefail
         # Purpose:
         #   Persist a state KEY=VALUE pair and update the current shell variable.
         #
+        # Behavior:
+        #   - Validates the key as a shell identifier.
+        #   - Writes or replaces the KEY=VALUE entry in TD_STATE_FILE.
+        #   - Updates the in-memory shell variable to the same value.
+        #   - Emits a debug message describing the change.
+        #
         # Arguments:
-        #   $1  Key.
-        #   $2  Value.
+        #   $1  KEY
+        #       State variable name.
+        #   $2  VALUE
+        #       Value to persist.
         #
         # Inputs (globals):
         #   TD_STATE_FILE
@@ -764,10 +1151,20 @@ set -uo pipefail
         #   Sets $KEY in the current shell.
         #
         # Side effects:
-        #   Updates TD_STATE_FILE on disk.
+        #   - Updates TD_STATE_FILE on disk.
+        #   - May emit debug or warning output.
         #
         # Returns:
-        #   0 on success; non-zero on invalid key or write error.
+        #   0 on success.
+        #   1 on invalid key or write failure.
+        #
+        # Usage:
+        #   td_state_set KEY VALUE
+        #
+        # Examples:
+        #   td_state_set "CURRENT_PAGE" "2"
+        #
+        #   td_state_set "LAST_MODULE" "devtools"
     td_state_set() {
         local key="$1" val="$2"
         __td_is_ident "$key" || {
@@ -785,20 +1182,37 @@ set -uo pipefail
         # Purpose:
         #   Remove a state key from the file and unset it in the current shell.
         #
+        # Behavior:
+        #   - Validates the key as a shell identifier.
+        #   - Removes the KEY=VALUE entry from TD_STATE_FILE.
+        #   - Unsets the variable in the current shell.
+        #   - Emits a debug message describing the change.
+        #
         # Arguments:
-        #   $1  Key.
+        #   $1  KEY
+        #       State variable name.
         #
         # Inputs (globals):
         #   TD_STATE_FILE
         #
         # Outputs (globals):
-        #   Unsets $KEY (best effort).
+        #   Unsets $KEY in the current shell.
         #
         # Side effects:
-        #   Updates TD_STATE_FILE on disk.
+        #   - Updates TD_STATE_FILE on disk.
+        #   - May emit debug or warning output.
         #
         # Returns:
-        #   0 on success; non-zero on invalid key or write error.
+        #   0 on success.
+        #   1 on invalid key or write failure.
+        #
+        # Usage:
+        #   td_state_unset KEY
+        #
+        # Examples:
+        #   td_state_unset "CURRENT_PAGE"
+        #
+        #   td_state_unset "LAST_MODULE"
     td_state_unset() {
         local key="$1"
         __td_is_ident "$key" || {
@@ -814,16 +1228,28 @@ set -uo pipefail
 
     # td_state_reset
         # Purpose:
-        #   Hard-reset the state file (delete it).
+        #   Hard-reset the state file by deleting it.
+        #
+        # Behavior:
+        #   - Returns quietly when TD_STATE_FILE is empty.
+        #   - Emits a debug message before deletion.
+        #   - Removes the state file if present.
         #
         # Inputs (globals):
         #   TD_STATE_FILE
         #
         # Side effects:
-        #   Deletes TD_STATE_FILE.
+        #   - Deletes TD_STATE_FILE.
+        #   - May emit a debug message.
         #
         # Returns:
-        #   0 always (rm -f semantics).
+        #   0 always.
+        #
+        # Usage:
+        #   td_state_reset
+        #
+        # Examples:
+        #   td_state_reset
     td_state_reset() {
         [[ -n "$TD_STATE_FILE" ]] || return 0
         saydebug "Deleting statefile $TD_STATE_FILE"
@@ -832,20 +1258,37 @@ set -uo pipefail
 
     # td_state_get
         # Purpose:
-        #   Read a state value from file.
+        #   Read a state value from the state file.
+        #
+        # Behavior:
+        #   - Validates the requested key.
+        #   - Reads the value directly from TD_STATE_FILE.
+        #   - Does not read from the current shell variable.
         #
         # Arguments:
-        #   $1  Key.
+        #   $1  KEY
+        #       State variable name.
         #
         # Inputs (globals):
         #   TD_STATE_FILE
         #
         # Output:
-        #   Prints value to stdout (no newline) if present.
+        #   Prints the value to stdout without a trailing newline.
+        #
+        # Side effects:
+        #   - May emit a warning for invalid keys.
         #
         # Returns:
-        #   0 if found,
-        #   1 if missing or invalid key.
+        #   0 if found.
+        #   1 if missing or invalid.
+        #
+        # Usage:
+        #   td_state_get KEY
+        #
+        # Examples:
+        #   page="$(td_state_get "CURRENT_PAGE")" || page="1"
+        #
+        #   td_state_get "LAST_MODULE"
     td_state_get() {
         local key="$1"
         __td_is_ident "$key" || {
@@ -857,17 +1300,36 @@ set -uo pipefail
 
     # td_state_has
         # Purpose:
-        #   Test whether a state key exists in file.
+        #   Test whether a state key exists in the state file.
+        #
+        # Behavior:
+        #   - Validates the requested key.
+        #   - Checks TD_STATE_FILE for a matching KEY=VALUE entry.
+        #   - Treats empty values as present when the key exists.
         #
         # Arguments:
-        #   $1  Key.
+        #   $1  KEY
+        #       State variable name.
         #
         # Inputs (globals):
         #   TD_STATE_FILE
         #
+        # Side effects:
+        #   - May emit a warning for invalid keys.
+        #
         # Returns:
-        #   0 if present,
-        #   1 if not present or invalid key.
+        #   0 if present.
+        #   1 if missing or invalid.
+        #
+        # Usage:
+        #   td_state_has KEY
+        #
+        # Examples:
+        #   if td_state_has "CURRENT_PAGE"; then
+        #       printf 'page stored\n'
+        #   fi
+        #
+        #   td_state_has "LAST_MODULE"
     td_state_has() {
         local key="$1"
         __td_is_ident "$key" || {
@@ -882,18 +1344,33 @@ set -uo pipefail
         # Purpose:
         #   Persist a list of shell variables to the state store.
         #
+        # Behavior:
+        #   - Iterates over the supplied variable names.
+        #   - Reads each current value using safe indirect expansion.
+        #   - Persists each value via td_state_set.
+        #   - Skips invalid identifiers with a warning.
+        #
         # Arguments:
-        #   $@  Variable names to save.
+        #   $@  KEYS
+        #       Variable names to save.
         #
         # Inputs (globals):
         #   TD_STATE_FILE
         #
-        # Behavior:
-        #   - Reads each variable value using indirect expansion (${!key-}) (safe under set -u).
-        #   - Writes each as KEY=VALUE via td_state_set.
+        # Side effects:
+        #   - Updates TD_STATE_FILE on disk.
+        #   - May emit debug or warning output through td_state_set.
         #
         # Returns:
-        #   0 always (skips invalid keys).
+        #   0 always.
+        #
+        # Usage:
+        #   td_state_save_keys KEY [KEY ...]
+        #
+        # Examples:
+        #   td_state_save_keys CURRENT_PAGE LAST_MODULE
+        #
+        #   td_state_save_keys FLAG_DEBUG FLAG_VERBOSE FLAG_DRYRUN
     td_state_save_keys() {
         local key val
         for key in "$@"; do
@@ -911,19 +1388,37 @@ set -uo pipefail
 
     # td_state_load_keys
         # Purpose:
-        #   Load a list of keys from the state store into shell variables (best effort).
+        #   Load selected state keys from the state store into shell variables.
+        #
+        # Behavior:
+        #   - Iterates over the supplied variable names.
+        #   - Reads each value from TD_STATE_FILE.
+        #   - Assigns only keys that exist in the state store.
+        #   - Skips invalid identifiers with a warning.
         #
         # Arguments:
-        #   $@  Variable names to load.
+        #   $@  KEYS
+        #       Variable names to load.
         #
         # Inputs (globals):
         #   TD_STATE_FILE
         #
         # Outputs (globals):
-        #   Sets $KEY for each key that exists in the state store.
+        #   Sets variables for keys found in the state store.
+        #
+        # Side effects:
+        #   - May emit warnings for invalid keys.
         #
         # Returns:
-        #   0 always (skips invalid keys).
+        #   0 always.
+        #
+        # Usage:
+        #   td_state_load_keys KEY [KEY ...]
+        #
+        # Examples:
+        #   td_state_load_keys CURRENT_PAGE LAST_MODULE
+        #
+        #   td_state_load_keys FLAG_DEBUG FLAG_VERBOSE FLAG_DRYRUN
     td_state_load_keys() {
         local key val
         for key in "$@"; do
@@ -942,14 +1437,25 @@ set -uo pipefail
         # Purpose:
         #   List keys currently present in the state file.
         #
+        # Behavior:
+        #   - Reads TD_STATE_FILE when it is readable.
+        #   - Emits one key/value pair per line in preserved file order.
+        #   - Treats a missing or unreadable state file as non-fatal.
+        #
         # Inputs (globals):
         #   TD_STATE_FILE
         #
         # Output:
-        #   Prints 'key|value' lines to stdout (order preserved).
+        #   Prints lines in the format: key|value
         #
         # Returns:
-        #   0 always (missing/unreadable file is not an error).
+        #   0 always.
+        #
+        # Usage:
+        #   td_state_list_keys
+        #
+        # Examples:
+        #   td_state_list_keys
     td_state_list_keys() {
         [[ -r "${TD_STATE_FILE:-}" ]] || return 0
         __td_kv_list_keys "$TD_STATE_FILE"

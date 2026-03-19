@@ -1,98 +1,71 @@
 #!/usr/bin/env bash
 # ==================================================================================
-# Testadura Consultancy — sgnd-console.sh
+# Testadura Consultancy — SolidGround Console Host
 # ----------------------------------------------------------------------------------
+# Module     : sgnd-console.sh
 # Purpose    : Interactive console host and module orchestrator
-# Author     : Mark Fieten
-#
-# © 2025 Mark Fieten — Testadura Consultancy
-# Licensed under the Testadura Non-Commercial License (TD-NC) v1.0.
-# ----------------------------------------------------------------------------------
-# Assumptions:
-#   - Executed directly (entrypoint script)
-#   - Framework bootstrap (td-bootstrap.sh) is available and loadable
-#   - Console menu engine is provided via sgnd-console-menu.sh
 #
 # Description:
 #   sgnd-console is a modular terminal UI host that discovers, loads, and
 #   orchestrates console modules, exposing their actions through an interactive
 #   grouped menu.
 #
-#   The script is responsible for:
-#   - Framework bootstrap and environment initialization
-#   - Console configuration loading and normalization
-#   - Module discovery and loading
-#   - Registration of menu groups and items
-#   - Ownership of console state (SGND_* tables and globals)
-#   - Running the interactive console loop
+#   Responsibilities:
+#     - Framework bootstrap and environment initialization
+#     - Console configuration loading and normalization
+#     - Module discovery and loading
+#     - Registration of menu groups and items
+#     - Ownership of console state (SGND_* tables and globals)
+#     - Running the interactive console loop
 #
-#   Rendering, layout, and dispatch logic are delegated to the
-#   sgnd-console-menu.sh library.
-#
-# Design rules:
+# Design principles:
 #   - Executables are explicit: resolve, bootstrap, then run
-#   - Libraries never auto-execute (source-only, function providers)
+#   - Libraries never auto-execute (source-only function providers)
 #   - Console state is data-driven via SGND_* table models
-#   - Menu behavior is delegated to a dedicated menu/UI library
+#   - Rendering, layout, and dispatch are delegated to sgnd-console-menu.sh
 #   - Builtin actions may remain dispatchable even when hidden from the menu
 #
 # Notes:
 #   - Prompts read from /dev/tty, never stdin
-#   - UI output should not be written to stdout when piping is possible
 #   - Bootstrap and path resolution are handled before framework loading
+#   - UI output should remain suitable for terminal-hosted interaction
+#
+# Author     : Mark Fieten
+# © 2025 Mark Fieten — Testadura Consultancy
+# Licensed under the Testadura Non-Commercial License (TD-NC) v1.0.
 # ==================================================================================
 set -uo pipefail
 
 # --- Bootstrap --------------------------------------------------------------------
     # __framework_locator
-        # Resolve, create, and load the SolidGroundUX bootstrap configuration.
-        #
         # Purpose:
-        #   Establish the two root variables that define the framework layout:
+        #   Locate, create, and load the SolidGroundUX bootstrap configuration.
         #
-        #       TD_FRAMEWORK_ROOT
-        #       TD_APPLICATION_ROOT
+        # Behavior:
+        #   - Searches user and system bootstrap configuration locations.
+        #   - Prefers the invoking user's config over the system config.
+        #   - Creates a new bootstrap config when none exists.
+        #   - Prompts for framework/application roots in interactive mode.
+        #   - Applies default values when running non-interactively.
+        #   - Sources the selected configuration file.
         #
-        #   Once these are known, all other framework paths can be derived from
-        #   them by td-bootstrap.sh and the common libraries.
-        #
-        # Search order:
-        #   1. User configuration
-        #        ~/.config/testadura/solidgroundux.cfg
-        #
-        #   2. System configuration
-        #        /etc/testadura/solidgroundux.cfg
-        #
-        #   User configuration overrides system configuration.
-        #
-        # Sudo behavior:
-        #   When running under sudo, the lookup still prefers the invoking user's
-        #   home configuration (derived from SUDO_USER) rather than /root, so a
-        #   developer's user override remains active under elevation.
-        #
-        # Creation behavior:
-        #   If no configuration file exists:
-        #
-        #     - non-root user → create in ~/.config/testadura
-        #     - root user     → create in /etc/testadura
-        #
-        #   When created interactively, prompt for:
-        #
-        #       TD_FRAMEWORK_ROOT     [default: /]
-        #       TD_APPLICATION_ROOT   [default: TD_FRAMEWORK_ROOT]
-        #
-        #   In non-interactive mode, defaults are used automatically.
-        #
-        # Result:
-        #   Sources the selected configuration file and ensures:
-        #
-        #       TD_FRAMEWORK_ROOT defaults to /
-        #       TD_APPLICATION_ROOT defaults to TD_FRAMEWORK_ROOT
+        # Outputs (globals):
+        #   TD_FRAMEWORK_ROOT
+        #   TD_APPLICATION_ROOT
         #
         # Returns:
         #   0   success
-        #   126 configuration unreadable / invalid
+        #   126 configuration unreadable or invalid
         #   127 configuration directory or file could not be created
+        #
+        # Usage:
+        #   __framework_locator || return $?
+        #
+        # Examples:
+        #   __framework_locator
+        #
+        # Notes:
+        #   - Under sudo, configuration is resolved relative to SUDO_USER instead of /root.
     __framework_locator (){
         local cfg_home="$HOME"
 
@@ -181,35 +154,30 @@ set -uo pipefail
     }
 
     # __load_bootstrapper
-        # Resolve and source the framework bootstrap library.
-        #
         # Purpose:
-        #   Load the canonical td-bootstrap.sh entry library after the framework
-        #   roots have been established by __framework_locator.
+        #   Resolve and source the framework bootstrap library.
         #
         # Behavior:
-        #   1. Calls __framework_locator to load or create the bootstrap cfg.
-        #   2. Derives the bootstrap path from TD_FRAMEWORK_ROOT.
-        #   3. Verifies that td-bootstrap.sh is readable.
-        #   4. Sources td-bootstrap.sh into the current shell.
+        #   - Calls __framework_locator to establish framework roots.
+        #   - Derives the td-bootstrap.sh path from TD_FRAMEWORK_ROOT.
+        #   - Verifies that the bootstrap library is readable.
+        #   - Sources td-bootstrap.sh into the current shell.
         #
-        # Path rule:
-        #   If TD_FRAMEWORK_ROOT is "/":
-        #
-        #       /usr/local/lib/testadura/common/td-bootstrap.sh
-        #
-        #   Otherwise:
-        #
-        #       $TD_FRAMEWORK_ROOT/usr/local/lib/testadura/common/td-bootstrap.sh
-        #
-        # Notes:
-        #   - This function performs executable-level startup resolution.
-        #   - td-bootstrap.sh is expected to derive secondary paths from the
-        #     already-established root variables, not rediscover them.
+        # Inputs (globals):
+        #   TD_FRAMEWORK_ROOT
         #
         # Returns:
         #   0   success
         #   126 bootstrap library unreadable
+        #
+        # Usage:
+        #   __load_bootstrapper || return $?
+        #
+        # Examples:
+        #   __load_bootstrapper
+        #
+        # Notes:
+        #   - This is executable-level startup logic, not reusable framework behavior.
     __load_bootstrapper(){
         local bootstrap=""
 
@@ -446,15 +414,25 @@ set -uo pipefail
         #   Register the console's builtin groups and builtin menu actions.
         #
         # Behavior:
-        #   - Defines the builtin group keys used by the console.
-        #   - Registers runtime/session groups.
-        #   - Registers builtin items such as debug, dry-run, logfile, verbose,
-        #     clear-screen, redraw, and quit.
+        #   - Defines the builtin runtime and session group keys.
+        #   - Registers builtin console groups.
+        #   - Registers builtin menu items for runtime toggles and session actions.
         #   - Some builtin items may be hidden from the menu body while still
         #     remaining dispatchable by key.
         #
+        # Outputs (globals):
+        #   SGND_GROUP_RUNTIME
+        #   SGND_GROUP_SESSION
+        #
         # Returns:
         #   0 on success
+        #   Non-zero if group or item registration fails
+        #
+        # Usage:
+        #   __sgnd_console_register_builtin_items
+        #
+        # Examples:
+        #   __sgnd_console_register_builtin_items || exit 1
         #   non-zero if group/item registration fails
     __sgnd_console_register_builtin_items() {
         SGND_GROUP_RUNTIME="runtime"
@@ -477,21 +455,27 @@ set -uo pipefail
 
     # __sgnd_console_register_fallback_group
         # Purpose:
-        #   Create a fallback group when an item references a group that has not
-        #   been registered explicitly.
+        #   Register a fallback group for an item that references an unknown group key.
         #
         # Behavior:
-        #   - Uses "Other" as the default label.
+        #   - Uses "Other" as the default fallback label.
         #   - For keys of the form "module:<id>", attempts to resolve the module
-        #     name from SGND_MODULE_ROWS and use that as the group label.
+        #     name from SGND_MODULE_ROWS and uses that as the group label.
         #   - Registers the derived group as a non-builtin visible group.
         #
         # Arguments:
-        #   $1  GROUP_KEY   Missing group key to register.
+        #   $1  GROUP_KEY
+        #       Missing group key to register.
         #
         # Returns:
         #   0 on success
-        #   non-zero if registration fails
+        #   Non-zero if registration fails
+        #
+        # Usage:
+        #   __sgnd_console_register_fallback_group "$group_key"
+        #
+        # Examples:
+        #   __sgnd_console_register_fallback_group "module:devtools"
     __sgnd_console_register_fallback_group() {
         local key="${1:?missing group key}"
         local label="Other"
@@ -528,11 +512,18 @@ set -uo pipefail
         #   Test whether a group key already exists in the console group model.
         #
         # Arguments:
-        #   $1  GROUP_KEY   Group key to test.
+        #   $1  GROUP_KEY
+        #       Group key to test.
         #
         # Returns:
         #   0 if the group exists
         #   1 if the group does not exist
+        #
+        # Usage:
+        #   if __sgnd_console_group_exists "$group"; then ...
+        #
+        # Examples:
+        #   __sgnd_console_group_exists "runtime"
     __sgnd_console_group_exists() {
         local key="${1:?missing group key}"
 
@@ -544,7 +535,9 @@ set -uo pipefail
         #   Load console-specific configuration and resolve the module directory.
         #
         # Behavior:
-        #   - Applies built-in defaults for title, description, and module directory.
+        #   - Applies built-in defaults for title, description, module directory,
+        #     and page size.
+        #   - Applies --maxrows when provided.
         #   - If --appcfg was provided and the file does not exist, creates it.
         #   - Sources the appcfg when present.
         #   - Resolves a relative module directory against the appcfg directory.
@@ -554,11 +547,28 @@ set -uo pipefail
         #   SGND_CONSOLE_TITLE
         #   SGND_CONSOLE_DESC
         #   SGND_CONSOLE_MODULE_DIR
+        #   SGND_PAGE_MAX_ROWS
+        #
+        # Inputs (globals):
+        #   VAL_APPCFG
+        #   VAL_MAXROWS
+        #
+        # Outputs (globals):
+        #   SGND_CONSOLE_TITLE
+        #   SGND_CONSOLE_DESC
+        #   SGND_CONSOLE_MODULE_DIR
+        #   SGND_PAGE_MAX_ROWS
         #
         # Returns:
         #   0   success
         #   126 unreadable config
-        #   127 config could not be created/written
+        #   127 config could not be created or written
+        #
+        # Usage:
+        #   __sgnd_console_load_config || return $?
+        #
+        # Examples:
+        #   __sgnd_console_load_config
     __sgnd_console_load_config() {
         local cfg="${VAL_APPCFG-}"
         local cfg_dir
@@ -617,11 +627,18 @@ set -uo pipefail
         #   - Writes a minimal shell-style config file.
         #
         # Arguments:
-        #   $1  CFG_PATH   Path of the appcfg file to create.
+        #   $1  CFG_PATH
+        #       Path of the appcfg file to create.
         #
         # Returns:
         #   0   success
-        #   127 config directory/file could not be created
+        #   127 config directory or file could not be created
+        #
+        # Usage:
+        #   __sgnd_console_create_appcfg "$cfg"
+        #
+        # Examples:
+        #   __sgnd_console_create_appcfg "./my-console.cfg"
     __sgnd_console_create_appcfg() {
         local cfg="${1:?missing cfg path}"
         local cfg_dir
@@ -670,14 +687,26 @@ set -uo pipefail
         #
         # Behavior:
         #   - Verifies that the module directory exists.
-        #   - Sources each "*.sh" module file in that directory.
+        #   - Sources each "*.sh" module file found in that directory.
         #   - Sets SGND_CURRENT_MODULE while loading each module so registration
         #     APIs can attribute source ownership correctly.
         #   - Warns when no modules are found.
         #
+        # Inputs (globals):
+        #   SGND_CONSOLE_MODULE_DIR
+        #
+        # Outputs (globals):
+        #   SGND_CURRENT_MODULE
+        #
         # Returns:
         #   0   success
         #   126 module directory missing or module load failed
+        #
+        # Usage:
+        #   __sgnd_console_load_modules || return $?
+        #
+        # Examples:
+        #   __sgnd_console_load_modules
     __sgnd_console_load_modules() {
         local mod_dir="${SGND_CONSOLE_MODULE_DIR:?missing module dir}"
         local mod
@@ -710,47 +739,40 @@ set -uo pipefail
 
 # --- Script execution -------------------------------------------------------------
     # __sgnd_run_script
+        # Purpose:
+        #   Resolve and execute a script within the sgnd-console environment.
         #
-        # Resolves and executes a script within the sgnd-console environment, while
-        # transparently propagating framework-level flags to the target script.
+        # Behavior:
+        #   - Resolves relative script paths against TD_SCRIPT_DIR.
+        #   - Normalizes the resolved path when readlink is available.
+        #   - Verifies that the script exists and is executable.
+        #   - Forwards active framework flags to the target script.
+        #   - Executes the script with all original remaining arguments preserved.
         #
-        # Responsibilities:
-        # - Resolves relative script paths against $TD_SCRIPT_DIR
-        # - Normalizes the script path (if readlink is available)
-        # - Verifies existence and executability of the script
-        # - Forwards framework flags (dry-run, verbose, debug, logfile)
-        # - Preserves and forwards all original arguments
+        # Arguments:
+        #   $1  SCRIPT
+        #       Script path, absolute or relative to TD_SCRIPT_DIR.
+        #   $@  ARGS
+        #       Additional arguments passed to the target script.
         #
-        # Parameters:
-        #   $1      - Script path (absolute or relative to $TD_SCRIPT_DIR)
-        #   $@      - Additional arguments passed to the target script
-        #
-        # Framework flags propagated (if enabled):
+        # Forwarded flags:
         #   FLAG_DRYRUN         -> --dryrun
         #   FLAG_VERBOSE        -> --verbose
         #   FLAG_DEBUG          -> --debug
         #   TD_LOGFILE_ENABLED  -> --logfile <file>
         #
-        # Behavior:
-        # - Relative paths are resolved against $TD_SCRIPT_DIR
-        # - Script must exist and be executable (-f and -x checks)
-        # - Execution is performed directly (respects script shebang)
-        #
         # Returns:
         #   Exit code of the executed script
-        #   1 if validation fails (missing or non-executable script)
+        #   1 if validation fails
         #
-        # Logging:
-        # - Emits debug output via saydebug before execution
-        # - Emits failures via sayfail
-        #
-        # Example:
+        # Usage:
         #   __sgnd_run_script "jobs/import.sh" --customer 42
         #
+        # Examples:
+        #   __sgnd_run_script "./tools/build.sh" --release
+        #
         # Notes:
-        # - Uses argument arrays to preserve proper quoting
-        # - Acts as a central execution wrapper for all console scripts
-        # - Intended as a core part of the sgnd execution pipeline
+        #   - Uses argument arrays to preserve proper quoting.
     __sgnd_run_script() {
         local script="${1:?missing script}"
         shift || true
@@ -791,34 +813,26 @@ set -uo pipefail
         "$resolved" "${script_args[@]}"
     }
 
-     # __sgnd_flag_is_on
+    # __sgnd_flag_is_on
+        # Purpose:
+        #   Evaluate whether a value represents a logical "true".
         #
-        # Evaluates whether a given flag value represents a logical "true".
-        #
-        # This helper normalizes various truthy representations commonly used in
-        # environment variables and CLI parsing, allowing consistent flag handling
-        # across the framework.
-        #
-        # Accepted truthy values:
+        # Accepted values:
         #   1, true, TRUE, yes, YES, on, ON
         #
-        # All other values (including empty or undefined) are treated as false.
-        #
-        # Parameters:
-        #   $1  - Value to evaluate
+        # Arguments:
+        #   $1  VALUE
+        #       Value to evaluate.
         #
         # Returns:
-        #   0 (true)  if the value is considered "on"
-        #   1 (false) otherwise
+        #   0 if VALUE is considered on
+        #   1 otherwise
         #
         # Usage:
-        #   if __sgnd_flag_is_on "${FLAG_DEBUG:-0}"; then
-        #       echo "Debug enabled"
-        #   fi
+        #   if __sgnd_flag_is_on "${FLAG_DEBUG:-0}"; then ...
         #
-        # Notes:
-        # - Safe to use with unset variables via default expansion (${VAR:-0})
-        # - Designed for internal framework use
+        # Examples:
+        #   __sgnd_flag_is_on "${TD_LOGFILE_ENABLED:-0}"
     __sgnd_flag_is_on() {
         case "${1:-}" in
             1|true|TRUE|yes|YES|on|ON) return 0 ;;
@@ -836,12 +850,18 @@ set -uo pipefail
         #   - Builds the valid choice list for the current menu state.
         #   - Reads a choice via td_choose_immediate.
         #   - Dispatches the selected handler.
-        #   - Exits cleanly when the quit sentinel (200) is returned.
+        #   - Exits when a handler returns sentinel value 200.
         #   - Optionally pauses after actions according to SGND_LAST_WAITSECS.
         #
         # Returns:
         #   0 on normal console exit
-        #   1 on input/read failure
+        #   1 on input or dispatch failure
+        #
+        # Usage:
+        #   __sgnd_console_run
+        #
+        # Examples:
+        #   __sgnd_console_run
     __sgnd_console_run() {
         local choice=""
         local valid_choices=""
@@ -885,21 +905,36 @@ set -uo pipefail
         #   - Verifies that the handler function exists.
         #   - Assigns a default module-based group when GROUP is empty.
         #   - Auto-registers a fallback group when needed.
+        #   - Captures source ownership from SGND_CURRENT_MODULE.
         #   - Appends the item row to SGND_ITEM_ROWS.
         #
         # Arguments:
-        #   $1  KEY       Unique item key.
-        #   $2  GROUP     Target group key (optional).
-        #   $3  LABEL     Display label.
-        #   $4  HANDLER   Function name to invoke.
-        #   $5  DESC      Optional description.
-        #   $6  BUILTIN   1=builtin item, 0=normal item.
-        #   $7  WAITSECS  Post-action wait duration.
-        #   $8  VISIBLE   0=hidden, 1=visible/enabled, 2=visible/disabled.
+        #   $1  KEY
+        #       Unique item key.
+        #   $2  GROUP
+        #       Target group key (optional).
+        #   $3  LABEL
+        #       Display label.
+        #   $4  HANDLER
+        #       Function name to invoke.
+        #   $5  DESC
+        #       Optional description.
+        #   $6  BUILTIN
+        #       1 = builtin item, 0 = normal item.
+        #   $7  WAITSECS
+        #       Post-action wait duration.
+        #   $8  VISIBLE
+        #       0 = hidden, 1 = visible/enabled, 2 = visible/disabled.
         #
         # Returns:
         #   0 on success
         #   1 on validation or append failure
+        #
+        # Usage:
+        #   sgnd_console_register_item "Q" "session" "Quit" "__sgnd_console_quit" "Exit console" 1 0 1
+        #
+        # Examples:
+        #   sgnd_console_register_item "sys-status" "system" "System status" "sys_status" "Show system status" 0 15 1
     sgnd_console_register_item() {
         local key="${1:?missing key}"
         local group="${2:-}"
@@ -942,18 +977,32 @@ set -uo pipefail
         #
         # Behavior:
         #   - Ignores duplicate group keys.
+        #   - Captures source ownership from SGND_CURRENT_MODULE.
         #   - Appends a new group row to SGND_GROUP_ROWS when absent.
         #
         # Arguments:
-        #   $1  KEY      Unique group key.
-        #   $2  LABEL    Display label.
-        #   $3  DESC     Optional description.
-        #   $4  BUILTIN  1=builtin group, 0=normal group.
-        #   $5  VISIBLE  0=hidden, 1=visible/enabled, 2=visible/disabled.
+        #   $1  KEY
+        #       Unique group key.
+        #   $2  LABEL
+        #       Display label.
+        #   $3  DESC
+        #       Optional description.
+        #   $4  BUILTIN
+        #       1 = builtin group, 0 = normal group.
+        #   $5  VISIBLE
+        #       0 = hidden, 1 = visible/enabled, 2 = visible/disabled.
+        #   $6  ORD
+        #       Sort/order weight.
         #
         # Returns:
         #   0 on success
         #   1 on append failure
+        #
+        # Usage:
+        #   sgnd_console_register_group "system" "System tools" "" 0 1 100
+        #
+        # Examples:
+        #   sgnd_console_register_group "runtime" "Runtime toggles" "" 1 0 980
     sgnd_console_register_group() {
         local key="${1:?missing group key}"
         local label="${2:?missing group label}"
@@ -976,20 +1025,29 @@ set -uo pipefail
 # --- Main -------------------------------------------------------------------------
     # main
         # Purpose:
-        #   Canonical script entry point.
+        #   Execute the sgnd-console startup and interactive runtime flow.
         #
         # Behavior:
         #   - Resolves and loads the framework bootstrap library.
         #   - Initializes framework runtime via td_bootstrap.
-        #   - Executes builtin framework arguments.
-        #   - Loads console configuration and builtin/module registrations.
+        #   - Executes builtin framework argument handling.
+        #   - Updates run-mode UI state.
+        #   - Loads console configuration.
+        #   - Registers builtin groups and items.
+        #   - Loads console modules.
         #   - Starts the interactive console loop.
         #
         # Arguments:
         #   $@  Framework and script-specific command-line arguments.
         #
         # Returns:
-        #   Exits with the status produced by bootstrap or script logic.
+        #   Exits with the resulting status from bootstrap or console logic.
+        #
+        # Usage:
+        #   main "$@"
+        #
+        # Examples:
+        #   main "$@"
     main() {
         # -- Bootstrap
             local rc=0

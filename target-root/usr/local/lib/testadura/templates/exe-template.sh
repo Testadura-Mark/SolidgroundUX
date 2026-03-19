@@ -1,82 +1,67 @@
 #!/usr/bin/env bash
 # =====================================================================================
-# Testadura Consultancy — Script Template
+# Testadura Consultancy — Executable Script Template
 # ------------------------------------------------------------------------------------
-# Purpose : Canonical executable template for Testadura scripts
-# Author  : Mark Fieten
+# Module     : exe-template.sh
+# Purpose    : Canonical executable template for Testadura scripts
+#
+# Description:
+#   Provides the standard structure for all executable scripts in the framework,
+#   including:
+#     - bootstrap resolution and framework initialization
+#     - optional argument parsing and configuration integration
+#     - metadata declaration and lifecycle hooks
+#     - a consistent main() entry pattern
+#
+# Design principles:
+#   - Executables are explicit: resolve, bootstrap, then run
+#   - Libraries never auto-execute (composition over inheritance)
+#   - Framework integration is opt-in and declarative
+#   - UI and input must be TTY-safe
+#
+# Role in framework:
+#   - Entry point pattern for all SolidGroundUX-based scripts
+#   - Defines how scripts integrate with td-bootstrap and common libraries
+#
+# Non-goals:
+#   - Business logic implementation (provided by the script author)
+#   - Library behavior (handled in /common modules)
+#
+# Author     : Mark Fieten
 # © 2025 Mark Fieten — Testadura Consultancy
 # Licensed under the Testadura Non-Commercial License (TD-NC) v1.0.
-# ------------------------------------------------------------------------------------
-# Design:
-#   - Executable scripts are explicit: set paths, import libs, then run.
-#   - Libraries never auto-run (templating, not inheritance).
-#   - Args parsing and config loading are opt-in via TD_ARGS_SPEC and TD_SCRIPT_GLOBALS.
-# -----------------------------------------------------------------------------------
-# How to use this template (Edit Map)
-# 1) Set identity fields in "Script metadata (identity)" (DESC, VERSION, etc.)
-# 2) Add required libraries to TD_USING (optional)
-# 3) Define TD_ARGS_SPEC if your script has CLI options (optional)
-# 4) Add TD_SCRIPT_EXAMPLES for --help (recommended)
-# 5) List intentional global variables in TD_SCRIPT_GLOBALS (recommended)
-# 6) Implement your logic inside main() under "-- Main script logic"
-#
-# IMPORTANT:
-#   - Never read prompts from stdin in executables. Use /dev/tty (or ask/td_dlg_*).
-#   - Never print UI to stdout if stdout may be piped; prefer say*/td_print_* which can route.
-#   - Do NOT modify the bootstrap loader unless you are developing the framework.
-# ===================================================================================
+# =====================================================================================
 set -uo pipefail
 
 # --- Bootstrap --------------------------------------------------------------------
     # __framework_locator
-        # Resolve, create, and load the SolidGroundUX bootstrap configuration.
-        #
         # Purpose:
-        #   Establish the two root variables that define the framework layout:
+        #   Locate, create, and load the SolidGroundUX bootstrap configuration.
         #
-        #       TD_FRAMEWORK_ROOT
-        #       TD_APPLICATION_ROOT
+        # Behavior:
+        #   - Resolves configuration from user or system location.
+        #   - Creates configuration interactively or with defaults when missing.
+        #   - Ensures TD_FRAMEWORK_ROOT and TD_APPLICATION_ROOT are set.
+        #   - Sources the selected configuration file.
         #
-        #   Once these are known, all other framework paths can be derived from
-        #   them by td-bootstrap.sh and the common libraries.
-        #
-        # Search order:
-        #   1. User configuration
-        #        ~/.config/testadura/solidgroundux.cfg
-        #
-        #   2. System configuration
-        #        /etc/testadura/solidgroundux.cfg
-        #
-        #   User configuration overrides system configuration.
-        #
-        # Sudo behavior:
-        #   When running under sudo, the lookup still prefers the invoking user's
-        #   home configuration (derived from SUDO_USER) rather than /root, so a
-        #   developer's user override remains active under elevation.
-        #
-        # Creation behavior:
-        #   If no configuration file exists:
-        #
-        #     - non-root user → create in ~/.config/testadura
-        #     - root user     → create in /etc/testadura
-        #
-        #   When created interactively, prompt for:
-        #
-        #       TD_FRAMEWORK_ROOT     [default: /]
-        #       TD_APPLICATION_ROOT   [default: TD_FRAMEWORK_ROOT]
-        #
-        #   In non-interactive mode, defaults are used automatically.
-        #
-        # Result:
-        #   Sources the selected configuration file and ensures:
-        #
-        #       TD_FRAMEWORK_ROOT defaults to /
-        #       TD_APPLICATION_ROOT defaults to TD_FRAMEWORK_ROOT
+        # Outputs (globals):
+        #   TD_FRAMEWORK_ROOT
+        #   TD_APPLICATION_ROOT
         #
         # Returns:
         #   0   success
-        #   126 configuration unreadable / invalid
-        #   127 configuration directory or file could not be created
+        #   126 configuration unreadable or invalid
+        #   127 configuration could not be created
+        #
+        # Usage:
+        #   __framework_locator || exit $?
+        #
+        # Examples:
+        #   __framework_locator
+        #
+        # Notes:
+        #   - Prefers user config over system config.
+        #   - Under sudo, resolves config relative to SUDO_USER.
     __framework_locator (){
         local cfg_home="$HOME"
 
@@ -165,35 +150,29 @@ set -uo pipefail
     }
 
     # __load_bootstrapper
-        # Resolve and source the framework bootstrap library.
-        #
         # Purpose:
-        #   Load the canonical td-bootstrap.sh entry library after the framework
-        #   roots have been established by __framework_locator.
+        #   Resolve and source the framework bootstrap library.
         #
         # Behavior:
-        #   1. Calls __framework_locator to load or create the bootstrap cfg.
-        #   2. Derives the bootstrap path from TD_FRAMEWORK_ROOT.
-        #   3. Verifies that td-bootstrap.sh is readable.
-        #   4. Sources td-bootstrap.sh into the current shell.
+        #   - Calls __framework_locator to establish framework roots.
+        #   - Resolves td-bootstrap.sh path based on TD_FRAMEWORK_ROOT.
+        #   - Verifies readability and sources the bootstrap library.
         #
-        # Path rule:
-        #   If TD_FRAMEWORK_ROOT is "/":
-        #
-        #       /usr/local/lib/testadura/common/td-bootstrap.sh
-        #
-        #   Otherwise:
-        #
-        #       $TD_FRAMEWORK_ROOT/usr/local/lib/testadura/common/td-bootstrap.sh
-        #
-        # Notes:
-        #   - This function performs executable-level startup resolution.
-        #   - td-bootstrap.sh is expected to derive secondary paths from the
-        #     already-established root variables, not rediscover them.
+        # Inputs (globals):
+        #   TD_FRAMEWORK_ROOT
         #
         # Returns:
         #   0   success
         #   126 bootstrap library unreadable
+        #
+        # Usage:
+        #   __load_bootstrapper || exit $?
+        #
+        # Examples:
+        #   __load_bootstrapper
+        #
+        # Notes:
+        #   - Must be called before any framework-dependent logic.
     __load_bootstrapper(){
         local bootstrap=""
 
@@ -396,20 +375,30 @@ set -uo pipefail
 # --- Main -------------------------------------------------------------------------
     # main
         # Purpose:
-        #   Canonical script entry point.
+        #   Canonical entry point for executable scripts.
         #
         # Behavior:
-        #   - Resolves and loads the framework bootstrap library.
-        #   - Initializes framework runtime via td_bootstrap.
-        #   - Executes builtin framework arguments.
-        #   - Prints the standard title bar.
-        #   - Runs script-specific logic.
+        #   - Loads the framework bootstrapper.
+        #   - Initializes runtime via td_bootstrap.
+        #   - Handles built-in framework arguments.
+        #   - Prepares UI state (runmode + title bar).
+        #   - Executes script-specific logic.
         #
         # Arguments:
-        #   $@  Framework and script-specific command-line arguments.
+        #   $@  Command-line arguments (framework + script-specific).
         #
         # Returns:
-        #   Exits with the status produced by bootstrap or script logic.
+        #   Exits with the resulting status code from bootstrap or script logic.
+        #
+        # Usage:
+        #   main "$@"
+        #
+        # Examples:
+        #   # Standard script entrypoint
+        #   main "$@"
+        #
+        # Notes:
+        #   - td_bootstrap splits framework and script arguments automatically..
     main() {
         # -- Bootstrap
             local rc=0

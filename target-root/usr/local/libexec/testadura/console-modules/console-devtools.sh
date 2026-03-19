@@ -1,45 +1,77 @@
-# =================================================================================
-# Testadura Consultancy — console-mod-sample.sh
-# ---------------------------------------------------------------------------------
-# Purpose    : Template for Testadura Bash libraries (header + guards + structure)
-# Author     : Mark Fieten
+# ==================================================================================
+# Testadura Consultancy — Developer Tools Console Module
+# ----------------------------------------------------------------------------------
+# Module     : console-devtools.sh
+# Purpose    : sgnd-console module exposing developer tooling actions
 #
-# © 2025 Mark Fieten — Testadura Consultancy
-# Licensed under the Testadura Non-Commercial License (TD-NC) v1.0.
-# ---------------------------------------------------------------------------------
 # Description:
-#   Provides a standard skeleton for Testadura framework libraries, including:
-#   - Canonical header sections (purpose/description/contracts)
-#   - "library only" execution guard (must be sourced, never executed)
-#   - Load guard for idempotent sourcing
-#   - Suggested naming conventions for internal/public functions
+#   Provides a console module that registers developer-oriented actions in
+#   sgnd-console, allowing common tooling scripts to be launched from the
+#   interactive console host.
+#
+#   The module currently exposes actions for:
+#     - creating a new workspace
+#     - deploying a workspace
+#     - preparing a release archive
+#
+# Design principles:
+#   - Console modules are source-only plugin libraries
+#   - Functions are defined first, then registered explicitly
+#   - Registration is the only intended load-time side effect
+#   - Module actions delegate execution to the shared sgnd-console runtime
+#
+# Role in framework:
+#   - Extends sgnd-console with developer workflow actions
+#   - Acts as a lightweight plugin layer on top of the console host
+#   - Uses __sgnd_run_script to execute related tooling scripts consistently
 #
 # Assumptions:
-#   - None by default. Each library should explicitly document:
-#       - Whether it is a CORE lib (no framework deps), or
-#       - A FRAMEWORK lib (may assume framework/theme primitives exist).
-#
-# Design rules:
-#   - Libraries define functions and constants only.
-#   - No auto-execution (must be sourced), upon sourcing the module registers
-#     itself with sgnd-console
-#   - Avoids changing shell options beyond strict-unset/pipefail (set -u -o pipefail).
-#     (No set -e; no shopt.)
-#   - No path detection or root resolution (bootstrap owns path resolution).
-#   - No framework policy decisions. May emit say* diagnostics and use td_print_* helpers for display.
-#   - Safe to source multiple times (idempotent load guard).
+#   - Loaded by sgnd-console after framework bootstrap is complete
+#   - sgnd_console_register_group and sgnd_console_register_item are available
+#   - __sgnd_run_script is available in the host environment
 #
 # Non-goals:
-#   - Executable scripts (use /bin tools or applets for entry points)
-#   - User interaction unless explicitly part of a UI module
-#   - Policy decisions (libraries provide mechanisms; callers decide policy)
-# =================================================================================
+#   - Standalone execution
+#   - Framework bootstrap or path resolution
+#   - Direct implementation of workspace/deploy/release logic
+#
+# Author     : Mark Fieten
+# © 2025 Mark Fieten — Testadura Consultancy
+# Licensed under the Testadura Non-Commercial License (TD-NC) v1.0.
+# ==================================================================================
 set -uo pipefail
 # --- Library guard ---------------------------------------------------------------
-    # Library-only: must be sourced, never executed.
-    # Uses a per-file guard variable derived from the filename, e.g.:
-    #   ui.sh      -> TD_UI_LOADED
-    #   foo-bar.sh -> TD_FOO_BAR_LOADED
+    # __td_lib_guard
+        # Purpose:
+        #   Ensure the file is sourced as a library and only initialized once.
+        #
+        # Behavior:
+        #   - Derives a unique guard variable name from the current filename.
+        #   - Aborts execution if the file is executed instead of sourced.
+        #   - Sets the guard variable on first load.
+        #   - Skips initialization if the library was already loaded.
+        #
+        # Inputs:
+        #   BASH_SOURCE[0]
+        #   $0
+        #
+        # Outputs (globals):
+        #   TD_<MODULE>_LOADED
+        #
+        # Returns:
+        #   0 if already loaded or successfully initialized.
+        #   Exits with code 2 if executed instead of sourced.
+        #
+        # Usage:
+        #   __td_lib_guard
+        #
+        # Examples:
+        #   __td_lib_guard
+        #   unset -f __td_lib_guard
+        #
+        # Notes:
+        #   - Guard variable is derived dynamically from the filename.
+        #   - Safe under `set -u` due to indirect expansion with default.
     __td_lib_guard() {
         local lib_base
         local guard
@@ -65,17 +97,65 @@ set -uo pipefail
 
 
 # --- Internal helpers ------------------------------------------------------------
+    # __exe_createworkspace
+        # Purpose:
+        #   Launch the create-workspace developer tool through the sgnd-console runtime.
+        #
+        # Behavior:
+        #   - Delegates execution to __sgnd_run_script.
+        #   - Invokes create-workspace.sh with --showenv.
+        #
+        # Returns:
+        #   Exit code of the executed script.
+        #
+        # Usage:
+        #   __exe_createworkspace
+        #
+        # Examples:
+        #   __exe_createworkspace    
     __exe_createworkspace()
     {
             __sgnd_run_script "create-workspace.sh" --showenv
     }
     
-        __exe_deployworkspace()
+    # __exe_deployworkspace
+        # Purpose:
+        #   Launch the deploy-workspace developer tool through the sgnd-console runtime.
+        #
+        # Behavior:
+        #   - Delegates execution to __sgnd_run_script.
+        #   - Invokes deploy-workspace.sh with --showenv.
+        #
+        # Returns:
+        #   Exit code of the executed script.
+        #
+        # Usage:
+        #   __exe_deployworkspace
+        #
+        # Examples:
+        #   __exe_deployworkspace
+    __exe_deployworkspace()
     {
             __sgnd_run_script "deploy-workspace.sh" --showenv
     }
 
-        __exe_preparerelease()
+    # __exe_preparerelease
+        # Purpose:
+        #   Launch the prepare-release developer tool through the sgnd-console runtime.
+        #
+        # Behavior:
+        #   - Delegates execution to __sgnd_run_script.
+        #   - Invokes prepare-release.sh with --showenv.
+        #
+        # Returns:
+        #   Exit code of the executed script.
+        #
+        # Usage:
+        #   __exe_preparerelease
+        #
+        # Examples:
+        #   __exe_preparerelease
+    __exe_preparerelease()
     {
             __sgnd_run_script "prepare-release.sh" --showenv
     }
@@ -89,7 +169,8 @@ set -uo pipefail
 # }
 
 # --- Console registration --------------------------------------------------------
-# Allowed side-effect: module self-registers with sgnd-console
+    # Allowed side effect:
+    #   - On source, the module registers its groups and menu items with sgnd-console.
 
     sgnd_console_register_group "devtools" "Developer tools" "Tool scripts to create, deploy and release VSC-workspaces" 0 1 900
 

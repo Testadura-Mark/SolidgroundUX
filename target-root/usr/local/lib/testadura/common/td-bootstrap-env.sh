@@ -1,49 +1,69 @@
 # =================================================================================
-# Testadura Consultancy — td-bootstrap-env.sh
+# Testadura Consultancy — Bootstrap Environment Setup module
 # ---------------------------------------------------------------------------------
+# Module     : td-bootstrap-env.sh
 # Purpose    : Bootstrap environment primitives (defaults, roots, derived paths)
-# Author     : Mark Fieten
 #
-# © 2025 Mark Fieten — Testadura Consultancy
-# Licensed under the Testadura Non-Commercial License (TD-NC) v1.0.
-# ---------------------------------------------------------------------------------
-# Description:
-#   Provides the earliest bootstrap environment layer used by td-bootstrap.sh.
-#   Responsibilities:
-#   - Defines framework identity metadata (product/version/license filenames)
-#   - Defines the framework-global cfg metadata specs (TD_FRAMEWORK_GLOBALS)
+# Scope:
+#   - Defines framework identity metadata
+#   - Defines framework-global configuration specifications (TD_FRAMEWORK_GLOBALS)
 #   - Defines core library load order (TD_CORE_LIBS)
-#   - Establishes default values (td_defaults_apply / td_defaults_reset)
+#   - Applies default values (td_apply_defaults / td_defaults_reset)
 #   - Derives standard directory and file paths from root settings
-#   - Locates and sources the bootstrap cfg (solidgroundux.cfg), supporting dev-tree
+#   - Prepares framework-level cfg path resolution
+#
+# Design:
+#   - Pure bootstrap layer (no argument parsing, no UI, no logging policy)
+#   - Idempotent and safe for repeated sourcing
+#   - No side effects beyond variable initialization and path derivation
 #
 # Assumptions:
-#   - Minimal shell environment; safe to source early in bootstrap.
-#   - Caller may be running under sudo; TD_USER_HOME is derived accordingly.
-#
-# Design rules:
-#   - Libraries define functions and constants only.
-#   - No auto-execution (must be sourced).
-#   - Avoids changing shell options beyond strict-unset/pipefail (set -u -o pipefail).
-#     (No set -e; no shopt.)
-#   - No path detection or root resolution (bootstrap owns path resolution).
-#   - No global behavior changes (UI routing, logging policy, shell options).
-#   - Safe to source multiple times (idempotent load guard).
+#   - Minimal shell environment; safe to source early in bootstrap
+#   - Caller may run under sudo; TD_USER_HOME is derived accordingly
 #
 # Non-goals:
-#   - Argument parsing (handled by bootstrap + args layer)
-#   - Configuration domain application (handled by cfg/state layer)
-#   - Logging/UI policy decisions (handled by ui-say/ui modules)
-# =================================================================================
+#   - Argument parsing (args layer)
+#   - Configuration application (cfg/state layer)
+#   - UI/logging behavior (ui modules)
+#
+# Author  : Mark Fieten
+# © 2025 Mark Fieten — Testadura Consultancy
+# Licensed under the Testadura Non-Commercial License (TD-NC) v1.0.
+# ==================================================================================
 set -uo pipefail
 # --- Library guard ---------------------------------------------------------------
-    # Derive a unique per-library guard variable from the filename:
-    #   ui.sh        -> TD_UI_LOADED
-    #   ui-sgr.sh    -> TD_UI_SGR_LOADED
-    #   foo-bar.sh   -> TD_FOO_BAR_LOADED
-    # Note:
-    #   The derived TD_<NAME>_LOADED guard is an internal implementation detail
-    #   and not part of the public API.
+    # __td_lib_guard
+        # Purpose:
+        #   Ensure the file is sourced as a library and only initialized once.
+        #
+        # Behavior:
+        #   - Derives a unique guard variable name from the current filename.
+        #   - Aborts execution if the file is executed instead of sourced.
+        #   - Sets the guard variable on first load.
+        #   - Skips initialization if the library was already loaded.
+        #
+        # Inputs:
+        #   BASH_SOURCE[0]
+        #   $0
+        #
+        # Outputs (globals):
+        #   TD_<MODULE>_LOADED
+        #
+        # Returns:
+        #   0 if already loaded or successfully initialized.
+        #   Exits with code 2 if executed instead of sourced.
+        #
+        # Usage:
+        #   __td_lib_guard
+        #
+        # Examples:
+        #   # Typical usage at top of library file
+        #   __td_lib_guard
+        #   unset -f __td_lib_guard
+        #
+        # Notes:
+        #   - Guard variable is derived dynamically (e.g. ui-glyphs.sh → TD_UI_GLYPHS_LOADED).
+        #   - Safe under `set -u` due to indirect expansion with default.
     __lib_base="$(basename "${BASH_SOURCE[0]}")"
     __lib_base="${__lib_base%.sh}"
     __lib_base="${__lib_base//-/_}"
@@ -135,20 +155,31 @@ set -uo pipefail
         #   Apply default values for bootstrap globals if currently unset.
         #
         # Behavior:
-        #   - Sets TD_FRAMEWORK_ROOT / TD_APPLICATION_ROOT defaults to "/".
-        #   - Sets logging/UI defaults.
-        #   - Derives TD_USER_HOME from SUDO_USER when available, otherwise uses $HOME.
+        #   - Initializes root variables (TD_FRAMEWORK_ROOT, TD_APPLICATION_ROOT).
+        #   - Sets logging and UI defaults.
+        #   - Resolves TD_USER_HOME (prefers SUDO_USER when present).
+        #   - Establishes framework cfg basename.
         #
         # Outputs (globals):
         #   TD_FRAMEWORK_ROOT, TD_APPLICATION_ROOT
         #   TD_USER_HOME
-        #   TD_LOG_* defaults, TD_LOGFILE_ENABLED, TD_LOG_TO_CONSOLE, TD_CONSOLE_MSGTYPES
+        #   TD_LOG_*, TD_LOGFILE_ENABLED, TD_LOG_TO_CONSOLE, TD_CONSOLE_MSGTYPES
         #   TD_UI_STYLE, TD_UI_PALETTE
         #   SAY_* defaults
         #   TD_FRAMEWORK_CFG_BASENAME
         #
         # Returns:
         #   0 always.
+        #
+        # Usage:
+        #   td_apply_defaults
+        #
+        # Examples:
+        #   td_apply_defaults
+        #
+        #   # Override before applying defaults
+        #   TD_LOGFILE_ENABLED=1
+        #   td_apply_defaults
     td_apply_defaults() {
         : "${TD_FRAMEWORK_ROOT:=/}"
         : "${TD_APPLICATION_ROOT:=$TD_FRAMEWORK_ROOT}"
@@ -199,6 +230,12 @@ set -uo pipefail
         # Returns:
         #   0 always.
         #
+        # Usage:
+        #   td_defaults_reset
+        #
+        # Examples:
+        #   td_defaults_reset
+        #
         # Notes:
         #   - Intended for development/testing and controlled reinitialization.
         #   - TD_FRAMEWORK_GLOBALS is the authoritative list of resettable globals.
@@ -220,11 +257,10 @@ set -uo pipefail
         #
         # Behavior:
         #   - Computes framework-scoped directories from:
-        #       TD_FRAMEWORK_ROOT
-        #       TD_APPLICATION_ROOT
-        #       TD_USER_HOME
+        #       TD_FRAMEWORK_ROOT, TD_APPLICATION_ROOT, TD_USER_HOME
         #   - Derives logging paths.
         #   - Optionally derives script-scoped cfg/state paths when TD_SCRIPT_NAME is set.
+        #   - Rebuilds TD_FRAMEWORK_DIRS via __build_framework_dirs.
         #
         # Inputs (globals):
         #   TD_FRAMEWORK_ROOT
@@ -233,29 +269,24 @@ set -uo pipefail
         #   TD_SCRIPT_NAME (optional)
         #
         # Outputs (globals):
-        #   Directories:
-        #     TD_COMMON_LIB
-        #     TD_SYSCFG_DIR
-        #     TD_USRCFG_DIR
-        #     TD_STATE_DIR
-        #     TD_STYLE_DIR
-        #     TD_DOCS_DIR
-        #
-        #   Logging paths:
-        #     TD_LOG_PATH
-        #     TD_ALTLOG_PATH
-        #
-        #   Script-scoped paths (if TD_SCRIPT_NAME is set):
-        #     TD_SYSCFG_FILE
-        #     TD_USRCFG_FILE
-        #     TD_STATE_FILE
+        #   TD_COMMON_LIB, TD_SYSCFG_DIR, TD_USRCFG_DIR, TD_STATE_DIR
+        #   TD_STYLE_DIR, TD_DOCS_DIR
+        #   TD_LOG_PATH, TD_ALTLOG_PATH
+        #   TD_SYSCFG_FILE, TD_USRCFG_FILE, TD_STATE_FILE (optional)
+        #   TD_FRAMEWORK_DIRS
         #
         # Returns:
         #   0 always.
         #
-        # Notes:
-        #   - Pure path derivation: no filesystem validation is performed here.
-        #   - TD_DOCS_DIR may not exist in dev/minimal installs.
+        # Usage:
+        #   td_rebase_directories
+        #
+        # Examples:
+        #   td_apply_defaults
+        #   td_rebase_directories
+        #
+        #   TD_SCRIPT_NAME="install"
+        #   td_rebase_directories
     td_rebase_directories() {
         saydebug "Rebasing directories"
         TD_COMMON_LIB="$TD_FRAMEWORK_ROOT/usr/local/lib/testadura/common"
@@ -284,75 +315,65 @@ set -uo pipefail
         #   Derive framework-global cfg file paths from current cfg directories.
         #
         # Behavior:
-        #   - Uses the fixed basename TD_FRAMEWORK_CFG_BASENAME.
-        #   - Produces framework-scoped (not script-scoped) cfg file paths.
+        #   - Uses TD_FRAMEWORK_CFG_BASENAME as the filename.
+        #   - Produces system and user cfg paths.
+        #
+        # Inputs (globals):
+        #   TD_SYSCFG_DIR
+        #   TD_USRCFG_DIR
+        #   TD_FRAMEWORK_CFG_BASENAME
         #
         # Outputs (globals):
         #   TD_FRAMEWORK_SYSCFG_FILE
         #   TD_FRAMEWORK_USRCFG_FILE
+        #
+        # Returns:
+        #   0 always.
+        #
+        # Usage:
+        #   td_rebase_framework_cfg_paths
+        #
+        # Examples:
+        #   td_rebase_directories
+        #   td_rebase_framework_cfg_paths
     td_rebase_framework_cfg_paths() {
         TD_FRAMEWORK_SYSCFG_FILE="$TD_SYSCFG_DIR/$TD_FRAMEWORK_CFG_BASENAME"
         TD_FRAMEWORK_USRCFG_FILE="$TD_USRCFG_DIR/$TD_FRAMEWORK_CFG_BASENAME"
     }
 
-    ## td_ensure_dirs
+    # td_ensure_dirs
         # Purpose:
         #   Ensure that framework directories exist and have appropriate ownership.
         #
         # Arguments:
-        #   One or more directory specifications in the form:
-        #
-        #       "s|/path/to/system/dir"
-        #       "u|/path/to/user/dir"
-        #
-        # Specification fields:
-        #   kind | path
-        #
-        #   kind:
-        #     s  system directory
-        #        - Directory is created if missing.
-        #        - Ownership is left unchanged.
-        #
-        #     u  user directory
-        #        - Directory is created if missing.
-        #        - If running under sudo, ownership is assigned to the invoking
-        #          user (SUDO_USER) instead of root.
-        #        - Ensures the user retains usable permissions on the directory
-        #          (read, write, and traverse).
+        #   One or more directory specifications:
+        #       "s|/path"  system directory
+        #       "u|/path"  user directory
         #
         # Behavior:
-        #   - Uses mkdir -p so parent directories are created automatically.
-        #   - Ignores empty or malformed directory specifications.
-        #   - Existing directories are preserved; only minimal ownership or
-        #     permission adjustments may be applied for user directories.
+        #   - Creates directories using mkdir -p.
+        #   - For user directories:
+        #       - Assigns ownership to SUDO_USER when running under sudo.
+        #       - Ensures user has read/write/execute permissions.
+        #   - Ignores malformed entries.
         #
         # Inputs (globals):
         #   SUDO_USER
         #   EUID
         #
         # Returns:
-        #   0   all directories ensured successfully
-        #   1   one or more directories could not be created
+        #   0   success
+        #   1   failure creating one or more directories
         #
-        # Notes:
-        #   - System directories should normally reside under the framework root
-        #     (e.g. /usr/local/lib/testadura, /etc/testadura, /var/log/testadura).
+        # Usage:
+        #   td_ensure_dirs "s|/path" "u|/path"
         #
-        #   - User directories typically reside under:
-        #
-        #         $TD_USER_HOME/.config
-        #         $TD_USER_HOME/.state
-        #         $TD_USER_HOME/.log
-        #
-        #   - Ownership correction prevents sudo-created directories in a user's
-        #     home from becoming root-owned and unusable by the user.
-        #
-        # Example:
-        #
+        # Examples:
         #   td_ensure_dirs \
         #       "s|$TD_COMMON_LIB" \
         #       "s|$TD_SYSCFG_DIR" \
         #       "u|$TD_USRCFG_DIR" \
+        #       "u|$TD_STATE_DIR"
     td_ensure_dirs() {
         local spec
         local kind

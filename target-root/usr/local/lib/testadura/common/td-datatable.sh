@@ -1,40 +1,86 @@
 # =================================================================================
-# Testadura Consultancy — td-datatable.sh
+# Testadura Consultancy — Bash DataTable Abstraction Module
 # ---------------------------------------------------------------------------------
-# Purpose    : Lightweight DataTable-style helpers for Bash arrays
-# Author     : Mark Fieten
+# Module     : td-datatable.sh
+# Purpose    : Lightweight DataTable-style abstraction for Bash arrays
 #
-# © 2025 Mark Fieten — Testadura Consultancy
-# Licensed under the Testadura Non-Commercial License (TD-NC) v1.0.
-# ---------------------------------------------------------------------------------
 # Description:
-#   Provides a tiny table abstraction for Bash using:
+#   Provides a minimal relational-style table model using:
+#     - a pipe-separated schema definition
+#     - indexed arrays storing pipe-separated row strings
 #
-#     - a schema string with pipe-separated column names
-#     - an indexed array containing pipe-separated row strings
+#   Enables structured data handling in Bash scripts without external tools.
 #
-#   Example:
+# Core capabilities:
+#   - Schema validation and column resolution
+#   - Row construction and validation
+#   - Column-based access (get/set)
+#   - Table operations (insert, delete, find, append)
 #
-#       MY_SCHEMA="id|name|desc"
-#       declare -a MY_ROWS=()
-#
-#       td_dt_insert "$MY_SCHEMA" MY_ROWS "1|Tools|Utility module"
-#       td_dt_get "$MY_SCHEMA" MY_ROWS 0 name
-#
-# Design rules:
-#   - No multiline values
-#   - No literal pipe characters in values
+# Design principles:
+#   - Explicit schema required at all times
+#   - No implicit structure or dynamic typing
+#   - No multiline or pipe-containing values
 #   - Row identity is the array index
-#   - Schema is always explicit
-#   - Minimal feature set; no SQL-like ambitions
+#   - Minimal feature set (no SQL-like complexity)
+#
+# Typical usage:
+#   SCHEMA="id|name|desc"
+#   declare -a ROWS=()
+#
+#   td_dt_append "$SCHEMA" ROWS "1" "Tools" "Utility module"
+#   value="$(td_dt_get "$SCHEMA" ROWS 0 name)"
+#
+# Role in framework:
+#   - Provides structured data handling for modules such as:
+#       * menu systems
+#       * configuration tables
+#       * registry-style collections
+#
+# Non-goals:
+#   - No persistence layer
+#   - No querying language
+#   - No type enforcement beyond basic validation
+#
+# Author     : Mark Fieten
+# Copyright  : © 2025 Mark Fieten — Testadura Consultancy
+# License    : Testadura Non-Commercial License (TD-NC) v1.0
 # =================================================================================
 set -uo pipefail
 
 # --- Library guard ---------------------------------------------------------------
-    # Library-only: must be sourced, never executed.
-    # Uses a per-file guard variable derived from the filename, e.g.:
-    #   ui.sh      -> TD_UI_LOADED
-    #   foo-bar.sh -> TD_FOO_BAR_LOADED
+    # __td_lib_guard
+        # Purpose:
+        #   Ensure the file is sourced as a library and only initialized once.
+        #
+        # Behavior:
+        #   - Derives a unique guard variable name from the current filename.
+        #   - Aborts execution if the file is executed instead of sourced.
+        #   - Sets the guard variable on first load.
+        #   - Skips initialization if the library was already loaded.
+        #
+        # Inputs:
+        #   BASH_SOURCE[0]
+        #   $0
+        #
+        # Outputs (globals):
+        #   TD_<MODULE>_LOADED
+        #
+        # Returns:
+        #   0 if already loaded or successfully initialized.
+        #   Exits with code 2 if executed instead of sourced.
+        #
+        # Usage:
+        #   __td_lib_guard
+        #
+        # Examples:
+        #   # Typical usage at top of library file
+        #   __td_lib_guard
+        #   unset -f __td_lib_guard
+        #
+        # Notes:
+        #   - Guard variable is derived dynamically (e.g. ui-glyphs.sh → TD_UI_GLYPHS_LOADED).
+        #   - Safe under `set -u` due to indirect expansion with default.
     __td_lib_guard() {
         local lib_base
         local guard
@@ -71,6 +117,12 @@ set -uo pipefail
         #
         # Returns:
         #   0  success
+        #
+        # Usage:
+        #   td__dt_array_length ARRAY_NAME
+        #
+        # Examples:
+        #   count="$(td__dt_array_length MY_ROWS)"
     td__dt_array_length() {
         local array_name="${1:?missing array name}"
 
@@ -88,6 +140,14 @@ set -uo pipefail
         #   Writes column names into global helper array TD_DT_SPLIT.
         #
         # Returns:
+        #   0  success
+        #
+        # Usage:
+        #   td__dt_split_schema "$SCHEMA"
+        #
+        # Examples:
+        #   td__dt_split_schema "id|name|desc"
+        #   echo "${TD_DT_SPLIT[1]}"   # name
         #   0  success
     td__dt_split_schema() {
         local schema="${1:?missing schema}"
@@ -107,6 +167,13 @@ set -uo pipefail
         #
         # Returns:
         #   0  success
+        #
+        # Usage:
+        #   td__dt_split_row "$ROW"
+        #
+        # Examples:
+        #   td__dt_split_row "1|Tools|Utility"
+        #   echo "${TD_DT_SPLIT[2]}"   # Utility
     td__dt_split_row() {
         local row="${1-}"
 
@@ -128,6 +195,14 @@ set -uo pipefail
         # Returns:
         #   0  value is valid
         #   1  value contains unsupported characters
+        #
+        # Usage:
+        #   td_dt_validate_value VALUE
+        #
+        # Examples:
+        #   if td_dt_validate_value "$input"; then
+        #       sayinfo "Value OK"
+        #   fi
     td_dt_validate_value() {
         local value="${1-}"
 
@@ -151,6 +226,14 @@ set -uo pipefail
         # Returns:
         #   0  schema is valid
         #   1  schema is invalid
+        #
+        # Usage:
+        #   td_dt_validate_schema "$SCHEMA"
+        #
+        # Examples:
+        #   if ! td_dt_validate_schema "$MY_SCHEMA"; then
+        #       sayfail "Invalid schema"
+        #   fi
     td_dt_validate_schema() {
         local schema="${1-}"
         local i
@@ -187,6 +270,12 @@ set -uo pipefail
         # Returns:
         #   0  column found
         #   1  column not found
+        #
+        # Usage:
+        #   td_dt_column_index "$SCHEMA" COLUMN
+        #
+        # Examples:
+        #   idx="$(td_dt_column_index "$MY_SCHEMA" "name")"
     td_dt_column_index() {
         local schema="${1:?missing schema}"
         local column="${2:?missing column name}"
@@ -236,6 +325,12 @@ set -uo pipefail
         # Returns:
         #   0  success
         #   1  wrong field count or invalid field value
+        #
+        # Usage:
+        #   td_dt_make_row "$SCHEMA" VALUE1 VALUE2 ...
+        #
+        # Examples:
+        #   row="$(td_dt_make_row "$MY_SCHEMA" "1" "Tools" "Utility module")"
     td_dt_make_row() {
         local schema="${1:?missing schema}"
         shift
@@ -397,6 +492,12 @@ set -uo pipefail
         # Returns:
         #   0  success
         #   1  invalid schema or row width mismatch
+        #
+        # Usage:
+        #   td_dt_insert "$SCHEMA" ARRAY_NAME ROW
+        #
+        # Examples:
+        #   td_dt_insert "$MY_SCHEMA" MY_ROWS "1|Tools|Utility module"
     td_dt_insert() {
         local schema="${1:?missing schema}"
         local table_name="${2:?missing table name}"
@@ -455,6 +556,12 @@ set -uo pipefail
         # Returns:
         #   0  success
         #   1  invalid row index or invalid column
+        #
+        # Usage:
+        #   td_dt_get "$SCHEMA" ARRAY INDEX COLUMN
+        #
+        # Examples:
+        #   name="$(td_dt_get "$MY_SCHEMA" MY_ROWS 0 name)"
     td_dt_get() {
         local schema="${1:?missing schema}"
         local table_name="${2:?missing table name}"
@@ -486,6 +593,12 @@ set -uo pipefail
         # Returns:
         #   0  success
         #   1  invalid row index, invalid column, or invalid value
+        #
+        # Usage:
+        #   td_dt_set "$SCHEMA" ARRAY INDEX COLUMN VALUE
+        #
+        # Examples:
+        #   td_dt_set "$MY_SCHEMA" MY_ROWS 0 name "Updated"
     td_dt_set() {
         local schema="${1:?missing schema}"
         local table_name="${2:?missing table name}"
@@ -522,6 +635,12 @@ set -uo pipefail
         # Returns:
         #   0  match found
         #   1  no match
+        #
+        # Usage:
+        #   td_dt_find_first "$SCHEMA" ARRAY COLUMN VALUE
+        #
+        # Examples:
+        #   idx="$(td_dt_find_first "$MY_SCHEMA" MY_ROWS key "Q")"
     td_dt_find_first() {
         local schema="${1:?missing schema}"
         local table_name="${2:?missing table name}"
@@ -555,6 +674,12 @@ set -uo pipefail
         # Returns:
         #   0  success
         #   1  invalid values or width mismatch
+        #
+        # Usage:
+        #   td_dt_append "$SCHEMA" ARRAY VALUE1 VALUE2 ...
+        #
+        # Examples:
+        #   td_dt_append "$MY_SCHEMA" MY_ROWS "2" "Config" "Settings module"
     td_dt_append() {
         local schema="${1:?missing schema}"
         local table_name="${2:?missing table name}"

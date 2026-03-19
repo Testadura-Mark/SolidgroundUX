@@ -1,19 +1,78 @@
-# =================================================================================
-# Testadura Consultancy — ui-glyphs
-# ---------------------------------------------------------------------------------
-# Purpose    : Shared Unicode glyphs for terminal UI, math, and diagnostics
-# Author     : Mark Fieten
+# ==================================================================================
+# Testadura Consultancy — UI Glyph Definitions
+# ----------------------------------------------------------------------------------
+# Module     : ui-glyphs.sh
+# Purpose    : Centralized Unicode glyph definitions for terminal UI rendering
 #
+# Description:
+#   Provides a shared set of Unicode characters used throughout the framework
+#   for rendering structured terminal output, including:
+#     - box drawing (light and double line)
+#     - common symbols and indicators
+#     - math and comparison glyphs
+#     - keyboard hints
+#     - Greek symbols
+#
+# Design principles:
+#   - Single source of truth for all glyphs
+#   - Avoid hardcoded Unicode characters scattered across modules
+#   - Improve readability and consistency of terminal UI code
+#   - Keep naming predictable and category-based
+#
+# Naming conventions:
+#   LN_*  Light line drawing
+#   DL_*  Double line drawing
+#   CH_*  General characters
+#   KY_*  Keyboard hints
+#   GR_*  Greek symbols
+#
+# Role in framework:
+#   - Low-level dependency for UI rendering modules (ui.sh, console, menus)
+#   - Used wherever structured terminal output or symbolic indicators are needed
+#
+# Non-goals:
+#   - Rendering logic (this module defines symbols only)
+#   - Color/styling (handled in ui.sh)
+#
+# Author     : Mark Fieten
 # © 2025 Mark Fieten — Testadura Consultancy
 # Licensed under the Testadura Non-Commercial License (TD-NC) v1.0.
-# ---------------------------------------------------------------------------------
+# ==================================================================================
 
 set -uo pipefail
 # --- Library guard ---------------------------------------------------------------
-    # Library-only: must be sourced, never executed.
-    # Uses a per-file guard variable derived from the filename, e.g.:
-    #   ui.sh      -> TD_UI_LOADED
-    #   foo-bar.sh -> TD_FOO_BAR_LOADED
+    # __td_lib_guard
+        # Purpose:
+        #   Ensure the file is sourced as a library and only initialized once.
+        #
+        # Behavior:
+        #   - Derives a unique guard variable name from the current filename.
+        #   - Aborts execution if the file is executed instead of sourced.
+        #   - Sets the guard variable on first load.
+        #   - Skips initialization if the library was already loaded.
+        #
+        # Inputs:
+        #   BASH_SOURCE[0]
+        #   $0
+        #
+        # Outputs (globals):
+        #   TD_<MODULE>_LOADED
+        #
+        # Returns:
+        #   0 if already loaded or successfully initialized.
+        #   Exits with code 2 if executed instead of sourced.
+        #
+        # Usage:
+        #   __td_lib_guard
+        #
+        # Examples:
+        #   # Typical usage at top of library file
+        #   __td_lib_guard
+        #   unset -f __td_lib_guard
+        #
+        # Notes:
+        #   - Guard variable is derived dynamically (e.g. ui-glyphs.sh → TD_UI_GLYPHS_LOADED).
+        #   - Safe under `set -u` due to indirect expansion with default.
     __td_lib_guard() {
         local lib_base
         local guard

@@ -1,55 +1,76 @@
 # =================================================================================
-# Testadura Consultancy — td-bootstrap.sh
+# Testadura Consultancy — Framework Bootstrap Orchestrator
 # ---------------------------------------------------------------------------------
-# Purpose    : Framework bootstrap and library load orchestration
-# Author     : Mark Fieten
+# Module     : td-bootstrap.sh
+# Purpose    : Framework bootstrap orchestrator (environment, config, libraries)
 #
+# Responsibilities:
+#   - Source bootstrap environment (td-bootstrap-env.sh)
+#   - Apply defaults and derive framework paths
+#   - Ensure required directory structure exists
+#   - Load core libraries in defined order (TD_CORE_LIBS)
+#   - Load framework configuration (system + user)
+#
+# Design:
+#   - Acts as the canonical entry into the Testadura runtime environment
+#   - Idempotent: safe to call multiple times
+#   - Minimal logic; delegates responsibilities to specialized modules
+#
+# Flow:
+#   1. Load bootstrap environment definitions
+#   2. Apply defaults
+#   3. Rebase directories and cfg paths
+#   4. Ensure required directories exist
+#   5. Load core libraries
+#   6. Apply framework configuration
+#
+# Assumptions:
+#   - Executed from a Bash entry script
+#   - Required files exist under TD_COMMON_LIB
+#
+# Non-goals:
+#   - Argument parsing (args layer)
+#   - UI/menu logic
+#   - Application-specific behavior
+#
+# Author  : Mark Fieten
 # © 2025 Mark Fieten — Testadura Consultancy
 # Licensed under the Testadura Non-Commercial License (TD-NC) v1.0.
-# ---------------------------------------------------------------------------------
-# Overview
-#   td-bootstrap.sh is the entry bootstrap for any script that runs inside the
-#   SolidgroundUX framework context. It must be sourced (never executed) and is
-#   responsible for:
-#
-#   1) Path resolution
-#      - Determine bootstrap directory
-#      - Load bootstrap environment (td-bootstrap-env.sh)
-#      - Apply defaults and derive key directories/files ("rebase")
-#
-#   2) Library load orchestration
-#      - Source core libraries in a fixed order (TD_CORE_LIBS from TD_COMMON_LIB)
-#      - Load UI palette and style after core libraries are available
-#
-#   3) Minimal early error reporting
-#      - Provide fallback say* functions before ui.sh is loaded
-#
-#   4) Framework initialization sequence
-#      - Apply Framework configuration domain
-#      - Parse builtin arguments (commit/dryrun/debug/help/etc.)
-#      - Optionally load persistent state and register EXIT handlers
-#      - Apply Script configuration domain (if TD_SCRIPT_GLOBALS defined)
-#      - Parse script arguments (if TD_ARGS_SPEC and remaining args exist)
-#
-# Contract
-#   - Owns all path resolution and core library load order.
-#   - Performs sanity checks only (existence, permissions, required commands).
-#   - No reusable helpers live here (helpers belong in libraries).
-#   - No application logic or policy decisions here.
-#   - No user interaction until after core libraries are loaded and root constraints
-#     are resolved (license acceptance may prompt after that point).
-#
-# Non-goals
-#   - Full argument parsing/validation (args layer)
-#   - Configuration semantics beyond loading/applying domains (cfg layer)
-#   - Script execution/control flow (entry script owns it)
-# =================================================================================
+# ==================================================================================
 set -uo pipefail
 # --- Library guard ---------------------------------------------------------------
-    # Library-only: must be sourced, never executed.
-    # Uses a per-file guard variable derived from the filename, e.g.:
-    #   ui.sh      -> TD_UI_LOADED
-    #   foo-bar.sh -> TD_FOO_BAR_LOADED
+    # __td_lib_guard
+        # Purpose:
+        #   Ensure the file is sourced as a library and only initialized once.
+        #
+        # Behavior:
+        #   - Derives a unique guard variable name from the current filename.
+        #   - Aborts execution if the file is executed instead of sourced.
+        #   - Sets the guard variable on first load.
+        #   - Skips initialization if the library was already loaded.
+        #
+        # Inputs:
+        #   BASH_SOURCE[0]
+        #   $0
+        #
+        # Outputs (globals):
+        #   TD_<MODULE>_LOADED
+        #
+        # Returns:
+        #   0 if already loaded or successfully initialized.
+        #   Exits with code 2 if executed instead of sourced.
+        #
+        # Usage:
+        #   __td_lib_guard
+        #
+        # Examples:
+        #   # Typical usage at top of library file
+        #   __td_lib_guard
+        #   unset -f __td_lib_guard
+        #
+        # Notes:
+        #   - Guard variable is derived dynamically (e.g. ui-glyphs.sh → TD_UI_GLYPHS_LOADED).
+        #   - Safe under `set -u` due to indirect expansion with default.
     __td_lib_guard() {
         local lib_base
         local guard
@@ -607,45 +628,42 @@ set -uo pipefail
  # --- Main ------------------------------------------------------------------------
     # td_bootstrap
         # Purpose:
-        #   Establish the SolidgroundUX runtime context for the current script.
-        #
-        # Arguments:
-        #   $@  Full command line (bootstrap switches + builtins + script args).
-        #
-        # Inputs (globals):
-        #   TD_CORE_LIBS, TD_COMMON_LIB
-        #   TD_FRAMEWORK_SYSCFG_FILE, TD_FRAMEWORK_USRCFG_FILE
-        #   TD_SYSCFG_FILE, TD_USRCFG_FILE
-        #
-        # Outputs (globals):
-        #   TD_BOOTSTRAP_REST
-        #     Remaining script arguments after bootstrap + builtins (+ script args if parsed).
-        #   RUN_MODE, FLAG_* and other builtin-derived selectors.
+        #   Initialize the Testadura framework runtime environment.
         #
         # Behavior:
-        #   - Initializes bootstrap environment (roots, derived paths).
-        #   - Parses bootstrap switches into exe_state/exe_root and TD_BOOTSTRAP_REST.
-        #   - Sources core libraries, then loads UI palette/style.
-        #   - Applies Framework cfg domain.
-        #   - Parses builtin args early (stop-at-unknown).
-        #   - Enforces root/non-root constraints when requested.
-        #   - Checks license acceptance (after root constraints are resolved).
-        #   - Optionally loads state and registers EXIT handlers (state/autostate).
-        #   - Applies Script cfg domain (if TD_SCRIPT_GLOBALS defined).
-        #   - Parses script args (if TD_ARGS_SPEC defined and args remain).
+        #   - Sources td-bootstrap-env.sh.
+        #   - Applies default configuration values.
+        #   - Derives framework directory and cfg paths.
+        #   - Ensures required directories exist.
+        #   - Loads core libraries defined in TD_CORE_LIBS.
+        #   - Applies framework configuration (system + user).
+        #
+        # Inputs (globals):
+        #   TD_COMMON_LIB (optional override before call)
+        #
+        # Outputs (globals):
+        #   All TD_* framework variables
+        #   Loaded functions from core libraries
         #
         # Side effects:
-        #   - Sources multiple libraries and cfg files.
-        #   - May prompt for license acceptance.
-        #   - May register EXIT trap and handlers.
+        #   - Creates directories if missing
+        #   - Sources multiple library files
+        #   - Applies configuration values to global state
         #
         # Returns:
-        #   0 on success.
-        #   2 if license acceptance is declined/cancelled.
-        #   Non-zero on fatal initialization failure.
+        #   0   success
+        #   1   failure loading required components
         #
-        # Notes:
-        #   Callers own application control flow; td_bootstrap only prepares the context.
+        # Usage:
+        #   td_bootstrap
+        #
+        # Examples:
+        #   # Minimal bootstrap
+        #   td_bootstrap
+        #
+        #   # Override root before bootstrap
+        #   TD_FRAMEWORK_ROOT="/opt/testadura"
+        #   td_bootstrap
     td_bootstrap() {
         saystart "Initializing framework"
         # Definitions

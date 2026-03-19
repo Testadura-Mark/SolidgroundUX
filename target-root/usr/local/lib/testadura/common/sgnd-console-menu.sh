@@ -1,46 +1,63 @@
-# =================================================================================
-# Testadura Consultancy — sgnd-console-menu.sh
-# ---------------------------------------------------------------------------------
-# Purpose    : Menu/UI engine for sgnd-console
-# Author     : Mark Fieten
+# ==================================================================================
+# Testadura Consultancy — SolidGround Console Menu Engine
+# ----------------------------------------------------------------------------------
+# Module  : sgnd-console-menu.sh
+# Purpose : Interactive menu rendering and navigation engine for sgnd-console.
 #
+# Scope   :
+#   - Menu rendering (titles, groups, items, layout)
+#   - Pagination (previous/next navigation)
+#   - Input handling and dispatch
+#   - Toggle-aware item presentation
+#
+# Design  :
+#   - Driven by registered menu items (data → rendering)
+#   - Stateless rendering based on current flags and page index
+#   - Integrates with sgnd-console core for execution and state
+#
+# Notes   :
+#   - This module controls the full TUI lifecycle (render → input → dispatch)
+#   - Relies on shared UI helpers and toggle infrastructure
+#   - Assumes terminal-based interactive environment
+#
+# Author  : Mark Fieten
 # © 2025 Mark Fieten — Testadura Consultancy
 # Licensed under the Testadura Non-Commercial License (TD-NC) v1.0.
-# ---------------------------------------------------------------------------------
-# Assumptions:
-#   - Source only (library; never execute directly)
-#   - td-bootstrap has already loaded required framework/common libraries
-#   - sgnd-console state tables and globals are defined by the host script
-#
-# Description:
-#   Source this file to provide the interactive menu layer used by sgnd-console.
-#
-#   This library implements the console-facing behavior around the SGND_* menu
-#   models, including:
-#   - Label and status formatting helpers
-#   - Builtin menu actions and page navigation
-#   - Menu layout calculation and pagination
-#   - Menu rendering for title, body, builtin groups, and toggle bar
-#   - Choice validation and dispatch
-#
-# Design rules:
-#   - Library defines functions only; no auto-execution beyond load guard.
-#   - Menu state is owned by the host script through shared SGND_* globals.
-#   - Rendering and dispatch are data-driven through SGND_* table models.
-#   - Builtin actions may remain key-dispatchable even when hidden from the menu.
-#   - UI output is intended for interactive terminal use.
-#
-# Notes:
-#   - This library is intentionally coupled to sgnd-console data structures.
-#   - It is a menu/UI subsystem, not a generic framework component.
-#   - Registration, module loading, and bootstrap remain outside this library.
-# =================================================================================
+# ==================================================================================
 set -uo pipefail
 # --- Library guard ---------------------------------------------------------------
-    # Library-only: must be sourced, never executed.
-    # Uses a per-file guard variable derived from the filename, e.g.:
-    #   ui.sh      -> TD_UI_LOADED
-    #   foo-bar.sh -> TD_FOO_BAR_LOADED
+    # __td_lib_guard
+        # Purpose:
+        #   Ensure the file is sourced as a library and only initialized once.
+        #
+        # Behavior:
+        #   - Derives a unique guard variable name from the current filename.
+        #   - Aborts execution if the file is executed instead of sourced.
+        #   - Sets the guard variable on first load.
+        #   - Skips initialization if the library was already loaded.
+        #
+        # Inputs:
+        #   BASH_SOURCE[0]
+        #   $0
+        #
+        # Outputs (globals):
+        #   TD_<MODULE>_LOADED
+        #
+        # Returns:
+        #   0 if already loaded or successfully initialized.
+        #   Exits with code 2 if executed instead of sourced.
+        #
+        # Usage:
+        #   __td_lib_guard
+        #
+        # Examples:
+        #   # Typical usage at top of library file
+        #   __td_lib_guard
+        #   unset -f __td_lib_guard
+        #
+        # Notes:
+        #   - Guard variable is derived dynamically (e.g. ui-glyphs.sh → TD_UI_GLYPHS_LOADED).
+        #   - Safe under `set -u` due to indirect expansion with default.
     __td_lib_guard() {
         local lib_base
         local guard
@@ -68,26 +85,29 @@ set -uo pipefail
 # --- Label and status formatting --------------------------------------------------
     # __sgnd_console_toggleword
         # Purpose:
-        #   Render a styled toggle-bar word with an emphasized hotkey character.
-        #
-        # Behavior:
-        #   - Applies active/inactive styling depending on STATE.
-        #   - Highlights HOTKEY within WORD using underline and emphasis.
-        #   - Special-cases DRYRUN so the inactive display text becomes COMMIT(D).
-        #   - If HOTKEY is not present in WORD, renders WORD as-is.
+        #   Render a toggle label (e.g. DEBUG, DRYRUN) with color and hotkey styling.
         #
         # Arguments:
-        #   $1  WORD      Display word.
-        #   $2  HOTKEY    Character to highlight within WORD.
-        #   $3  STATE     1=active, 0=inactive.
-        #   $4  ONCLR     Optional active color escape/value.
-        #   $5  OFFCLR    Optional inactive color escape/value.
+        #   $1  Word (e.g. "DEBUG")
+        #   $2  Hotkey (single character)
+        #   $3  State (0=off, 1=on)
+        #   $4  Optional ON color
+        #   $5  Optional OFF color
         #
-        # Output:
-        #   Prints the styled text to stdout (no newline).
+        # Behavior:
+        #   - Highlights hotkey with underline.
+        #   - Applies color and bold styling depending on state.
+        #   - Supports special-case transformations (e.g. DRYRUN → COMMIT).
+        #
+        # Outputs:
+        #   Prints formatted toggle text.
         #
         # Returns:
-        #   0 always
+        #   0 always.
+        #
+        # Usage:
+        #   __sgnd_console_toggleword "DEBUG" "B" 1
+        #   __sgnd_console_toggleword "DRYRUN" "D" 0
     __sgnd_console_toggleword() {
         local word="${1:?missing word}"
         local hotkey="${2:?missing hotkey}"
@@ -768,7 +788,7 @@ set -uo pipefail
         done
     }
 
-# --- Menu rendering ---------------------------------------------------------------   
+# --- Menu rendering ---------------------------------------------------------------
     # __sgnd_console_render_menu
         # Purpose:
         #   Render the complete console menu for the current state.
@@ -777,12 +797,31 @@ set -uo pipefail
         #   - Refreshes builtin labels so toggle-driven labels stay current.
         #   - Builds the canonical group render order.
         #   - Builds the canonical visible item order.
-        #   - Renders the menu title/header.
-        #   - Renders groups in canonical render order.
-        #   - Renders the bottom status/toggle bar last.
+        #   - Calculates the left-column render width.
+        #   - Renders the menu title, paged non-builtin body, builtin groups,
+        #     and bottom toggle bar.
+        #
+        # Inputs (globals):
+        #   SGND_GROUP_ROWS
+        #   SGND_ITEM_ROWS
+        #   SGND_GROUP_SCHEMA
+        #   SGND_ITEM_SCHEMA
+        #   SGND_RENDER_LABEL_WIDTH
+        #
+        # Outputs (globals):
+        #   SGND_RENDER_LABEL_WIDTH
+        #
+        # Side effects:
+        #   - Writes the full menu render to stdout.
         #
         # Returns:
-        #   0 always
+        #   0 always.
+        #
+        # Usage:
+        #   __sgnd_console_render_menu
+        #
+        # Examples:
+        #   __sgnd_console_render_menu
     __sgnd_console_render_menu() {
         local idx=""
         local group_key=""
@@ -832,16 +871,41 @@ set -uo pipefail
 
     # __sgnd_console_render_menu_body_paged
         # Purpose:
-        #   Render the paged non-builtin body of the console menu.
+        #   Render the current non-builtin menu page using the computed paging model.
         #
         # Behavior:
-        #   - Starts at SGND_PAGE_START_ITEM in canonical visible item order.
-        #   - Renders only items that fit in the available body height.
-        #   - Prints group headers only when at least one item from that group fits.
-        #   - Updates SGND_PAGE_NEXT_START_ITEM, SGND_PAGE_HAS_PREV, SGND_PAGE_HAS_NEXT.
+        #   - Rebuilds visible item order and page starts.
+        #   - Normalizes SGND_PAGE_INDEX to a valid page.
+        #   - Determines whether previous and next pages are available.
+        #   - Selects the visible row indexes that belong to the current page.
+        #   - Delegates final row rendering to __sgnd_console_render_page_rows.
+        #
+        # Inputs (globals):
+        #   SGND_VISIBLE_ITEM_INDEXES
+        #   SGND_PAGE_STARTS
+        #   SGND_PAGE_INDEX
+        #   SGND_PAGE_MAX_ROWS
+        #   SGND_GROUP_ROWS
+        #   SGND_ITEM_ROWS
+        #   SGND_GROUP_SCHEMA
+        #   SGND_ITEM_SCHEMA
+        #
+        # Outputs (globals):
+        #   SGND_PAGE_HAS_PREV
+        #   SGND_PAGE_HAS_NEXT
+        #   SGND_PAGE_INDEX
+        #
+        # Side effects:
+        #   - Writes the paged menu body to stdout.
         #
         # Returns:
-        #   0 always
+        #   0 always.
+        #
+        # Usage:
+        #   __sgnd_console_render_menu_body_paged
+        #
+        # Examples:
+        #   __sgnd_console_render_menu_body_paged
     __sgnd_console_render_menu_body_paged() {
         local body_height=0
         local used_lines=0
@@ -920,14 +984,43 @@ set -uo pipefail
 
     # __sgnd_console_render_page_rows
         # Purpose:
-        #   Render a prepared page selection of groups and item rows.
+        #   Render a prepared set of ordered groups and item rows for one menu page.
         #
         # Arguments:
-        #   $1  Name of array variable containing ordered group keys
-        #   $2  Name of array variable containing ordered item row indexes
+        #   $1  PAGE_GROUPS_VAR
+        #       Name of the array variable containing ordered group keys.
+        #   $2  PAGE_ROWS_VAR
+        #       Name of the array variable containing ordered item row indexes.
+        #
+        # Behavior:
+        #   - Resolves group labels from SGND_GROUP_ROWS.
+        #   - Renders each group header once.
+        #   - Renders enabled items normally and disabled items faint.
+        #   - Wraps descriptions to the available right-column width.
+        #   - Appends " ....." to a group title when that group continues
+        #     on a later page.
+        #
+        # Inputs (globals):
+        #   SGND_GROUP_ROWS
+        #   SGND_ITEM_ROWS
+        #   SGND_GROUP_SCHEMA
+        #   SGND_ITEM_SCHEMA
+        #   SGND_RENDER_LABEL_WIDTH
+        #
+        # Side effects:
+        #   - Writes rendered groups and item rows to stdout.
         #
         # Returns:
-        #   0 always
+        #   0 always.
+        #
+        # Usage:
+        #   __sgnd_console_render_page_rows page_groups page_rows
+        #
+        # Examples:
+        #   __sgnd_console_render_page_rows page_groups page_rows
+        #
+        # Notes:
+        #   - Requires bash 4.3+ (nameref).
     __sgnd_console_render_page_rows() {
         local -n _page_groups="$1"
         local -n _page_rows="$2"
@@ -1061,23 +1154,37 @@ set -uo pipefail
 
     # __sgnd_console_render_group
         # Purpose:
-        #   Render one menu group and its visible items.
-        #
-        # Behavior:
-        #   - Skips the group if it does not exist, is hidden, or contains no
-        #     renderable items.
-        #   - Renders items whose state is:
-        #       1 = visible/enabled
-        #       2 = visible/disabled
-        #   - Skips hidden items (state 0).
-        #   - Renders disabled items faint.
-        #   - Uses builtin keys directly and numbers visible non-builtin items.
+        #   Render one complete menu group and its currently renderable items.
         #
         # Arguments:
-        #   $1  GROUP_KEY   Group key to render.
+        #   $1  GROUP_KEY
+        #       Registered group key to render.
+        #
+        # Behavior:
+        #   - Skips missing or hidden groups.
+        #   - Skips groups with no visible or disabled items.
+        #   - Renders builtin items by key and non-builtin items by visible number.
+        #   - Renders disabled items faint.
+        #   - Wraps descriptions to the available right-column width.
+        #
+        # Inputs (globals):
+        #   SGND_GROUP_ROWS
+        #   SGND_ITEM_ROWS
+        #   SGND_GROUP_SCHEMA
+        #   SGND_ITEM_SCHEMA
+        #   SGND_RENDER_LABEL_WIDTH
+        #
+        # Side effects:
+        #   - Writes the rendered group to stdout.
         #
         # Returns:
-        #   0 always
+        #   0 always.
+        #
+        # Usage:
+        #   __sgnd_console_render_group "$group_key"
+        #
+        # Examples:
+        #   __sgnd_console_render_group "builtin"
     __sgnd_console_render_group() {
         local group_key="${1:?missing group key}"
         local _tpad=3
@@ -1215,32 +1322,36 @@ set -uo pipefail
 
     # __sgnd_console_render_togglebar
         # Purpose:
-        #   Render the bottom console status/toggle bar.
+        #   Render the bottom console status and navigation bar.
         #
         # Behavior:
-        #   - Builds the status words for builtin runtime/session toggles.
-        #   - Shows previous/next page navigation hints when paging is available.
+        #   - Builds styled status words for runtime toggles.
+        #   - Shows previous and next page indicators only when paging is active.
         #   - Shows the current page indicator when more than one page exists.
-        #   - Centers the composed toggle bar within the current terminal width.
-        #   - Prints a bottom section border before the bar.
+        #   - Centers the composed bar within the current terminal width.
+        #   - Prints a bottom border before the bar.
         #
-        # Display content:
-        #   - Previous page indicator
-        #   - Debug toggle
-        #   - Dry-run / commit toggle
-        #   - Page number indicator
-        #   - Logfile toggle
-        #   - Verbose toggle
-        #   - Clear-screen toggle
-        #   - Next page indicator
+        # Inputs (globals):
+        #   FLAG_DEBUG
+        #   FLAG_DRYRUN
+        #   TD_LOGFILE_ENABLED
+        #   FLAG_VERBOSE
+        #   SGND_CLEAR_ONRENDER
+        #   SGND_PAGE_INDEX
+        #   SGND_PAGE_STARTS
         #
-        # Notes:
-        #   - Toggle words are rendered via __sgnd_console_toggleword.
-        #   - Page navigation indicators are styled inactive when unavailable.
-        #   - Centering is based on visible length, ignoring ANSI escape sequences.
+        # Side effects:
+        #   - Writes the rendered toggle bar to stdout.
+        #   - Emits debug output for page count and page index.
         #
         # Returns:
-        #   0 always
+        #   0 always.
+        #
+        # Usage:
+        #   __sgnd_console_render_togglebar
+        #
+        # Examples:
+        #   __sgnd_console_render_togglebar
     __sgnd_console_render_togglebar() {
         local render_width=80
         local pad=3
@@ -1322,19 +1433,29 @@ set -uo pipefail
 # --- Menu dispatch ----------------------------------------------------------------
     # __sgnd_console_valid_choices_csv
         # Purpose:
-            #   Build the current valid choice list for the console prompt.
-            #
-            # Behavior:
-            #   - Includes builtin item keys directly so builtin hotkeys remain
-            #     dispatchable even when hidden from the menu body.
-            #   - Includes numbered choices for non-builtin items based on the
-            #     canonical visible menu order.
-            #
-            # Output:
-            #   Prints a comma-separated choice list suitable for td_choose_immediate.
-            #
-            # Returns:
-            #   0 always
+        #   Build the current valid choice list for immediate console input.
+        #
+        # Behavior:
+        #   - Includes numbered choices for visible non-builtin items.
+        #   - Includes builtin item keys directly, even when hidden from the menu body.
+        #   - Returns the result as a comma-separated list.
+        #
+        # Inputs (globals):
+        #   SGND_VISIBLE_ITEM_INDEXES
+        #   SGND_ITEM_ROWS
+        #   SGND_ITEM_SCHEMA
+        #
+        # Output:
+        #   Prints a comma-separated choice list to stdout.
+        #
+        # Returns:
+        #   0 always.
+        #
+        # Usage:
+        #   __sgnd_console_valid_choices_csv
+        #
+        # Examples:
+        #   choices="$(__sgnd_console_valid_choices_csv)"
     __sgnd_console_valid_choices_csv() {
         local i
         local out=""
@@ -1365,22 +1486,42 @@ set -uo pipefail
 
     # __sgnd_console_dispatch
         # Purpose:
-        #   Dispatch a user menu choice to the matching handler.
-        #
-        # Behavior:
-        #   - Numeric choices resolve against the canonical visible non-builtin
-        #     menu order.
-        #   - Hidden non-builtin items are excluded from numbering and dispatch.
-        #   - Disabled items are recognized but not executed.
-        #   - Key dispatch still works for builtin items even when hidden from
-        #     the menu body.
+        #   Dispatch a user menu choice to the matching registered handler.
         #
         # Arguments:
-        #   $1  CHOICE   Numeric selection or registered item key.
+        #   $1  CHOICE
+        #       Numeric menu selection or registered builtin item key.
+        #
+        # Behavior:
+        #   - Numeric choices resolve against the canonical visible non-builtin order.
+        #   - Hidden non-builtin items are excluded from numbering and dispatch.
+        #   - Disabled items are recognized but not executed.
+        #   - Builtin item keys remain dispatchable directly.
+        #   - Stores the selected item's waitsecs in SGND_LAST_WAITSECS before execution.
+        #
+        # Inputs (globals):
+        #   SGND_VISIBLE_ITEM_INDEXES
+        #   SGND_ITEM_ROWS
+        #   SGND_ITEM_SCHEMA
+        #
+        # Outputs (globals):
+        #   SGND_LAST_WAITSECS
+        #
+        # Side effects:
+        #   - Executes the matched handler function.
+        #   - May emit warnings for invalid or disabled selections.
         #
         # Returns:
-        #   Handler return code when dispatched
-        #   1 when invalid or disabled
+        #   Handler return code when dispatched successfully.
+        #   1 when the choice is invalid or disabled.
+        #
+        # Usage:
+        #   __sgnd_console_dispatch "$choice"
+        #
+        # Examples:
+        #   __sgnd_console_dispatch "1"
+        #
+        #   __sgnd_console_dispatch "Q"
     __sgnd_console_dispatch() {
         local choice="${1:?missing choice}"
         local handler=""

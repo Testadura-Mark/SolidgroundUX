@@ -1,44 +1,70 @@
-# =================================================================================
-# Testadura Consultancy — lib-template.sh
-# ---------------------------------------------------------------------------------
-# Purpose    : Template for Testadura Bash libraries (header + guards + structure)
-# Author     : Mark Fieten
+# ==================================================================================
+# Testadura Consultancy — Library Template
+# ----------------------------------------------------------------------------------
+# Module     : lib-template.sh
+# Purpose    : Canonical template for Testadura Bash libraries
 #
-# © 2025 Mark Fieten — Testadura Consultancy
-# Licensed under the Testadura Non-Commercial License (TD-NC) v1.0.
-# ---------------------------------------------------------------------------------
 # Description:
-#   Provides a standard skeleton for Testadura framework libraries, including:
-#   - Canonical header sections (purpose/description/contracts)
-#   - "library only" execution guard (must be sourced, never executed)
-#   - Load guard for idempotent sourcing
-#   - Suggested naming conventions for internal/public functions
+#   Provides the standard structure for framework libraries, including:
+#     - canonical script header sections
+#     - library-only execution guard (must be sourced, never executed)
+#     - idempotent load guard
+#     - naming conventions for internal and public functions
+#     - reference function header layout
 #
-# Assumptions:
-#   - None by default. Each library should explicitly document:
-#       - Whether it is a CORE lib (no framework deps), or
-#       - A FRAMEWORK lib (may assume framework/theme primitives exist).
+# Design principles:
+#   - Libraries define functions and constants only
+#   - No auto-execution (must always be sourced)
+#   - Keep behavior deterministic and side-effect aware
+#   - Separate mechanism (library) from policy (caller)
 #
-# Design rules:
-#   - Libraries define functions and constants only.
-#   - No auto-execution (must be sourced).
-#   - Avoids changing shell options beyond strict-unset/pipefail (set -u -o pipefail).
-#     (No set -e; no shopt.)
-#   - No path detection or root resolution (bootstrap owns path resolution).
-#   - No framework policy decisions. May emit say* diagnostics and use td_print_* helpers for display.
-#   - Safe to source multiple times (idempotent load guard).
+# Role in framework:
+#   - Base template for all SolidGroundUX library modules
+#   - Defines structure, conventions, and documentation standards
 #
 # Non-goals:
-#   - Executable scripts (use /bin tools or applets for entry points)
-#   - User interaction unless explicitly part of a UI module
-#   - Policy decisions (libraries provide mechanisms; callers decide policy)
-# =================================================================================
+#   - Executable scripts (use exe-template.sh)
+#   - Application logic
+#   - Framework bootstrap or path resolution
+#
+# Author     : Mark Fieten
+# © 2025 Mark Fieten — Testadura Consultancy
+# Licensed under the Testadura Non-Commercial License (TD-NC) v1.0.
+# ==================================================================================
 set -uo pipefail
 # --- Library guard ---------------------------------------------------------------
-    # Library-only: must be sourced, never executed.
-    # Uses a per-file guard variable derived from the filename, e.g.:
-    #   ui.sh      -> TD_UI_LOADED
-    #   foo-bar.sh -> TD_FOO_BAR_LOADED
+    # __td_lib_guard
+        # Purpose:
+        #   Ensure the file is sourced as a library and only initialized once.
+        #
+        # Behavior:
+        #   - Derives a unique guard variable name from the current filename.
+        #   - Aborts execution if the file is executed instead of sourced.
+        #   - Sets the guard variable on first load.
+        #   - Skips initialization if the library was already loaded.
+        #
+        # Inputs:
+        #   BASH_SOURCE[0]
+        #   $0
+        #
+        # Outputs (globals):
+        #   TD_<MODULE>_LOADED
+        #
+        # Returns:
+        #   0 if already loaded or successfully initialized.
+        #   Exits with code 2 if executed instead of sourced.
+        #
+        # Usage:
+        #   __td_lib_guard
+        #
+        # Examples:
+        #   # Typical usage at top of library file
+        #   __td_lib_guard
+        #   unset -f __td_lib_guard
+        #
+        # Notes:
+        #   - Guard variable is derived dynamically (e.g. ui-glyphs.sh → TD_UI_GLYPHS_LOADED).
+        #   - Safe under `set -u` due to indirect expansion with default.
     __td_lib_guard() {
         local lib_base
         local guard
@@ -75,9 +101,12 @@ set -uo pipefail
     #   td_<libname>_do_something() { :; }
 
     # Default function header
-    # <function_name>
+        # <function_name>
         # Purpose:
-        #   <one-liner>
+        #   <one-line description>
+        #
+        # Behavior:
+        #   <optional: key behavior summary when non-trivial>
         #
         # Arguments:
         #   $1  ...
@@ -96,7 +125,13 @@ set -uo pipefail
         #   Creates/updates/deletes files, sets permissions, etc.
         #
         # Returns:
-        #   0 on success, ...
+        #   0 on success, non-zero on failure
+        #
+        # Usage:
+        #   <function_name> arg1 arg2
+        #
+        # Examples:
+        #   <function_name> "value"
         #
         # Notes:
         #   - Edge cases / gotchas

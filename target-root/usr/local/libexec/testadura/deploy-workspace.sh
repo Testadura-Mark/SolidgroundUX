@@ -1,97 +1,65 @@
 #!/usr/bin/env bash
 # ==================================================================================
-# Testadura Consultancy — deploy-workspace.sh
+# Testadura Consultancy — Deploy Workspace
 # ----------------------------------------------------------------------------------
-# Purpose    : Deploy or remove a development workspace to/from a target root
-# Author     : Mark Fieten
+# Purpose:
+#   Deploy or remove a development workspace to/from a target root.
 #
+# Description:
+#   Synchronizes a structured workspace into a target filesystem root.
+#
+#   The script:
+#     - Copies files from source to target while preserving structure
+#     - Creates destination directories as required
+#     - Applies permission policy based on PERMISSION_RULES
+#     - Skips private, hidden, and non-deployable files by convention
+#     - Supports undeploy (removal) operations
+#
+# Deployment model:
+#   - Source is treated as a workspace root
+#   - Target is treated as a filesystem root (/, chroot, image root, etc.)
+#   - Files are installed if missing or newer than target
+#   - Undeploy removes only files originating from the workspace
+#
+# Notes:
+#   - May require root privileges depending on target
+#   - Honors FLAG_DRYRUN, FLAG_VERBOSE, and FLAG_DEBUG
+#
+# Author  : Mark Fieten
 # © 2025 Mark Fieten — Testadura Consultancy
 # Licensed under the Testadura Non-Commercial License (TD-NC) v1.0.
-# ----------------------------------------------------------------------------------
-# Description:
-#   Deployment utility for synchronizing a development workspace into a target
-#   root filesystem.
-#
-#   - Copies files from source to target, preserving directory structure.
-#   - Creates destination directories as needed.
-#   - Sets file and directory permissions based on predefined rules.
-#   - Skips private/hidden and top-level files by convention.
-#   - Supports undeploy (removal) operations.
-#   - Supports dry-run mode.
-#
-# Deployment Model:
-#   - Source is treated as a structured workspace root.
-#   - Target is treated as a filesystem root (/, chroot, image root, etc.).
-#   - Files are installed only if missing or if the source is newer.
-#   - Undeploy removes only files that correspond to workspace files.
-#
-# Assumptions:
-#   - Target root is a prepared filesystem (e.g. /, chroot, container root).
-#   - May require root privileges depending on target location.
-#   - Permission policy is defined by PERMISSION_RULES within this script.
-#
-# Effects:
-#   - Creates, updates, or removes files under the target root.
-#   - Creates directories as required.
-#   - Modifies file and directory permissions (mode only; no ownership changes).
-#
-# Usage examples:
-#   ./deploy-workspace.sh --source /home/user/dev/myworkspace --target / --dryrun
-#   ./deploy-workspace.sh -s /home/user/dev/myworkspace -t /
-#   ./deploy-workspace.sh --undeploy -s /home/user/dev/myworkspace -t /
-#   ./deploy-workspace.sh   # interactive mode
 # ==================================================================================
 set -uo pipefail
 # --- Bootstrap --------------------------------------------------------------------
     # __framework_locator
-        # Resolve, create, and load the SolidGroundUX bootstrap configuration.
-        #
         # Purpose:
-        #   Establish the two root variables that define the framework layout:
+        #   Locate, create, and load the SolidGroundUX bootstrap configuration.
         #
-        #       TD_FRAMEWORK_ROOT
-        #       TD_APPLICATION_ROOT
+        # Behavior:
+        #   - Searches user and system bootstrap configuration locations.
+        #   - Prefers the invoking user's config over the system config.
+        #   - Creates a new bootstrap config when none exists.
+        #   - Prompts for framework/application roots in interactive mode.
+        #   - Applies default values when running non-interactively.
+        #   - Sources the selected configuration file.
         #
-        #   Once these are known, all other framework paths can be derived from
-        #   them by td-bootstrap.sh and the common libraries.
-        #
-        # Search order:
-        #   1. User configuration
-        #        ~/.config/testadura/solidgroundux.cfg
-        #
-        #   2. System configuration
-        #        /etc/testadura/solidgroundux.cfg
-        #
-        #   User configuration overrides system configuration.
-        #
-        # Sudo behavior:
-        #   When running under sudo, the lookup still prefers the invoking user's
-        #   home configuration (derived from SUDO_USER) rather than /root, so a
-        #   developer's user override remains active under elevation.
-        #
-        # Creation behavior:
-        #   If no configuration file exists:
-        #
-        #     - non-root user → create in ~/.config/testadura
-        #     - root user     → create in /etc/testadura
-        #
-        #   When created interactively, prompt for:
-        #
-        #       TD_FRAMEWORK_ROOT     [default: /]
-        #       TD_APPLICATION_ROOT   [default: TD_FRAMEWORK_ROOT]
-        #
-        #   In non-interactive mode, defaults are used automatically.
-        #
-        # Result:
-        #   Sources the selected configuration file and ensures:
-        #
-        #       TD_FRAMEWORK_ROOT defaults to /
-        #       TD_APPLICATION_ROOT defaults to TD_FRAMEWORK_ROOT
+        # Outputs (globals):
+        #   TD_FRAMEWORK_ROOT
+        #   TD_APPLICATION_ROOT
         #
         # Returns:
         #   0   success
-        #   126 configuration unreadable / invalid
+        #   126 configuration unreadable or invalid
         #   127 configuration directory or file could not be created
+        #
+        # Usage:
+        #   __framework_locator || return $?
+        #
+        # Examples:
+        #   __framework_locator
+        #
+        # Notes:
+        #   - Under sudo, configuration is resolved relative to SUDO_USER instead of /root.
     __framework_locator (){
         local cfg_home="$HOME"
 
@@ -180,35 +148,30 @@ set -uo pipefail
     }
 
     # __load_bootstrapper
-        # Resolve and source the framework bootstrap library.
-        #
         # Purpose:
-        #   Load the canonical td-bootstrap.sh entry library after the framework
-        #   roots have been established by __framework_locator.
+        #   Resolve and source the framework bootstrap library.
         #
         # Behavior:
-        #   1. Calls __framework_locator to load or create the bootstrap cfg.
-        #   2. Derives the bootstrap path from TD_FRAMEWORK_ROOT.
-        #   3. Verifies that td-bootstrap.sh is readable.
-        #   4. Sources td-bootstrap.sh into the current shell.
+        #   - Calls __framework_locator to establish framework roots.
+        #   - Derives the td-bootstrap.sh path from TD_FRAMEWORK_ROOT.
+        #   - Verifies that the bootstrap library is readable.
+        #   - Sources td-bootstrap.sh into the current shell.
         #
-        # Path rule:
-        #   If TD_FRAMEWORK_ROOT is "/":
-        #
-        #       /usr/local/lib/testadura/common/td-bootstrap.sh
-        #
-        #   Otherwise:
-        #
-        #       $TD_FRAMEWORK_ROOT/usr/local/lib/testadura/common/td-bootstrap.sh
-        #
-        # Notes:
-        #   - This function performs executable-level startup resolution.
-        #   - td-bootstrap.sh is expected to derive secondary paths from the
-        #     already-established root variables, not rediscover them.
+        # Inputs (globals):
+        #   TD_FRAMEWORK_ROOT
         #
         # Returns:
         #   0   success
         #   126 bootstrap library unreadable
+        #
+        # Usage:
+        #   __load_bootstrapper || return $?
+        #
+        # Examples:
+        #   __load_bootstrapper
+        #
+        # Notes:
+        #   - This is executable-level startup logic, not reusable framework behavior.
     __load_bootstrapper(){
         local bootstrap=""
 
@@ -444,25 +407,32 @@ set -uo pipefail
 # --- local script functions -------------------------------------------------------
     # __perm_resolve
         # Purpose:
-        #   Resolve the effective permission mode (octal string) for a given path,
-        #   based on PERMISSION_RULES.
+        #   Resolve the effective permission mode for a given path based on PERMISSION_RULES.
         #
-        # Input:
-        #   $1  abs_rel : absolute path rooted at "/", e.g. "/usr/local/sbin/td-foo"
-        #   $2  kind    : "file" or "dir"
+        # Arguments:
+        #   $1  abs_rel   Absolute path relative to root (e.g. "/usr/local/bin/foo")
+        #   $2  kind      "file" or "dir"
         #
-        # Matching:
-        #   - Uses longest-prefix match in PERMISSION_RULES.
-        #   - A rule matches if abs_rel equals prefix or is under prefix (prefix/*).
+        # Behavior:
+        #   - Applies longest-prefix match against PERMISSION_RULES
+        #   - Returns file_mode or dir_mode depending on kind
+        #   - Falls back to defaults when no rule matches
         #
         # Output:
-        #   Prints the resolved mode to stdout (no newline).
+        #   Prints the resolved mode to stdout (no newline)
         #
         # Returns:
-        #   0 always (pure resolver; no validation beyond rule matching).
+        #   0 always
         #
         # Defaults:
-        #   - If no rule matches: file=644, dir=755.
+        #   file → 644
+        #   dir  → 755
+        #
+        # Usage:
+        #   mode="$(__perm_resolve "/usr/local/bin/foo" "file")"
+        #
+        # Examples:
+        #   dir_mode="$(__perm_resolve "/usr/local/bin" "dir")"
     __perm_resolve() {
         local abs_rel="$1"   # e.g. "/usr/local/sbin/td-foo"
         local kind="$2"      # "file" or "dir"
@@ -492,21 +462,29 @@ set -uo pipefail
         fi
     }
 
-     #__update_lastdeployinfo
+    # __update_lastdeployinfo
         # Purpose:
-        #   Persist "last deployment" metadata into the framework state store
-        #   for later reuse (e.g. auto mode defaults).
+        #   Persist metadata of the last deployment run for reuse (e.g. auto mode).
+        #
+        # Behavior:
+        #   - Stores timestamp, source, and target in state
+        #   - Skips writes when FLAG_DRYRUN is enabled
         #
         # Writes:
-        #   last_deploy_run       : ISO-8601 timestamp (seconds)
-        #   last_deploy_source    : SRC_ROOT used
-        #   last_deploy_target    : DEST_ROOT used (defaults to "/")
+        #   last_deploy_run
+        #   last_deploy_source
+        #   last_deploy_target
         #
-        # Notes:
-        #   - This function assumes td_state_set is available and state is enabled.
+        # Inputs (globals):
+        #   SRC_ROOT
+        #   DEST_ROOT
+        #   FLAG_DRYRUN
         #
         # Returns:
-        #   0 on success; propagates td_state_set failures (if any).
+        #   0 on success
+        #
+        # Usage:
+        #   __update_lastdeployinfo
     __update_lastdeployinfo() {
         if [[ "$FLAG_DRYRUN" -eq 1 ]]; then
             sayinfo "Would have saved lastdeployinfo"
@@ -520,41 +498,33 @@ set -uo pipefail
 
     # __getparameters
         # Purpose:
-        #   Collect deployment parameters (source root and target root) either
-        #   automatically (auto mode) or interactively.
+        #   Collect deployment parameters (source and target roots).
         #
         # Behavior:
-        #   - Auto mode (FLAG_AUTO=1):
-        #       Reuses last_deploy_source/last_deploy_target if available.
+        #   - Auto mode:
+        #       Uses last deployment settings when available
         #   - Interactive mode:
-        #       Prompts for SRC_ROOT and DEST_ROOT (only if not already set).
-        #       Prints an advisory message if SRC_ROOT does not look like a workspace
-        #       root (missing 'etc/' and 'usr/' folders).
-        #       Asks for final confirmation (OK/Redo/Quit) before returning.
+        #       Prompts for SRC_ROOT and DEST_ROOT
+        #       Validates SRC_ROOT structure (advisory only)
+        #       Asks for confirmation (OK/Redo/Quit)
         #
-        # Validation Rules (advisory only):
-        #   - SRC_ROOT is considered "valid-looking" if:
-        #         $SRC_ROOT/etc  OR  $SRC_ROOT/usr exists
-        #   - Invalid-looking SRC_ROOT does not block continuation; it only warns.
+        # Validation:
+        #   - SRC_ROOT is considered valid if it contains "etc/" or "usr/"
+        #   - Validation is advisory only (does not block execution)
         #
-        # Side Effects:
-        #   Sets global variables:
-        #       SRC_ROOT
-        #       DEST_ROOT
+        # Outputs (globals):
+        #   SRC_ROOT
+        #   DEST_ROOT
         #
         # Returns:
-        #   0  → parameters collected / confirmed
-        #   1  → user aborted
+        #   0 → confirmed
+        #   1 → aborted
         #
-        # Exit Policy:
-        #   This function never exits the script.
-        #   It returns control to the caller.
+        # Usage:
+        #   __getparameters || return $?
         #
-        # Assumptions:
-        #   - ask and ask_ok_redo_quit exist
-        #   - sayinfo/saywarning/saycancel/sayfail exist
-        #   - last_deploy_source/last_deploy_target may exist
-        #   - td_print_titlebar is available
+        # Notes:
+        #   - Uses ask and ask_ok_redo_quit
     __getparameters() {
         local default_src default_dst
         default_src="${last_deploy_source:-$HOME/dev}"
@@ -613,40 +583,41 @@ set -uo pipefail
 
     # __deploy
         # Purpose:
-        #   Deploy (install/update) workspace files from SRC_ROOT into DEST_ROOT
-        #   using deterministic permission policy (PERMISSION_RULES).
+        #   Deploy workspace files from SRC_ROOT into DEST_ROOT.
         #
         # Behavior:
-        #   - Walks SRC_ROOT recursively (files only).
-        #   - Converts each file path to a relative workspace path (rel).
-        #   - Computes destination path as:  DEST_ROOT + "/" + rel
+        #   - Recursively processes files under SRC_ROOT
+        #   - Computes relative path and destination path
         #   - Skips:
-        #       - top-level files (must be in a subfolder)
-        #       - files starting with "_" (private)
-        #       - files ending with ".old"
-        #       - any file under hidden or "_" directories at any depth
+        #       - top-level files
+        #       - "_" prefixed files
+        #       - ".old" files
+        #       - hidden or "_" directories
         #
         # Update logic:
-        #   - Installs if destination does not exist OR source is newer (-nt).
+        #   - Installs when destination is missing or source is newer
         #
         # Permissions:
-        #   - File mode resolved via __perm_resolve(abs_rel,"file")
-        #   - Directory mode resolved via __perm_resolve("/<rel_dir>","dir")
-        #   - Directories are created with install -d; files with install -m.
+        #   - File mode via __perm_resolve(abs_rel,"file")
+        #   - Directory mode via __perm_resolve(rel_dir,"dir")
         #
         # Dry run:
-        #   - If FLAG_DRYRUN=1, prints intended actions without changing filesystem.
+        #   - When FLAG_DRYRUN=1, only reports actions
         #
         # Inputs (globals):
-        #   SRC_ROOT, DEST_ROOT, FLAG_DRYRUN, PERMISSION_RULES
+        #   SRC_ROOT
+        #   DEST_ROOT
+        #   FLAG_DRYRUN
+        #   PERMISSION_RULES
         #
         # Returns:
-        #   0 always (current implementation logs and continues on per-file issues).
+        #   0 always (logs and continues on errors)
+        #
+        # Usage:
+        #   __deploy
         #
         # Notes:
-        #   - Paths are normalized by stripping trailing "/" from SRC_ROOT/DEST_ROOT.
-        #   - Uses a pipeline into while-read; function-level variables should be local
-        #     if you ever rely on their values after the loop.
+        #   - Uses install for atomic writes and permission control
     __deploy(){
         SRC_ROOT="${SRC_ROOT%/}"
         DEST_ROOT="${DEST_ROOT%/}"
@@ -700,30 +671,29 @@ set -uo pipefail
 
     # __undeploy
         # Purpose:
-        #   Undeploy (remove) previously deployed files from DEST_ROOT that correspond
-        #   to workspace files under SRC_ROOT.
+        #   Remove deployed files from DEST_ROOT that originate from SRC_ROOT.
         #
         # Behavior:
-        #   - Walks SRC_ROOT recursively (files only) to determine expected targets.
-        #   - Computes destination file path as: DEST_ROOT + rel
-        #   - Applies the same skip rules as __deploy:
-        #       - top-level files
-        #       - "_" prefixed files
-        #       - ".old" files
-        #       - hidden or "_" directories at any depth
+        #   - Enumerates files in SRC_ROOT to determine targets
+        #   - Applies same skip rules as __deploy
+        #   - Removes matching files from DEST_ROOT
         #
         # Dry run:
-        #   - If FLAG_DRYRUN=1, prints intended removals without deleting.
+        #   - When FLAG_DRYRUN=1, only reports actions
         #
         # Inputs (globals):
-        #   SRC_ROOT, DEST_ROOT, FLAG_DRYRUN
+        #   SRC_ROOT
+        #   DEST_ROOT
+        #   FLAG_DRYRUN
         #
         # Returns:
-        #   0 always (current implementation logs and continues).
+        #   0 always
+        #
+        # Usage:
+        #   __undeploy
         #
         # Notes:
-        #   - This is an "inverse by enumeration" uninstall: it removes only files
-        #     that exist in the workspace tree (not arbitrary leftovers).
+        #   - Only removes files known to the workspace (safe inverse deployment)
     __undeploy(){
 
         saystart "Starting UNINSTALL from $SRC_ROOT to $DEST_ROOT" --show=symbol
@@ -759,20 +729,24 @@ set -uo pipefail
 # --- Main -------------------------------------------------------------------------
     # main
         # Purpose:
-        #   Canonical script entry point.
+        #   Execute the workspace deployment workflow.
         #
         # Behavior:
-        #   - Resolves and loads the framework bootstrap library.
-        #   - Initializes framework runtime via td_bootstrap.
-        #   - Executes builtin framework arguments.
-        #   - Prints the standard title bar.
-        #   - Runs script-specific logic.
+        #   - Loads and initializes the framework bootstrap
+        #   - Handles builtin arguments
+        #   - Displays title bar
+        #   - Collects parameters
+        #   - Executes deploy or undeploy
+        #   - Persists deployment metadata
         #
         # Arguments:
-        #   $@  Framework and script-specific command-line arguments.
+        #   $@  Framework and script-specific arguments
         #
         # Returns:
-        #   Exits with the status produced by bootstrap or script logic.
+        #   Exit status from executed operations
+        #
+        # Usage:
+        #   main "$@"
     main() {
         # -- Bootstrap
             local rc=0

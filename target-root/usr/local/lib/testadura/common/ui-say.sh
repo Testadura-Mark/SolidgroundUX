@@ -1,45 +1,78 @@
-# =================================================================================
-# Testadura Consultancy — ui-say.sh
-# ---------------------------------------------------------------------------------
-# Purpose    : Typed message output (say*) with optional logfile routing
-# Author     : Mark Fieten
+# ==================================================================================
+# Testadura Consultancy — Typed Message Output Engine
+# ----------------------------------------------------------------------------------
+# Module     : ui-say.sh
+# Purpose    : Typed console output and logging framework (say* API)
 #
-# © 2025 Mark Fieten — Testadura Consultancy
-# Licensed under the Testadura Non-Commercial License (TD-NC) v1.0.
-# ---------------------------------------------------------------------------------
 # Description:
-#   Provides the say() API and say* shorthands for consistent, typed console output:
-#     INFO, STRT, WARN, FAIL, CNCL, OK, END, DEBUG, EMPTY
+#   Provides a unified messaging system for terminal-based applications using
+#   typed output categories such as INFO, WARN, FAIL, DEBUG, etc.
 #
-#   Features:
-#   - Prefix composition (label/icon/symbol) via style maps (LBL_*, ICO_*, SYM_*)
-#   - Optional timestamp prefix (SAY_DATE_FORMAT)
-#   - Selective colorization (label/msg/date) via MSG_CLR_<TYPE>* and RESET
-#   - Optional logfile output with ANSI stripping and log rotation
+#   The module standardizes:
+#     - message formatting (label/icon/symbol composition)
+#     - optional timestamping
+#     - selective colorization (label/message/date)
+#     - console output policy (verbosity, filtering, debug gating)
+#     - best-effort logfile routing with rotation support
 #
-# Assumptions:
-#   - This is a FRAMEWORK library (may depend on the framework as it exists).
-#   - Theme/style variables exist (CLR_*, RESET, LBL_*, ICO_*, SYM_*).
-#   - Core/UI primitives are available when used (e.g., visible_len, td_repeat).
-#   - Logging globals may exist (TD_LOGFILE_ENABLED, TD_LOG_MAX_BYTES, TD_LOG_KEEP,
-#     TD_LOG_COMPRESS, TD_CONSOLE_MSGTYPES, FLAG_VERBOSE).
+# Message model:
+#   - All output flows through say() or its convenience wrappers (sayinfo, sayfail, etc.)
+#   - Message types are normalized and mapped to style tokens (LBL_*, ICO_*, SYM_*)
+#   - Console visibility is controlled centrally via policy flags
 #
-# Rules / Contract:
-#   - Implements message formatting and rendering for the say* family only.
-#   - No interactive prompting (confirmation/input belongs in ui-ask.sh).
-#   - Safe to source multiple times (must be guarded).
-#   - Library-only: must be sourced, never executed.
+# Design principles:
+#   - Single entry point for all user-facing output
+#   - Separate rendering, policy, and logging concerns
+#   - Never let logging or formatting failures break execution
+#   - Keep calling code clean and intention-driven
+#
+# Role in framework:
+#   - Core UI output layer used by all modules and scripts
+#   - Complements ui-ask.sh (input) and ui.sh (styling)
+#   - Provides consistent UX across all SolidGround tools
 #
 # Non-goals:
-#   - User input or dialogs (see ui-ask.sh)
-#   - Application-specific message policy beyond type filtering
-# =================================================================================
+#   - Interactive prompting (see ui-ask.sh)
+#   - Application-specific logging policies beyond type filtering
+#
+# Author     : Mark Fieten
+# © 2025 Mark Fieten — Testadura Consultancy
+# Licensed under the Testadura Non-Commercial License (TD-NC) v1.0.
+# ==================================================================================
 set -uo pipefail
 # --- Library guard ---------------------------------------------------------------
-    # Library-only: must be sourced, never executed.
-    # Uses a per-file guard variable derived from the filename, e.g.:
-    #   ui.sh      -> TD_UI_LOADED
-    #   foo-bar.sh -> TD_FOO_BAR_LOADED
+    # __td_lib_guard
+        # Purpose:
+        #   Ensure the file is sourced as a library and only initialized once.
+        #
+        # Behavior:
+        #   - Derives a unique guard variable name from the current filename.
+        #   - Aborts execution if the file is executed instead of sourced.
+        #   - Sets the guard variable on first load.
+        #   - Skips initialization if the library was already loaded.
+        #
+        # Inputs:
+        #   BASH_SOURCE[0]
+        #   $0
+        #
+        # Outputs (globals):
+        #   TD_<MODULE>_LOADED
+        #
+        # Returns:
+        #   0 if already loaded or successfully initialized.
+        #   Exits with code 2 if executed instead of sourced.
+        #
+        # Usage:
+        #   __td_lib_guard
+        #
+        # Examples:
+        #   # Typical usage at top of library file
+        #   __td_lib_guard
+        #   unset -f __td_lib_guard
+        #
+        # Notes:
+        #   - Guard variable is derived dynamically (e.g. ui-glyphs.sh → TD_UI_GLYPHS_LOADED).
+        #   - Safe under `set -u` due to indirect expansion with default.
     __td_lib_guard() {
         local lib_base
         local guard
@@ -76,27 +109,33 @@ set -uo pipefail
 # --- Helpers ---------------------------------------------------------------------
     # __say_should_print_console
         # Purpose:
-        #   Decide whether a message TYPE should be printed to the console under the
-        #   current console-output policy.
+        #   Determine whether a message TYPE should be printed to the console
+        #   according to the current output policy.
         #
-        # Usage:
-        #   __say_should_print_console TYPE
+        # Behavior:
+        #   - FLAG_VERBOSE=1 overrides all filters (always prints).
+        #   - TD_LOG_TO_CONSOLE=0 suppresses all console output.
+        #   - DEBUG messages require FLAG_DEBUG=1 unless verbose.
+        #   - Other types must be present in TD_CONSOLE_MSGTYPES.
         #
         # Arguments:
-        #   $1  TYPE : message type token (case-insensitive; normalized to uppercase).
-        #
-        # Policy order:
-        #   1) FLAG_VERBOSE=1            => always print (overrides other checks)
-        #   2) TD_LOG_TO_CONSOLE=0       => never print
-        #   3) TYPE=DEBUG                => print only when FLAG_DEBUG=1
-        #   4) Otherwise TYPE must appear in TD_CONSOLE_MSGTYPES (pipe-separated list)
+        #   $1  TYPE
+        #       Message type token (case-insensitive).
         #
         # Inputs (globals):
         #   FLAG_VERBOSE, TD_LOG_TO_CONSOLE, FLAG_DEBUG, TD_CONSOLE_MSGTYPES
         #
         # Returns:
-        #   0 if TYPE should be printed
+        #   0 if the message should be printed
         #   1 otherwise
+        #
+        # Usage:
+        #   if __say_should_print_console "INFO"; then
+        #       printf "...\n"
+        #   fi
+        #
+        # Examples:
+        #   __say_should_print_console "DEBUG" || return
     __say_should_print_console() {
         local type="${1^^}"
         local list="${TD_CONSOLE_MSGTYPES:-INFO|STRT|WARN|FAIL|CNCL|OK|END|EMPTY}"
@@ -111,24 +150,27 @@ set -uo pipefail
 
     # __td_logfile
         # Purpose:
-        #   Resolve the best logfile path according to configured priorities.
+        #   Resolve the effective logfile path based on configured priorities.
         #
-        # Usage:
-        #   __td_logfile
-        #
-        # Resolution order:
-        #   1) TD_LOG_PATH     (if set and td_can_append allows it)
-        #   2) TD_ALT_LOGPATH  (if set and td_can_append allows it)
-        #
-        # Dependencies:
-        #   - td_can_append (filesystem helper; should accept non-existing file paths)
+        # Behavior:
+        #   - Checks TD_LOG_PATH first, then TD_ALT_LOGPATH.
+        #   - Uses td_can_append to validate write capability.
+        #   - Returns the first usable path.
         #
         # Outputs:
-        #   Prints the resolved logfile path to stdout (no newline).
+        #   Prints the resolved logfile path (no newline).
         #
         # Returns:
-        #   0 if a usable logfile path was found
-        #   1 if no usable path is available
+        #   0 if a usable path is found
+        #   1 otherwise
+        #
+        # Usage:
+        #   logfile="$(__td_logfile)" || return
+        #
+        # Examples:
+        #   if logfile="$(__td_logfile)"; then
+        #       echo "Logging to $logfile"
+        #   fi
     __td_logfile() {
         
         # Determine logfile path according to priority:
@@ -149,25 +191,25 @@ set -uo pipefail
 
     # __say_caller
         # Purpose:
-        #   Identify the "real" caller location for logging by skipping internal say*
-        #   wrappers (so logs point at the script code, not the logging helpers).
-        #
-        # Usage:
-        #   __say_caller
+        #   Resolve the originating caller location for logging purposes.
         #
         # Behavior:
-        #   - Walks the Bash call stack (FUNCNAME/BASH_SOURCE/BASH_LINENO).
-        #   - Skips known wrappers: say, sayinfo, saywarning, sayfail, saydebug, justsay.
+        #   - Traverses the call stack.
+        #   - Skips internal say* wrappers.
         #   - Returns the first non-wrapper frame.
         #
         # Outputs:
-        #   Prints a tab-separated triple:
-        #     <func>\t<file>\t<line>
-        #   If no suitable frame is found, prints:
-        #     <main>\t<unknown>\t?
+        #   Prints:
+        #     <function>\t<file>\t<line>
         #
         # Returns:
         #   0 always.
+        #
+        # Usage:
+        #   IFS=$'\t' read -r func file line <<< "$(__say_caller)"
+        #
+        # Examples:
+        #   caller="$(__say_caller)"
     __say_caller() {
         local i
         for ((i=1; i<${#FUNCNAME[@]}; i++)); do
@@ -189,37 +231,32 @@ set -uo pipefail
 
     # __say_write_log
         # Purpose:
-        #   Append a single-line record to the resolved logfile, stripping ANSI and
-        #   applying size-based rotation as needed.
-        #
-        # Usage:
-        #   __say_write_log TYPE MSG DATE_STR
-        #
-        # Arguments:
-        #   $1  TYPE     : message type token (case-insensitive; normalized to uppercase).
-        #   $2  MSG      : message text (may contain ANSI and newlines; will be sanitized).
-        #   $3  DATE_STR : optional timestamp to use; if empty, generated via SAY_DATE_FORMAT.
+        #   Append a formatted log record to the logfile with optional rotation.
         #
         # Behavior:
-        #   - Best-effort: never fails the caller; errors are swallowed.
-        #   - Respects TD_LOGFILE_ENABLED (0 => no-op success).
-        #   - Resolves logfile via __td_logfile; if none usable => no-op success.
-        #   - Sanitizes MSG for single-line logs:
-        #       - strips ANSI escape sequences
-        #       - removes carriage returns
-        #       - escapes newlines and tabs as \n and \t
-        #   - Writes log line with caller metadata from __say_caller.
-        #   - Rotates logs when predicted size would exceed TD_LOG_MAX_BYTES.
+        #   - No-op when logging is disabled or no valid logfile is available.
+        #   - Sanitizes message (removes ANSI, normalizes whitespace).
+        #   - Adds timestamp, user, type, and caller metadata.
+        #   - Rotates logfile when size exceeds TD_LOG_MAX_BYTES.
+        #   - Never fails the caller (best-effort).
+        #
+        # Arguments:
+        #   $1  TYPE
+        #   $2  MSG
+        #   $3  DATE_STR (optional)
         #
         # Inputs (globals):
         #   TD_LOGFILE_ENABLED, TD_LOG_MAX_BYTES, TD_LOG_KEEP, TD_LOG_COMPRESS
         #   SAY_DATE_FORMAT
         #
-        # Dependencies:
-        #   __td_logfile, __say_caller, __td_rotate_logs
-        #
         # Returns:
-        #   0 always (logging is best-effort).
+        #   0 always.
+        #
+        # Usage:
+        #   __say_write_log "INFO" "Starting process" ""
+        #
+        # Examples:
+        #   __say_write_log "FAIL" "Connection error" "$(date)"
     __say_write_log() {
         local type="${1^^}"
         local msg="$2"
@@ -269,31 +306,28 @@ set -uo pipefail
 
     # __td_rotate_logs
         # Purpose:
-        #   Perform size-based logfile rotation, optionally compressing rotated files.
-        #
-        # Usage:
-        #   __td_rotate_logs LOGFILE
-        #
-        # Arguments:
-        #   $1  LOGFILE : path to the active logfile.
+        #   Perform size-based rotation of a logfile.
         #
         # Behavior:
-        #   - No-op if LOGFILE is empty or does not exist.
-        #   - Confirms size >= TD_LOG_MAX_BYTES before rotating (safe if caller pre-checks).
-        #   - Rotation scheme:
-        #       LOGFILE      -> LOGFILE.1
-        #       LOGFILE.1    -> LOGFILE.2
-        #       ...
-        #       LOGFILE.N    -> LOGFILE.(N+1)   up to TD_LOG_KEEP
-        #   - If TD_LOG_COMPRESS=1, gzips LOGFILE.1 after rotation.
-        #   - Recreates LOGFILE as empty after moving it to .1.
-        #   - Deletes the oldest slot beyond keep (TD_LOG_KEEP+1).
+        #   - Renames logfile to logfile.1, shifts older files upward.
+        #   - Keeps up to TD_LOG_KEEP rotated files.
+        #   - Optionally compresses rotated files.
+        #   - Recreates the active logfile.
+        #
+        # Arguments:
+        #   $1  LOGFILE
         #
         # Inputs (globals):
         #   TD_LOG_MAX_BYTES, TD_LOG_KEEP, TD_LOG_COMPRESS
         #
         # Returns:
-        #   0 always (best-effort rotation).
+        #   0 always.
+        #
+        # Usage:
+        #   __td_rotate_logs "/var/log/app.log"
+        #
+        # Examples:
+        #   __td_rotate_logs "$logfile"
     __td_rotate_logs() {
             # Usage: __td_rotate_logs "/path/to/logfile"
             local logfile="$1"
@@ -332,52 +366,29 @@ set -uo pipefail
 # --- Public API ------------------------------------------------------------------
     # say
         # Purpose:
-        #   Emit a typed console message with optional timestamp, selectable prefix parts
-        #   (label/icon/symbol), optional colorization, and best-effort logfile routing.
-        #
-        # Usage:
-        #   say [TYPE] [message...]
-        #   say [opts] [TYPE] [message...]
-        #
-        # Types:
-        #   INFO STRT WARN FAIL CNCL OK END DEBUG EMPTY
-        #
-        # Options:
-        #   --type TYPE        Explicit type (otherwise first positional token may be TYPE)
-        #   --date             Prefix a timestamp using SAY_DATE_FORMAT
-        #   --show PATTERN     label|icon|symbol|all or combinations: "label,icon" / "label+symbol"
-        #   --colorize MODE    none|label|msg|date|both|all
-        #   --                 End of options; remaining tokens are the message text
+        #   Emit a typed message with formatting, colorization, and optional logging.
         #
         # Behavior:
-        #   - TYPE is normalized to uppercase; unknown TYPE => treated as EMPTY.
-        #   - EMPTY:
-        #       - prints message only (no prefix) if __say_should_print_console allows EMPTY
-        #       - still attempts logfile write (best-effort)
-        #   - Non-EMPTY:
-        #       - resolves style tokens via indirection:
-        #           LBL_<TYPE>, ICO_<TYPE>, SYM_<TYPE>, MSG_CLR_<TYPE>
-        #       - builds a prefix from the selected parts and optionally a timestamp
-        #       - pads label to a fixed visible width (8 columns) using td_visible_len
-        #       - prints only if __say_should_print_console TYPE returns 0
-        #       - logs via __say_write_log TYPE MSG DATE_STR (best-effort)
+        #   - Supports message types: INFO, STRT, WARN, FAIL, CNCL, OK, END, DEBUG, EMPTY
+        #   - Builds prefix using label/icon/symbol based on configuration
+        #   - Applies colorization rules
+        #   - Honors console output policy
+        #   - Logs message if enabled
         #
-        # Inputs (globals):
-        #   Defaults:
-        #     SAY_DATE_DEFAULT, SAY_SHOW_DEFAULT, SAY_COLORIZE_DEFAULT, SAY_WRITELOG_DEFAULT,
-        #     SAY_DATE_FORMAT
-        #   Styling:
-        #     RESET, LBL_*, ICO_*, SYM_*, MSG_CLR_*
-        #   Console policy:
-        #     FLAG_VERBOSE, FLAG_DEBUG, TD_LOG_TO_CONSOLE, TD_CONSOLE_MSGTYPES
-        #   Logging policy:
-        #     TD_LOGFILE_ENABLED, TD_LOG_PATH, TD_ALT_LOGPATH, TD_LOG_MAX_BYTES, TD_LOG_KEEP, TD_LOG_COMPRESS
+        # Usage:
+        #   say INFO "Starting process"
+        #   say --type WARN "Low disk space"
+        #   say --date --show all --colorize both INFO "Message"
         #
-        # Dependencies:
-        #   td_visible_len, __say_should_print_console, __say_write_log
+        # Examples:
+        #   say STRT "Initializing..."
+        #
+        #   say --date --type FAIL "Connection failed"
+        #
+        #   say DEBUG "Value = $value"
         #
         # Returns:
-        #   0 always (rendering/logging is non-fatal; console output may be suppressed by policy).
+        #   0 always.
     say() {
       # -- Declarations
         local type="EMPTY"
@@ -577,16 +588,24 @@ set -uo pipefail
     # -- Convenience wrappers for say() with a fixed TYPE.
         # sayinfo
             # Purpose:
-            #   Convenience wrapper for INFO messages.
+            #   Emit an INFO message.
             #
-            # Behavior (current implementation):
+            # Behavior:
+            #   - Delegates to say INFO.
             #   - Only emits when FLAG_VERBOSE=1.
-            #   - Always returns 0.
+            #   - Always returns 0, even when suppressed.
             #
-            # Notes:
-            #   This is stricter than __say_should_print_console(INFO), which would normally
-            #   allow INFO depending on TD_CONSOLE_MSGTYPES. This wrapper intentionally gates
-            #   INFO on verbose.
+            # Inputs (globals):
+            #   FLAG_VERBOSE
+            #
+            # Returns:
+            #   0 always.
+            #
+            # Usage:
+            #   sayinfo "Loading optional libraries..."
+            #
+            # Examples:
+            #   sayinfo "Using default configuration"
         sayinfo() {
             if [[ ${FLAG_VERBOSE:-0} -eq 1 ]]; then
                 say INFO "$@"
@@ -596,117 +615,145 @@ set -uo pipefail
 
         # saystart
             # Purpose:
-            #   Convenience wrappers mapping directly to say <TYPE>.
-            #
-            # Usage:
-            #   saystart "text"
+            #   Emit a STRT message.
             #
             # Behavior:
-            #   - Delegates to say with fixed TYPE.
-            #   - Returns say's result (currently always 0).
+            #   - Delegates to say STRT.
+            #
+            # Returns:
+            #   0 always.
+            #
+            # Usage:
+            #   saystart "Initializing framework"
+            #
+            # Examples:
+            #   saystart "Starting installation"
         saystart() {
             say STRT "$@"
         }
 
-        # saywarning 
+        # saywarning
             # Purpose:
-            #   Convenience wrappers mapping directly to say <TYPE>.
-            #
-            # Usage:
-            #   saywarning "text"
+            #   Emit a WARN message.
             #
             # Behavior:
-            #   - Delegates to say with fixed TYPE.
-            #   - Returns say's result (currently always 0).
+            #   - Delegates to say WARN.
+            #
+            # Usage:
+            #   saywarning "Disk space low"
+            #
+            # Examples:
+            #   saywarning "Configuration missing"
         saywarning() {
             say WARN "$@"
         }
 
-        # sayfail 
+        # sayfail
             # Purpose:
-            #   Convenience wrappers mapping directly to say <TYPE>.
-            #
-            # Usage:
-            #   sayfail "text"
+            #   Emit a FAIL message.
             #
             # Behavior:
-            #   - Delegates to say with fixed TYPE.
-            #   - Returns say's result (currently always 0).
+            #   - Delegates to say FAIL.
+            #
+            # Returns:
+            #   0 always.
+            #
+            # Usage:
+            #   sayfail "Cannot create directory: $dir"
+            #
+            # Examples:
+            #   sayfail "Bootstrap failed"
         sayfail() {
             say FAIL "$@"
         }
 
         # saycancel
             # Purpose:
-            #   Convenience wrappers mapping directly to say <TYPE>.
-            #
-            # Usage:
-            #   saycancel "text"
+            #   Emit a CNCL message.
             #
             # Behavior:
-            #   - Delegates to say with fixed TYPE.
-            #   - Returns say's result (currently always 0).
+            #   - Delegates to say CNCL.
+            #
+            # Returns:
+            #   0 always.
+            #
+            # Usage:
+            #   saycancel "Cancelled by user"
+            #
+            # Examples:
+            #   saycancel "Operation aborted"
         saycancel() {
             say CNCL "$@"
         }
 
         # sayok
             # Purpose:
-            #   Convenience wrappers mapping directly to say <TYPE>.
-            #
-            # Usage:
-            #   sayok "text"
+            #   Emit an OK message.
             #
             # Behavior:
-            #   - Delegates to say with fixed TYPE.
-            #   - Returns say's result (currently always 0).
+            #   - Delegates to say OK.
+            #
+            # Returns:
+            #   0 always.
+            #
+            # Usage:
+            #   sayok "Configuration written successfully"
+            #
+            # Examples:
+            #   sayok "Validation passed"
         sayok() {
             say OK "$@"
         }
 
         # sayend
             # Purpose:
-            #   Convenience wrappers mapping directly to say <TYPE>.
-            #
-            # Usage:
-            #   sayend "text"
+            #   Emit an END message.
             #
             # Behavior:
-            #   - Delegates to say with fixed TYPE.
-            #   - Returns say's result (currently always 0).
+            #   - Delegates to say END.
+            #
+            # Returns:
+            #   0 always.
+            #
+            # Usage:
+            #   sayend "Process completed"
+            #
+            # Examples:
+            #   sayend "Finished successfully"
         sayend() {
             say END "$@"
         }
 
         # justsay
             # Purpose:
-            #   Minimal, untyped output helper (no prefixes, no color policy, no logging).
-            #
-            # Usage:
-            #   justsay "text"
+            #   Emit plain text without formatting or logging.
             #
             # Behavior:
-            #   - Prints arguments as a line to stdout.
+            #   - Prints directly to stdout.
             #
-            # Returns:
-            #   0 always.
+            # Usage:
+            #   justsay "Hello world"
+            #
+            # Examples:
+            #   justsay "Raw output"
         justsay() {
             printf '%s\n' "$@"
         }
 
         # saydebug
             # Purpose:
-            #   Convenience wrapper for DEBUG messages with optional caller annotation.
+            #   Emit a DEBUG message with optional caller context.
             #
             # Behavior:
-            #   - Only emits when FLAG_DEBUG=1.
-            #   - If FLAG_VERBOSE=1, appends a caller suffix: "[file:function:line]".
-            #   - Delegates to say DEBUG ...
-            #   - Always returns 0 (even when suppressed).
+            #   - Only active when FLAG_DEBUG=1.
+            #   - Adds caller info when FLAG_VERBOSE=1.
+            #   - Delegates to say DEBUG.
             #
-            # Notes:
-            #   - The printed DEBUG message is still subject to __say_should_print_console(DEBUG),
-            #     which requires FLAG_DEBUG=1 unless FLAG_VERBOSE overrides.
+            # Usage:
+            #   saydebug "Value = $x"
+            #
+            # Examples:
+            #   saydebug "Entering function"
         saydebug() {
             if [[ ${FLAG_DEBUG:-0} -eq 1 ]]; then
 

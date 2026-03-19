@@ -1,48 +1,62 @@
-# =================================================================================
-# Testadura Consultancy — framework-info.sh
-# ---------------------------------------------------------------------------------
-# Purpose    : Container for framework and environment info functions
-# Author     : Mark Fieten
+# ==================================================================================
+# Testadura Consultancy — SolidGround Framework Info Library
+# ----------------------------------------------------------------------------------
+# Module  : framework-info.sh
+# Purpose : Presentation and diagnostic helpers for framework, script, arguments,
+#           configuration, and runtime state.
 #
+# Scope   :
+#   - Read-only rendering of framework and script context
+#   - Formatted output for diagnostics, debugging, and inspection
+#   - Aggregation of metadata, arguments, configuration, and state
+#
+# Design  :
+#   - Pure presentation layer (no parsing, no config loading)
+#   - Depends on globals prepared by args.sh, cfg.sh, and bootstrap layers
+#   - Uses ui.sh for all rendering primitives
+#
+# Notes   :
+#   - Intended for diagnostics (e.g. --env, debug output)
+#   - Safe to call at any point after bootstrap
+#
+# Author  : Mark Fieten
 # © 2025 Mark Fieten — Testadura Consultancy
 # Licensed under the Testadura Non-Commercial License (TD-NC) v1.0.
-# ---------------------------------------------------------------------------------
-# Description:
-#   This library contains "show/print" helpers that produce formatted diagnostics
-#   for:
-#     - script metadata
-#     - framework metadata
-#     - parsed arguments (script + framework)
-#     - script configuration globals
-#     - framework configuration globals
-#
-# Design notes:
-#   - This module is presentation/orchestration: it does not load config files or
-#     parse arguments; it only reads globals that other libraries maintain.
-#   - Printing primitives are provided by ui.sh (td_print_*, td_print_labeledvalue).
-#
-# Inputs (globals expected):
-#   - Metadata: TD_SCRIPT_*, TD_PRODUCT, TD_VERSION, TD_VERSION_DATE, TD_COMPANY, ...
-#   - Arg specs: TD_ARGS_SPEC, TD_BUILTIN_ARGS, TD_POSITIONAL, and the FLAG_*/VALUE_*
-#   - Config specs: TD_SCRIPT_GLOBALS, TD_FRAMEWORK_GLOBALS (pipe-separated entries)
-#   - Layout: __section_indent, __items_indent (provided by ui layer or defaulted here)
-#
-# Provides:
-#   - td_showenvironment
-#   - td_print_metadata
-#   - td_print_framework_metadata
-#   - td_print_args
-#   - td_print_cfg
-#   - td_print_state
-#   - td_print_license
-#   - td_print_readme
-# =================================================================================
+# ==================================================================================
 set -uo pipefail
 # --- Library guard ---------------------------------------------------------------
-    # Library-only: must be sourced, never executed.
-    # Uses a per-file guard variable derived from the filename, e.g.:
-    #   ui.sh      -> TD_UI_LOADED
-    #   foo-bar.sh -> TD_FOO_BAR_LOADED
+    # __td_lib_guard
+        # Purpose:
+        #   Ensure the file is sourced as a library and only initialized once.
+        #
+        # Behavior:
+        #   - Derives a unique guard variable name from the current filename.
+        #   - Aborts execution if the file is executed instead of sourced.
+        #   - Sets the guard variable on first load.
+        #   - Skips initialization if the library was already loaded.
+        #
+        # Inputs:
+        #   BASH_SOURCE[0]
+        #   $0
+        #
+        # Outputs (globals):
+        #   TD_<MODULE>_LOADED
+        #
+        # Returns:
+        #   0 if already loaded or successfully initialized.
+        #   Exits with code 2 if executed instead of sourced.
+        #
+        # Usage:
+        #   __td_lib_guard
+        #
+        # Examples:
+        #   # Typical usage at top of library file
+        #   __td_lib_guard
+        #   unset -f __td_lib_guard
+        #
+        # Notes:
+        #   - Guard variable is derived dynamically (e.g. ui-glyphs.sh → TD_UI_GLYPHS_LOADED).
+        #   - Safe under `set -u` due to indirect expansion with default.
     __td_lib_guard() {
         local lib_base
         local guard
@@ -94,8 +108,11 @@ set -uo pipefail
         # Returns:
         #   0 always (display helper).
         #
+        # Usage:
+        #   __td_print_arg_spec_entry "debug|d|flag|FLAG_DEBUG|Enable debug mode|"
+        #
         # Notes:
-        #   - Does not parse arguments; display only.
+        #   - Display helper only; does not parse arguments.
     __td_print_arg_spec_entry() {
         local entry="$1"
 
@@ -136,13 +153,16 @@ set -uo pipefail
         #   - Otherwise prints a section header once, then one line per entry.
         #
         # Outputs:
-        #   Prints formatted section and entries via td_print_sectionheader and td_print_labeledvalue.
+        #   Prints formatted section and entries.
         #
         # Returns:
         #   0 always (display helper).
         #
-        # Requires:
-        #   bash 4.3+ (nameref).
+        # Usage:
+        #   __td_print_arg_spec_list "Script arguments" "TD_ARGS_SPEC"
+        #
+        # Notes:
+        #   - Requires bash 4.3+ (nameref).
     __td_print_arg_spec_list() {
         local header="$1"
         local array_name="$2"
@@ -174,30 +194,24 @@ set -uo pipefail
         #   $2  Filter scope selector: system | user | both (default: both)
         #
         # Inputs (globals):
-        #   __section_indent : indentation for section headers
-        #   __items_indent   : indentation for entries
+        #   __section_indent, __items_indent
         #
         # Behavior:
-        #   - Prints in up to two passes:
-        #       "System globals" for scope in {system, both}
-        #       "User globals"   for scope in {user, both}
-        #     depending on filter.
-        #   - For each entry, prints:
-        #       name = ${!name:-default}
-        #   - Emits a blank td_print line after each rendered pass.
+        #   - Prints system and/or user globals depending on filter.
+        #   - Resolves values via ${!name:-default}.
         #
         # Outputs:
-        #   Prints formatted output via td_print_sectionheader and td_print_labeledvalue.
+        #   Prints formatted configuration values.
         #
         # Returns:
         #   0 always (display helper).
         #
-        # Notes:
-        #   - Uses an inner helper (__print_cfg_pass) scoped to this function.
-        #   - 'desc' is currently parsed but not displayed.
+        # Usage:
+        #   td_print_cfg TD_SCRIPT_GLOBALS both
+        #   td_print_cfg TD_FRAMEWORK_GLOBALS system
         #
-        # Requires:
-        #   bash 4.3+ (nameref).
+        # Notes:
+        #   - Requires bash 4.3+ (nameref).
     td_print_cfg(){
         local -n source_array="$1"
         local filter="${2:-both}"
@@ -249,14 +263,16 @@ set -uo pipefail
         #   TD_COMPANY, TD_COPYRIGHT, TD_LICENSE
         #
         # Behavior:
-        #   - Prints a "Framework metadata" section header.
-        #   - Prints each field as labeled values.
+        #   - Prints a "Framework metadata" section.
         #
         # Outputs:
-        #   Prints formatted output via td_print_sectionheader and td_print_labeledvalue.
+        #   Prints formatted metadata values.
         #
         # Returns:
-        #   0 always (display helper).
+        #   0 always.
+        #
+        # Usage:
+        #   td_print_framework_metadata
     td_print_framework_metadata() {
         td_print_sectionheader --text "Framework metadata" --padleft "$__section_indent"
         td_print_labeledvalue "Product"      "$TD_PRODUCT" --pad "$__items_indent"
@@ -276,15 +292,14 @@ set -uo pipefail
         #   TD_SCRIPT_FILE, TD_SCRIPT_DESC, TD_SCRIPT_DIR,
         #   TD_SCRIPT_VERSION, TD_SCRIPT_BUILD
         #
-        # Behavior:
-        #   - Prints a "Script metadata" section header.
-        #   - Prints labeled values for file, description, directory, version/build.
-        #
         # Outputs:
-        #   Prints formatted output via td_print_sectionheader and td_print_labeledvalue.
+        #   Prints formatted metadata values.
         #
         # Returns:
-        #   0 always (display helper).
+        #   0 always.
+        #
+        # Usage:
+        #   td_print_metadata
     td_print_metadata(){
         td_print_sectionheader --text "Script metadata" --padleft "$__section_indent"
         td_print_labeledvalue "File"               "$TD_SCRIPT_FILE" --pad "$__items_indent"
@@ -299,23 +314,19 @@ set -uo pipefail
         #   Print a formatted overview of parsed arguments and their current values.
         #
         # Inputs (globals):
-        #   TD_ARGS_SPEC     : script argument spec array (optional)
-        #   TD_BUILTIN_ARGS  : framework argument spec array (optional)
-        #   TD_POSITIONAL    : array of remaining positional args (optional)
-        #   For each spec entry: varname is resolved via ${!varname-<unset>}
+        #   TD_ARGS_SPEC, TD_BUILTIN_ARGS, TD_POSITIONAL
         #
         # Behavior:
-        #   - Prints:
-        #       1) Script arguments (TD_ARGS_SPEC)
-        #       2) Framework arguments (TD_BUILTIN_ARGS)
-        #       3) Positional arguments (TD_POSITIONAL), if any
-        #   - Each spec entry is rendered by __td_print_arg_spec_entry.
+        #   - Prints script args, framework args, and positional args.
         #
         # Outputs:
-        #   Prints formatted sections and labeled lines.
+        #   Prints formatted argument overview.
         #
         # Returns:
-        #   0 always (display helper).
+        #   0 always.
+        #
+        # Usage:
+        #   td_print_args
     td_print_args() {
 
         # Script args first
@@ -344,23 +355,16 @@ set -uo pipefail
         #   Print the current persistent state key/value pairs.
         #
         # Inputs:
-        #   td_state_list_keys output as lines formatted:
-        #     key|value
-        #
-        # Behavior:
-        #   - Reads td_state_list_keys and prints a "State variables" section header
-        #     only if at least one key is present.
-        #   - Prints each key/value as labeled values.
+        #   td_state_list_keys output (key|value)
         #
         # Outputs:
-        #   Prints formatted output via td_print_sectionheader and td_print_labeledvalue.
+        #   Prints formatted state variables.
         #
         # Returns:
-        #   0 always (display helper).
+        #   0 always.
         #
-        # Notes:
-        #   - Runs the while-loop in a subshell due to the pipeline; local variables
-        #     remain local to the grouped block as written.
+        # Usage:
+        #   td_print_state
     td_print_state(){
         
         td_state_list_keys | {
@@ -381,23 +385,20 @@ set -uo pipefail
         #   Print the framework license text, including acceptance status.
         #
         # Inputs (globals):
-        #   TD_DOCS_DIR, TD_LICENSE_FILE, TD_PRODUCT
-        #   TD_LICENSE_ACCEPTED
-        #   TUI_VALID, TUI_INVALID, RESET
+        #   TD_DOCS_DIR, TD_LICENSE_FILE, TD_LICENSE_ACCEPTED
         #
         # Behavior:
-        #   - Builds license file path: "$TD_DOCS_DIR/$TD_LICENSE_FILE".
-        #   - Computes status tag:
-        #       [ACCEPTED] when TD_LICENSE_ACCEPTED != 0
-        #       NOT ACCEPTED otherwise
-        #   - If file is readable: prints header + file contents.
-        #   - If not readable: emits debug diagnostics only.
+        #   - Prints license file if readable.
+        #   - Shows acceptance status.
         #
         # Outputs:
-        #   Prints formatted output and file contents via td_print_* helpers.
+        #   Prints formatted license text.
         #
         # Returns:
-        #   0 always (display helper).
+        #   0 always.
+        #
+        # Usage:
+        #   td_print_license
     td_print_license() {
         
         local license_file="$TD_DOCS_DIR/$TD_LICENSE_FILE"
@@ -424,20 +425,19 @@ set -uo pipefail
 
     # td_print_readme
         # Purpose:
-        #   Print the framework README file (if present).
+        #   Print the framework README file if present.
         #
         # Inputs (globals):
         #   TD_DOCS_DIR
         #
-        # Behavior:
-        #   - Looks for "$TD_DOCS_DIR/README.md".
-        #   - If readable, prints it via td_print_file.
-        #
         # Outputs:
-        #   Prints file contents when present.
+        #   Prints README contents.
         #
         # Returns:
-        #   0 always (display helper).
+        #   0 always.
+        #
+        # Usage:
+        #   td_print_readme
     td_print_readme() {
         local readme_file="$TD_DOCS_DIR/README.md"
         if [[ -r "$readme_file" ]]; then
@@ -450,25 +450,24 @@ set -uo pipefail
         #   Print a full diagnostic snapshot of the current script/framework context.
         #
         # Inputs (globals expected):
-        #   - Metadata: TD_SCRIPT_*, TD_PRODUCT, TD_VERSION, ...
-        #   - Args: TD_ARGS_SPEC, TD_BUILTIN_ARGS, TD_POSITIONAL, FLAG_*/VALUE_* vars
-        #   - Config specs: TD_SCRIPT_GLOBALS, TD_FRAMEWORK_GLOBALS
-        #   - Config names: TD_SCRIPT_NAME, TD_FRAMEWORK_CFG_BASENAME
+        #   Metadata, arguments, configuration specs, and state variables.
         #
         # Behavior:
-        #   Prints, in order:
-        #     - Titlebar and script metadata
-        #     - Command line arguments overview
-        #     - Persistent state variables
-        #     - Script configuration (system/user)
-        #     - Framework configuration header + framework metadata
-        #     - Framework configuration (system/user)
+        #   - Prints metadata, arguments, state, and configuration in structured order.
         #
         # Outputs:
-        #   Prints formatted diagnostic output via td_print_* helpers.
+        #   Prints complete environment overview.
         #
         # Returns:
-        #   0 always (display helper).
+        #   0 always.
+        #
+        # Usage:
+        #   td_showenvironment
+        #
+        # Example:
+        #   if (( FLAG_DEBUG )); then
+        #       td_showenvironment
+        #   fi
     td_showenvironment() {
         td_print_titlebar    
         td_print

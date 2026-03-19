@@ -1,84 +1,66 @@
 #!/usr/bin/env bash
 # ===================================================================================
-# Testadura Consultancy — create-workspace.sh
+# Testadura Consultancy — Create Workspace
 # -----------------------------------------------------------------------------------
+# Module     : create-workspace.sh
 # Purpose    : Create a new development workspace from templates
-# Author     : Mark Fieten
 #
+# Description:
+#   Developer utility that scaffolds a new project workspace into a target
+#   directory using the framework's standard template layout.
+#
+#   The script can:
+#     - resolve project name and target folder
+#     - create the required repository and target-root structure
+#     - copy framework template files
+#     - generate a VS Code workspace file
+#     - generate a standard .gitignore
+#
+# Design principles:
+#   - Uses the canonical executable bootstrap flow
+#   - Keeps workspace creation deterministic and repeatable
+#   - Honors dry-run mode for all filesystem changes
+#   - Follows Testadura / SolidGround project conventions
+#
+# Intended use:
+#   - Development and project scaffolding
+#   - Not intended for deployment or runtime installation
+#
+# Author     : Mark Fieten
 # © 2025 Mark Fieten — Testadura Consultancy
 # Licensed under the Testadura Non-Commercial License (TD-NC) v1.0.
-# -----------------------------------------------------------------------------------
-# Description:
-#   Developer utility that scaffolds a new project workspace from a source
-#   template into a target directory.
-#
-#   - Creates the required directory structure
-#   - Copies framework or project template files
-#   - Optionally generates a VS Code workspace file
-#
-# Assumptions:
-#   - Target directory does not already contain a conflicting workspace
-#   - Intended for development use (not deployment)
-#
-# Effects:
-#   - Creates directories and files under the specified target path
-#   - May overwrite existing files if explicitly allowed
-#
-# Usage examples:
-#   ./create-workspace.sh --project MyProject --folder /path/to/project
-#   ./create-workspace.sh -p MyProject -f /path/to/project --dryrun
-# ==================================================================================
+# ===================================================================================
 set -uo pipefail
 # --- Bootstrap --------------------------------------------------------------------
     # __framework_locator
-        # Resolve, create, and load the SolidGroundUX bootstrap configuration.
-        #
         # Purpose:
-        #   Establish the two root variables that define the framework layout:
+        #   Locate, create, and load the SolidGroundUX bootstrap configuration.
         #
-        #       TD_FRAMEWORK_ROOT
-        #       TD_APPLICATION_ROOT
+        # Behavior:
+        #   - Searches user and system bootstrap configuration locations.
+        #   - Prefers the invoking user's config over the system config.
+        #   - Creates a new bootstrap config when none exists.
+        #   - Prompts for framework/application roots in interactive mode.
+        #   - Applies default values when running non-interactively.
+        #   - Sources the selected configuration file.
         #
-        #   Once these are known, all other framework paths can be derived from
-        #   them by td-bootstrap.sh and the common libraries.
-        #
-        # Search order:
-        #   1. User configuration
-        #        ~/.config/testadura/solidgroundux.cfg
-        #
-        #   2. System configuration
-        #        /etc/testadura/solidgroundux.cfg
-        #
-        #   User configuration overrides system configuration.
-        #
-        # Sudo behavior:
-        #   When running under sudo, the lookup still prefers the invoking user's
-        #   home configuration (derived from SUDO_USER) rather than /root, so a
-        #   developer's user override remains active under elevation.
-        #
-        # Creation behavior:
-        #   If no configuration file exists:
-        #
-        #     - non-root user → create in ~/.config/testadura
-        #     - root user     → create in /etc/testadura
-        #
-        #   When created interactively, prompt for:
-        #
-        #       TD_FRAMEWORK_ROOT     [default: /]
-        #       TD_APPLICATION_ROOT   [default: TD_FRAMEWORK_ROOT]
-        #
-        #   In non-interactive mode, defaults are used automatically.
-        #
-        # Result:
-        #   Sources the selected configuration file and ensures:
-        #
-        #       TD_FRAMEWORK_ROOT defaults to /
-        #       TD_APPLICATION_ROOT defaults to TD_FRAMEWORK_ROOT
+        # Outputs (globals):
+        #   TD_FRAMEWORK_ROOT
+        #   TD_APPLICATION_ROOT
         #
         # Returns:
         #   0   success
-        #   126 configuration unreadable / invalid
+        #   126 configuration unreadable or invalid
         #   127 configuration directory or file could not be created
+        #
+        # Usage:
+        #   __framework_locator || return $?
+        #
+        # Examples:
+        #   __framework_locator
+        #
+        # Notes:
+        #   - Under sudo, configuration is resolved relative to SUDO_USER instead of /root.
     __framework_locator (){
         local cfg_home="$HOME"
 
@@ -167,35 +149,30 @@ set -uo pipefail
     }
 
     # __load_bootstrapper
-        # Resolve and source the framework bootstrap library.
-        #
         # Purpose:
-        #   Load the canonical td-bootstrap.sh entry library after the framework
-        #   roots have been established by __framework_locator.
+        #   Resolve and source the framework bootstrap library.
         #
         # Behavior:
-        #   1. Calls __framework_locator to load or create the bootstrap cfg.
-        #   2. Derives the bootstrap path from TD_FRAMEWORK_ROOT.
-        #   3. Verifies that td-bootstrap.sh is readable.
-        #   4. Sources td-bootstrap.sh into the current shell.
+        #   - Calls __framework_locator to establish framework roots.
+        #   - Derives the td-bootstrap.sh path from TD_FRAMEWORK_ROOT.
+        #   - Verifies that the bootstrap library is readable.
+        #   - Sources td-bootstrap.sh into the current shell.
         #
-        # Path rule:
-        #   If TD_FRAMEWORK_ROOT is "/":
-        #
-        #       /usr/local/lib/testadura/common/td-bootstrap.sh
-        #
-        #   Otherwise:
-        #
-        #       $TD_FRAMEWORK_ROOT/usr/local/lib/testadura/common/td-bootstrap.sh
-        #
-        # Notes:
-        #   - This function performs executable-level startup resolution.
-        #   - td-bootstrap.sh is expected to derive secondary paths from the
-        #     already-established root variables, not rediscover them.
+        # Inputs (globals):
+        #   TD_FRAMEWORK_ROOT
         #
         # Returns:
         #   0   success
         #   126 bootstrap library unreadable
+        #
+        # Usage:
+        #   __load_bootstrapper || return $?
+        #
+        # Examples:
+        #   __load_bootstrapper
+        #
+        # Notes:
+        #   - This is executable-level startup logic, not reusable framework behavior.
     __load_bootstrapper(){
         local bootstrap=""
 
@@ -276,38 +253,23 @@ set -uo pipefail
     TD_USING=(
     )
 
-    # TD_ARGS_SPEC 
-        # Optional: script-specific arguments
-        # --- Example: Arguments
+    # TD_ARGS_SPEC
+        # Optional: script-specific argument definitions.
+        #
         # Each entry:
         #   "name|short|type|var|help|choices"
         #
-        #   name    = long option name WITHOUT leading --
-        #   short   - short option name WITHOUT leading -
-        #   type    = flag | value | enum
-        #   var     = shell variable that will be set
-        #   help    = help string for auto-generated --help output
-        #   choices = for enum: comma-separated values (e.g. fast,slow,auto)
-        #             for flag/value: leave empty
+        # Fields:
+        #   name    Long option name without leading --
+        #   short   Short option name without leading -
+        #   type    flag | value | enum
+        #   var     Shell variable to receive the parsed value
+        #   help    Help text for auto-generated --help output
+        #   choices Comma-separated values for enum; empty otherwise
         #
         # Notes:
-        #   - -h / --help is built in, you don't need to define it here.
-        #   - After parsing you can use: FLAG_VERBOSE, VAL_CONFIG, ENUM_MODE, ...
-        # Each entry:
-        #   "name|short|type|var|help|choices"
-        #
-        #   name    = long option name WITHOUT leading --
-        #   short   - short option name WITHOUT leading -
-        #   type    = flag | value | enum
-        #   var     = shell variable that will be set
-        #   help    = help string for auto-generated --help output
-        #   choices = for enum: comma-separated values (e.g. fast,slow,auto)
-        #             for flag/value: leave empty
-        #
-        # Notes:
-        #   - -h / --help is built in, you don't need to define it here.
-        #   - After parsing you can use: FLAG_VERBOSE, VAL_CONFIG, ENUM_MODE, ...
-        # ------------------------------------------------------------------------
+        #   - -h / --help is built in and does not need to be defined here.
+        #   - Parsed values become available in the configured target variables.
     TD_ARGS_SPEC=(
         "project|p|value|PROJECT_NAME|Project name|"
         "folder|f|value|PROJECT_FOLDER|Set project folder|"
@@ -414,36 +376,35 @@ set -uo pipefail
 
 # --- local script functions -------------------------------------------------------
     # __resolve_project_settings
-        #   Resolve project name and target folder for a new workspace.
+        # Purpose:
+        #   Resolve and confirm the project name and target folder for a new workspace.
         #
-        # Description:
-        #   Prompts the user for project settings and confirms the resulting values.
-        #   The function resolves:
+        # Behavior:
+        #   - Prompts for the project name.
+        #   - Derives a filesystem-safe slug from the project name.
+        #   - Uses the slug to build a default project folder when none is already set.
+        #   - Prompts for the project folder.
+        #   - Normalizes relative folder paths to absolute paths.
+        #   - Displays a summary and asks the user to confirm, redo, or abort.
+        #   - Repeats until the settings are confirmed or the user cancels.
         #
-        #     PROJECT_NAME   Name of the project
-        #     PROJECT_FOLDER Absolute path to the project directory
-        #
-        #   The project name is converted to a filesystem-safe slug (spaces replaced
-        #   with '-') which is used to derive the default project folder if none is
-        #   provided.
-        #
-        #   The function loops until the user confirms the settings or aborts.
-        #
-        # Arguments:
-        #   None.
-        #
-        # Output:
-        #   Sets the following variables in the caller scope:
-        #
-        #     PROJECT_NAME
-        #     PROJECT_FOLDER
+        # Outputs (globals):
+        #   PROJECT_NAME
+        #   PROJECT_FOLDER
         #
         # Returns:
-        #   0  Settings confirmed
-        #   1  User aborted or an unexpected response occurred
+        #   0  settings confirmed
+        #   1  user aborted or an unexpected response occurred
+        #
+        # Usage:
+        #   __resolve_project_settings || return $?
+        #
+        # Examples:
+        #   if __resolve_project_settings; then
+        #       sayinfo "Creating workspace at $PROJECT_FOLDER"
+        #   fi
         #
         # Notes:
-        #   - Relative project folder paths are normalized to absolute paths.
         #   - Uses ask() and ask_ok_redo_quit() for interactive input.
         #   - Confirmation includes a short auto-continue timeout.
     __resolve_project_settings(){
@@ -490,35 +451,39 @@ set -uo pipefail
     }
     
     # __create_repository
+        # Purpose:
         #   Create the project repository structure and copy template files.
         #
-        # Description:
-        #   Creates the directory layout required for a Testadura-style project
-        #   workspace under PROJECT_FOLDER. The structure includes a staging
-        #   "target-root" tree that mirrors the eventual filesystem deployment
-        #   layout.
+        # Behavior:
+        #   - Creates the project root folder when needed.
+        #   - Creates the standard target-root directory layout under PROJECT_FOLDER.
+        #   - Copies framework template files into the repository template location.
+        #   - Honors dry-run mode by reporting intended actions without modifying the filesystem.
         #
-        #   After creating the directory structure, template files are copied
-        #   from the framework templates directory into the project repository.
+        # Inputs (globals):
+        #   PROJECT_FOLDER
+        #   PROJECT_NAME
+        #   TD_COMMON_LIB
+        #   FLAG_DRYRUN
         #
-        # Arguments:
-        #   None.
-        #
-        # Output:
-        #   Creates directories and copies template files under PROJECT_FOLDER.
+        # Side effects:
+        #   - Creates directories under PROJECT_FOLDER.
+        #   - Copies template files into the new repository.
         #
         # Returns:
         #   0 on success
-        #   Non-zero if filesystem operations fail.
+        #   Non-zero if required filesystem operations fail
+        #
+        # Usage:
+        #   __create_repository
+        #
+        # Examples:
+        #   __create_repository || return 1
         #
         # Notes:
-        #   - Honors FLAG_DRYRUN and reports intended actions without modifying
-        #     the filesystem when enabled.
         #   - Template files are copied from:
-        #
         #       ${TD_COMMON_LIB}/../templates
-        #
-        #   - Missing template directories are reported but do not cause failure.
+        #   - Missing template directories are reported but do not currently cause failure.
     __create_repository(){
         local d template_dir
         local -a DIRS
@@ -569,35 +534,36 @@ set -uo pipefail
     }
 
     # __create_workspace_file
-        #   Generate a VS Code workspace configuration for the project.
+        # Purpose:
+        #   Generate a VS Code workspace file for the new project.
         #
-        # Description:
-        #   Creates a .code-workspace file in the project root that defines
-        #   the project folder and a minimal set of editor settings.
+        # Behavior:
+        #   - Creates a .code-workspace file in the project root.
+        #   - Configures the project root as the workspace folder.
+        #   - Adds a minimal set of editor settings and file exclusions.
+        #   - Honors dry-run mode by reporting the intended action without writing the file.
         #
-        #   The workspace configuration includes:
+        # Inputs (globals):
+        #   PROJECT_FOLDER
+        #   PROJECT_NAME
+        #   FLAG_DRYRUN
         #
-        #     - The project root folder
-        #     - File exclusion patterns (.git, .DS_Store)
-        #     - Default terminal working directory
-        #
-        # Arguments:
-        #   None.
-        #
-        # Output:
-        #   Creates:
-        #
-        #     ${PROJECT_FOLDER}/${PROJECT_NAME}.code-workspace
+        # Side effects:
+        #   - Creates or overwrites:
+        #       ${PROJECT_FOLDER}/${PROJECT_NAME}.code-workspace
         #
         # Returns:
         #   0 on success
-        #   Non-zero if file creation fails.
+        #   Non-zero if file creation fails
+        #
+        # Usage:
+        #   __create_workspace_file
+        #
+        # Examples:
+        #   __create_workspace_file || return 1
         #
         # Notes:
-        #   - Honors FLAG_DRYRUN and reports the intended action without creating
-        #     the workspace file when enabled.
-        #   - The generated workspace assumes the project root as the workspace
-        #     folder.
+        #   - The generated workspace assumes the project root as the workspace folder.
     __create_workspace_file(){
         local workspace_file="${PROJECT_FOLDER}/${PROJECT_NAME}.code-workspace"
 
@@ -627,44 +593,32 @@ set -uo pipefail
         # Purpose:
         #   Create a standard .gitignore file in the project workspace root.
         #
+        # Behavior:
+        #   - Writes a predefined .gitignore containing common exclusions for
+        #     Testadura / SolidGround development environments.
+        #   - Covers OS artifacts, IDE metadata, logs, runtime state, build output,
+        #     archives, environment files, and common backup/swap files.
+        #   - Honors dry-run mode by reporting the intended action without creating the file.
+        #
+        # Inputs (globals):
+        #   PROJECT_FOLDER
+        #   FLAG_DRYRUN
+        #
+        # Side effects:
+        #   - Creates or overwrites:
+        #       ${PROJECT_FOLDER}/.gitignore
+        #
+        # Returns:
+        #   0 on success
+        #
         # Usage:
         #   __create_gitignore_file
         #
-        # Behavior:
-        #   - Generates a predefined .gitignore containing common exclusions
-        #     for Testadura/SolidGround development environments.
-        #   - Covers typical noise sources such as:
-        #       * OS artifacts (e.g., .DS_Store, Thumbs.db)
-        #       * Editor/IDE metadata (.vscode, .idea)
-        #       * Logs and runtime state files
-        #       * Temporary and build directories
-        #       * Archives and packaging artifacts
-        #       * Environment files (.env)
-        #       * Miscellaneous backup/swap files
-        #
-        #   - The file is written directly to:
-        #       ${PROJECT_FOLDER}/.gitignore
-        #
-        #   - If FLAG_DRYRUN is enabled:
-        #       * No file is created.
-        #       * A message is emitted indicating the action that would
-        #         have been performed.
-        #
-        # Inputs (globals):
-        #   PROJECT_FOLDER   Target project workspace directory.
-        #   FLAG_DRYRUN      If set to 1, suppresses file creation.
-        #
-        # Output:
-        #   Creates or overwrites .gitignore in the project root.
-        #
-        # Returns:
-        #   0  Success (or simulated success when FLAG_DRYRUN=1)
+        # Examples:
+        #   __create_gitignore_file
         #
         # Notes:
-        #   - The ignore rules are intentionally generic and safe for
-        #     most Bash/script-based projects.
-        #   - Additional project-specific ignore patterns can be appended
-        #     manually if required.
+        #   - The ignore rules are intentionally generic and safe for most script-based projects.
     __create_gitignore_file(){
         if [[ "$FLAG_DRYRUN" -eq 1 ]]; then
             sayinfo "Would have created .gitignore" 
@@ -738,20 +692,31 @@ set -uo pipefail
 # --- main -------------------------------------------------------------------------
     # main
         # Purpose:
-        #   Canonical script entry point.
+        #   Execute the workspace creation workflow.
         #
         # Behavior:
-        #   - Resolves and loads the framework bootstrap library.
-        #   - Initializes framework runtime via td_bootstrap.
-        #   - Executes builtin framework arguments.
-        #   - Prints the standard title bar.
-        #   - Runs script-specific logic.
+        #   - Loads the framework bootstrapper.
+        #   - Initializes the framework runtime via td_bootstrap.
+        #   - Executes builtin framework argument handling.
+        #   - Prepares the standard UI state and title bar.
+        #   - Resolves project settings interactively.
+        #   - Creates the repository structure, workspace file, and .gitignore.
+        #   - Applies final ownership and permission fixes when not in dry-run mode.
         #
         # Arguments:
-        #   $@  Framework and script-specific command-line arguments.
+        #   $@  Framework and script-specific command-line arguments
         #
         # Returns:
-        #   Exits with the status produced by bootstrap or script logic.
+        #   Exits with the resulting status produced by bootstrap or script logic
+        #
+        # Usage:
+        #   main "$@"
+        #
+        # Examples:
+        #   main "$@"
+        #
+        # Notes:
+        #   - td_bootstrap splits framework arguments from script arguments automatically.
     main() {
         # -- Bootstrap
             local rc=0

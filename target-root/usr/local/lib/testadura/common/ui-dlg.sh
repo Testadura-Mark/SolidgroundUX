@@ -1,49 +1,78 @@
-# =================================================================================
-# Testadura Consultancy — ui-dlg.sh
-# ---------------------------------------------------------------------------------
-# Purpose    : Non-blocking / timed dialog helpers (TTY status blocks + key handling)
-# Author     : Mark Fieten
+# ==================================================================================
+# Testadura Consultancy — Timed Dialog Helpers
+# ----------------------------------------------------------------------------------
+# Module     : ui-dlg.sh
+# Purpose    : Non-blocking and timed dialog helpers for TTY-driven terminal scripts
 #
-# © 2025 Mark Fieten — Testadura Consultancy
-# Licensed under the Testadura Non-Commercial License (TD-NC) v1.0.
-# ---------------------------------------------------------------------------------
 # Description:
-#   Provides small dialog-style helpers that render a short status block to the
-#   terminal and accept simple key-driven decisions (e.g., auto-continue with
-#   pause/cancel/redo/quit). Designed for scripts that want a "soft prompt"
-#   experience without full-screen UI frameworks.
+#   Provides lightweight dialog-style helpers that render a short status block to
+#   the controlling terminal and accept simple key-driven decisions.
 #
-#   Key characteristics:
-#   - Writes directly to /dev/tty (independent of stdin/stdout redirection)
-#   - Uses minimal ANSI cursor movement to redraw the dialog block in-place
+#   This module is intended for "soft prompt" flows such as:
+#     - timed auto-continue prompts
+#     - pause/resume dialogs
+#     - cancel / redo / quit decision blocks
+#     - small guided interaction without full-screen UI frameworks
+#
+# Terminal I/O model:
+#   - Writes directly to /dev/tty, independent of stdin/stdout redirection
+#   - Uses minimal ANSI cursor movement to redraw the dialog block in place
 #   - Returns decision codes instead of enforcing application policy
 #
-# Assumptions:
-#   - This is a FRAMEWORK library (may depend on the framework as it exists).
-#   - A TTY is available (/dev/tty present and readable/writable).
-#   - Theme variables and RESET exist (e.g., TUI_TEXT, TUI_LABEL, RESET).
-#   - No full-screen mode is assumed; the caller controls broader UI flow.
+# Design principles:
+#   - Keep dialog behavior lightweight and terminal-safe
+#   - Separate decision mechanics from higher-level application flow
+#   - Avoid full-screen UI dependencies
+#   - Provide stable return contracts for wrapper functions
 #
-# Design rules:
-#   - Libraries define functions and constants only.
-#   - No auto-execution (must be sourced).
-#   - Avoids changing shell options beyond strict-unset/pipefail (set -u -o pipefail).
-#     (No set -e; no shopt.)
-#   - No path detection or root resolution (bootstrap owns path resolution).
-#   - No global behavior changes (UI routing, logging policy, shell options).
-#   - Safe to source multiple times (idempotent load guard).
+# Role in framework:
+#   - Supports timed and non-blocking interaction patterns
+#   - Complements ui-ask.sh (typed prompts) and ui-say.sh (message output)
+#   - Used where a richer confirmation flow is needed without leaving the normal terminal
 #
 # Non-goals:
 #   - General-purpose prompting (see ui-ask.sh)
-#   - Typed/structured message output (see ui-say.sh)
-#   - Full-screen UI frameworks (alternate screen, panes, widgets)
-# =================================================================================
+#   - Typed message output (see ui-say.sh)
+#   - Full-screen terminal UI frameworks
+#
+# Author     : Mark Fieten
+# © 2025 Mark Fieten — Testadura Consultancy
+# Licensed under the Testadura Non-Commercial License (TD-NC) v1.0.
+# ==================================================================================
 set -uo pipefail
 # --- Library guard ---------------------------------------------------------------
-    # Library-only: must be sourced, never executed.
-    # Uses a per-file guard variable derived from the filename, e.g.:
-    #   ui.sh      -> TD_UI_LOADED
-    #   foo-bar.sh -> TD_FOO_BAR_LOADED
+    # __td_lib_guard
+        # Purpose:
+        #   Ensure the file is sourced as a library and only initialized once.
+        #
+        # Behavior:
+        #   - Derives a unique guard variable name from the current filename.
+        #   - Aborts execution if the file is executed instead of sourced.
+        #   - Sets the guard variable on first load.
+        #   - Skips initialization if the library was already loaded.
+        #
+        # Inputs:
+        #   BASH_SOURCE[0]
+        #   $0
+        #
+        # Outputs (globals):
+        #   TD_<MODULE>_LOADED
+        #
+        # Returns:
+        #   0 if already loaded or successfully initialized.
+        #   Exits with code 2 if executed instead of sourced.
+        #
+        # Usage:
+        #   __td_lib_guard
+        #
+        # Examples:
+        #   # Typical usage at top of library file
+        #   __td_lib_guard
+        #   unset -f __td_lib_guard
+        #
+        # Notes:
+        #   - Guard variable is derived dynamically (e.g. ui-glyphs.sh → TD_UI_GLYPHS_LOADED).
+        #   - Safe under `set -u` due to indirect expansion with default.
     __td_lib_guard() {
         local lib_base
         local guard
@@ -70,30 +99,36 @@ set -uo pipefail
 # --- Internal helpers ------------------------------------------------------------
     # __dlg_keymap
         # Purpose:
-        #   Build a human-readable key legend string for a dialog's current state.
-        #
-        # Usage:
-        #   __dlg_keymap CHOICES [PAUSED]
-        #
-        # Arguments:
-        #   $1  CHOICES : choice string (typically uppercase) describing enabled keys.
-        #   $2  PAUSED  : 1 if dialog is currently paused, otherwise 0 (default: 0).
+        #   Build a human-readable key legend string for the current dialog state.
         #
         # Behavior:
-        #   - Builds a semicolon-separated legend based on CHOICES:
-        #       E => "Enter=continue"
-        #       R => "R=redo"
-        #       C => "C/Esc=cancel"
-        #       Q => "Q=quit"
-        #       A => "Press any key to continue"
-        #       P => "P/Space=pause" or "P/Space=resume" depending on PAUSED
-        #   - Trims the trailing delimiter.
+        #   - Includes only the actions enabled by the supplied choice string.
+        #   - Adapts the pause legend to "pause" or "resume" based on PAUSED.
+        #   - Returns a semicolon-separated legend without a trailing delimiter.
         #
-        # Outputs:
-        #   Prints the legend string to stdout (no newline policy implied by caller).
+        # Arguments:
+        #   $1  CHOICES
+        #       Choice specification describing enabled dialog keys.
+        #   $2  PAUSED
+        #       Optional paused state flag:
+        #       1 = paused
+        #       0 = not paused
+        #       Default: 0
+        #
+        # Output:
+        #   Prints the legend string to stdout.
         #
         # Returns:
         #   0 always.
+        #
+        # Usage:
+        #   __dlg_keymap "AERCPQ" 0
+        #
+        # Examples:
+        #   legend="$(__dlg_keymap "ERCPQ" 1)"
+        #
+        # Notes:
+        #   - Intended as an internal rendering helper.
     __dlg_keymap(){
         local choices="$1"
         local keymap=""
@@ -123,55 +158,67 @@ set -uo pipefail
 # --- Public API ------------------------------------------------------------------
     # td_dlg_autocontinue
         # Purpose:
-        #   Render a non-blocking/timed "soft dialog" on /dev/tty with a countdown
-        #   and simple key-driven decisions.
-        #
-        # Usage:
-        #   td_dlg_autocontinue [SECONDS] [MESSAGE] [CHOICES]
-        #
-        # Arguments:
-        #   $1  SECONDS : countdown seconds until auto-continue (default: 5).
-        #   $2  MESSAGE : optional message shown above the countdown/key legend.
-        #   $3  CHOICES : enabled key set (default: "AERCPQ").
-        #                Case-insensitive; internally normalized to uppercase.
-        #
-        # CHOICES (reserved actions):
-        #   A  Any key => continue (fallback behavior for unrecognized keys)
-        #   E  Enter   => continue
-        #   R  R       => redo
-        #   C  C/Esc   => cancel
-        #   P  P/Space => pause/resume countdown
-        #   Q  Q       => quit
-        #   H  Hide key legend line
-        #
-        # CHOICES (custom keys):
-        #   Any other single-character keys included in CHOICES are treated as custom return keys.
-        #   They do not trigger an action; instead the function returns:
-        #     10 for the first custom key (in encounter order),
-        #     11 for the second, etc.
+        #   Render a timed dialog on /dev/tty with a countdown and simple key-driven actions.
         #
         # Behavior:
-        #   - Writes the dialog block to /dev/tty (stdin/stdout redirection-safe).
-        #   - Redraws in-place using minimal cursor movement (up N lines + carriage return).
-        #   - If paused, blocks waiting for a key; otherwise checks for a key with a 1s timeout
-        #     and decrements the countdown.
-        #   - If /dev/tty is not readable/writable, returns immediately (no dialog shown).
+        #   - Displays an optional message, optional key legend, and countdown line.
+        #   - Redraws the dialog block in place using minimal cursor movement.
+        #   - Supports pause/resume, continue, cancel, redo, quit, and custom keys.
+        #   - Returns immediately with success when no usable /dev/tty is available.
+        #
+        # Arguments:
+        #   $1  SECONDS
+        #       Countdown duration in seconds.
+        #       Default: 5
+        #   $2  MESSAGE
+        #       Optional text shown above the countdown.
+        #   $3  CHOICES
+        #       Enabled key set.
+        #       Default: AERCPQ
+        #
+        # Supported reserved keys:
+        #   A  Any key continues
+        #   E  Enter continues
+        #   R  Redo
+        #   C  Cancel
+        #   P  Pause / resume
+        #   Q  Quit
+        #   H  Hide key legend
+        #
+        # Custom keys:
+        #   - Any non-reserved single-character key in CHOICES is treated as a custom key.
+        #   - Custom keys return 10 for the first custom key, 11 for the second, and so on.
         #
         # Inputs (globals):
-        #   Styling: TUI_TEXT, WHITE, FX_ITALIC, RESET (and td_sgr).
+        #   TUI_TEXT
+        #   WHITE
+        #   FX_ITALIC
+        #   RESET
         #
         # Returns:
-        #   0   continue (Enter if E enabled; any key if A enabled; or allowed continue key)
-        #   1   auto-continued (timeout reached)
+        #   0   continue
+        #   1   timeout / auto-continue
         #   2   cancel
         #   3   redo
         #   4   quit
-        #   10+ custom key index (first custom key = 10)
+        #   10+ custom key index
+        #
+        # Usage:
+        #   td_dlg_autocontinue 5 "Continuing shortly..." "AERCPQ"
+        #
+        # Examples:
+        #   td_dlg_autocontinue 10 "Proceed with installation?" "ERCPQ"
+        #
+        #   case $? in
+        #       0)  continue_flow ;;
+        #       1)  timeout_flow ;;
+        #       2)  cancel_flow ;;
+        #       3)  redo_flow ;;
+        #       4)  quit_flow ;;
+        #   esac
         #
         # Notes:
-        #   - "A" acts as a fallback only after checking for reserved/custom handling.
-        #   - The redraw assumes the block height equals:
-        #       (optional message line) + (optional keymap line) + countdown line.
+        #   - This function defines dialog mechanics only; callers interpret the return code.
     td_dlg_autocontinue() {
         local seconds="${1:-5}"
         local msg="${2:-}"
@@ -359,47 +406,55 @@ set -uo pipefail
 
     # td_prompt_fromlist
         # Purpose:
-        #   Prompt for a list of state/config entries described by "state spec" lines,
-        #   assigning results directly to the variables named by each entry.
-        #
-        # Usage:
-        #   td_prompt_fromlist [--labelwidth N] [--autoalign] [--colorize MODE] -- SPEC...
-        #
-        # Options:
-        #   --labelwidth N     Pad labels to width N using td_fill_right (default: 0 = no padding).
-        #   --autoalign        Compute label width from the longest label across SPEC lines
-        #                      (only if labelwidth is 0/not provided).
-        #   --colorize MODE    Passed through to ask --colorize (default: both).
-        #   --                End of options; remaining args are SPEC lines.
-        #
-        # SPEC format:
-        #   Each SPEC line is parsed by td_parse_statespec and is expected to yield:
-        #     __statekey        variable name to assign
-        #     __statelabel      display label (optional; defaults to key)
-        #     __statedefault    default value (optional)
-        #     __statevalidate   validator function name (optional)
+        #   Prompt for a list of state or configuration entries described by state-spec lines.
         #
         # Behavior:
-        #   - For each SPEC line:
-        #       - Parses it via td_parse_statespec.
-        #       - Skips invalid keys (must be a valid identifier; uses __td_is_ident).
-        #       - Determines current value from the existing shell variable (if set),
-        #         otherwise uses the default from the spec.
-        #       - Calls ask() with --default and optional --validate.
-        #       - Stores the accepted value into the variable named by the spec key.
-        #   - If --autoalign is enabled, the function scans all SPEC lines first to
-        #     compute a label width (based on label text or key fallback).
+        #   - Parses each spec line via td_parse_statespec.
+        #   - Resolves the target variable name, label, default value, and validator.
+        #   - Uses the current shell value when present, otherwise the spec default.
+        #   - Calls ask() for each valid entry and stores results directly in the target variables.
+        #   - Optionally auto-aligns labels based on the longest label in the input list.
+        #
+        # Options:
+        #   --labelwidth N
+        #       Fixed label width. Default: 0
+        #   --autoalign
+        #       Compute label width from the longest label in the provided specs.
+        #   --colorize MODE
+        #       Passed through to ask --colorize.
+        #       Default: both
+        #   --
+        #       End of options; remaining arguments are spec lines.
+        #
+        # Spec format:
+        #   Each spec line is parsed by td_parse_statespec and is expected to provide:
+        #     __statekey
+        #     __statelabel
+        #     __statedefault
+        #     __statevalidate
         #
         # Inputs (globals / dependencies):
-        #   - td_parse_statespec (must set $__statekey, $__statelabel, $__statedefault, $__statevalidate)
-        #   - __td_is_ident, td_trim, td_fill_right, ask
-        #   - saywarning (optional)
-        #
-        # Outputs:
-        #   None on stdout (interactive prompting happens on /dev/tty via ask()).
+        #   td_parse_statespec
+        #   __td_is_ident
+        #   td_trim
+        #   td_fill_right
+        #   ask
+        #   saywarning
         #
         # Returns:
-        #   0 always (prompt/orchestration helper; skips invalid entries).
+        #   0 always.
+        #
+        # Usage:
+        #   td_prompt_fromlist --autoalign -- "${TD_STATE_VARIABLES[@]}"
+        #
+        # Examples:
+        #   td_prompt_fromlist --autoalign --colorize both -- \
+        #       "HOST|Host name|localhost|validate_text|" \
+        #       "PORT|Port|8080|validate_int|"
+        #
+        # Notes:
+        #   - Invalid state keys are skipped with a warning.
+        #   - Results are assigned directly to the variables named by each spec.
     td_prompt_fromlist() {
         local labelwidth=0
         local autoalign=0

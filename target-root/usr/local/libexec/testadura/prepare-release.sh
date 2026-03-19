@@ -1,77 +1,68 @@
 #!/usr/bin/env bash
+#!/usr/bin/env bash
 # ==================================================================================
-# Testadura Consultancy — prepare-release.sh
+# Testadura Consultancy — Prepare Release
 # ----------------------------------------------------------------------------------
-# Purpose    : Create a clean tar.gz release archive of the current application
-# Author     : Mark Fieten
+# Purpose:
+#   Create a clean tar.gz release archive from the current workspace.
 #
+# Description:
+#   Developer utility that assembles a reproducible release package from a
+#   workspace by staging a filtered copy, generating a manifest, and writing
+#   checksums for the final artifacts.
+#
+#   The script can:
+#     - resolve release parameters interactively or from saved state
+#     - stage a clean copy of the source workspace
+#     - generate a versioned tar.gz archive
+#     - generate and embed an uninstall manifest
+#     - update SHA256SUMS and sidecar checksum files
+#
+# Release model:
+#   - Source is treated as the current application or workspace root
+#   - Output is written under a staging/releases directory
+#   - Artifacts are intended to be reproducible and distributable
+#
+# Notes:
+#   - Honors FLAG_DRYRUN, FLAG_VERBOSE, and FLAG_DEBUG
+#   - Supports auto mode and optional reuse of an existing staging tree
+#
+# Author  : Mark Fieten
 # © 2025 Mark Fieten — Testadura Consultancy
 # Licensed under the Testadura Non-Commercial License (TD-NC) v1.0.
-# ----------------------------------------------------------------------------------
-# Description:
-#   Developer utility that assembles a reproducible release archive from the
-#   current workspace, excluding build artifacts and non-distributable files.
-#
-# Assumptions:
-#   - Run from within an application workspace or repository
-#   - Testadura framework is available and bootstrapped
-#
-# Effects:
-#   - Creates a tar.gz archive in the release/output directory
-#   - May create or remove temporary staging directories
 # ==================================================================================
 
 set -uo pipefail
 # --- Bootstrap --------------------------------------------------------------------
     # __framework_locator
-        # Resolve, create, and load the SolidGroundUX bootstrap configuration.
-        #
         # Purpose:
-        #   Establish the two root variables that define the framework layout:
+        #   Locate, create, and load the SolidGroundUX bootstrap configuration.
         #
-        #       TD_FRAMEWORK_ROOT
-        #       TD_APPLICATION_ROOT
+        # Behavior:
+        #   - Searches user and system bootstrap configuration locations.
+        #   - Prefers the invoking user's config over the system config.
+        #   - Creates a new bootstrap config when none exists.
+        #   - Prompts for framework/application roots in interactive mode.
+        #   - Applies default values when running non-interactively.
+        #   - Sources the selected configuration file.
         #
-        #   Once these are known, all other framework paths can be derived from
-        #   them by td-bootstrap.sh and the common libraries.
-        #
-        # Search order:
-        #   1. User configuration
-        #        ~/.config/testadura/solidgroundux.cfg
-        #
-        #   2. System configuration
-        #        /etc/testadura/solidgroundux.cfg
-        #
-        #   User configuration overrides system configuration.
-        #
-        # Sudo behavior:
-        #   When running under sudo, the lookup still prefers the invoking user's
-        #   home configuration (derived from SUDO_USER) rather than /root, so a
-        #   developer's user override remains active under elevation.
-        #
-        # Creation behavior:
-        #   If no configuration file exists:
-        #
-        #     - non-root user → create in ~/.config/testadura
-        #     - root user     → create in /etc/testadura
-        #
-        #   When created interactively, prompt for:
-        #
-        #       TD_FRAMEWORK_ROOT     [default: /]
-        #       TD_APPLICATION_ROOT   [default: TD_FRAMEWORK_ROOT]
-        #
-        #   In non-interactive mode, defaults are used automatically.
-        #
-        # Result:
-        #   Sources the selected configuration file and ensures:
-        #
-        #       TD_FRAMEWORK_ROOT defaults to /
-        #       TD_APPLICATION_ROOT defaults to TD_FRAMEWORK_ROOT
+        # Outputs (globals):
+        #   TD_FRAMEWORK_ROOT
+        #   TD_APPLICATION_ROOT
         #
         # Returns:
         #   0   success
-        #   126 configuration unreadable / invalid
+        #   126 configuration unreadable or invalid
         #   127 configuration directory or file could not be created
+        #
+        # Usage:
+        #   __framework_locator || return $?
+        #
+        # Examples:
+        #   __framework_locator
+        #
+        # Notes:
+        #   - Under sudo, configuration is resolved relative to SUDO_USER instead of /root.
     __framework_locator (){
         local cfg_home="$HOME"
 
@@ -160,35 +151,30 @@ set -uo pipefail
     }
 
     # __load_bootstrapper
-        # Resolve and source the framework bootstrap library.
-        #
         # Purpose:
-        #   Load the canonical td-bootstrap.sh entry library after the framework
-        #   roots have been established by __framework_locator.
+        #   Resolve and source the framework bootstrap library.
         #
         # Behavior:
-        #   1. Calls __framework_locator to load or create the bootstrap cfg.
-        #   2. Derives the bootstrap path from TD_FRAMEWORK_ROOT.
-        #   3. Verifies that td-bootstrap.sh is readable.
-        #   4. Sources td-bootstrap.sh into the current shell.
+        #   - Calls __framework_locator to establish framework roots.
+        #   - Derives the td-bootstrap.sh path from TD_FRAMEWORK_ROOT.
+        #   - Verifies that the bootstrap library is readable.
+        #   - Sources td-bootstrap.sh into the current shell.
         #
-        # Path rule:
-        #   If TD_FRAMEWORK_ROOT is "/":
-        #
-        #       /usr/local/lib/testadura/common/td-bootstrap.sh
-        #
-        #   Otherwise:
-        #
-        #       $TD_FRAMEWORK_ROOT/usr/local/lib/testadura/common/td-bootstrap.sh
-        #
-        # Notes:
-        #   - This function performs executable-level startup resolution.
-        #   - td-bootstrap.sh is expected to derive secondary paths from the
-        #     already-established root variables, not rediscover them.
+        # Inputs (globals):
+        #   TD_FRAMEWORK_ROOT
         #
         # Returns:
         #   0   success
         #   126 bootstrap library unreadable
+        #
+        # Usage:
+        #   __load_bootstrapper || return $?
+        #
+        # Examples:
+        #   __load_bootstrapper
+        #
+        # Notes:
+        #   - This is executable-level startup logic, not reusable framework behavior.
     __load_bootstrapper(){
         local bootstrap=""
 
@@ -398,35 +384,38 @@ set -uo pipefail
 
 # --- Local script functions -------------------------------------------------------
     # __save_parameters
-        #   Persist the current release parameters to the state store.
+        # Purpose:
+        #   Persist the current release parameters to the framework state store.
         #
-        # Description:
-        #   Writes all resolved and user-confirmed parameters required to reproduce
-        #   a prepare-release run later. This supports:
-        #     - --auto mode reruns
-        #     - consistent, repeatable release generation
+        # Behavior:
+        #   - Saves all resolved and confirmed release parameters for later reuse.
+        #   - Supports repeatable runs through --auto mode.
+        #   - Skips state writes when FLAG_DRYRUN is enabled.
         #
-        #   This function does not validate input; it assumes parameters are already
-        #   resolved and confirmed.
+        # Inputs (globals):
+        #   RELEASE
+        #   SOURCE_DIR
+        #   STAGING_ROOT
+        #   TAR_FILE
+        #   FLAG_CLEANUP
+        #   FLAG_USEEXISTING
+        #   FLAG_DRYRUN
         #
-        # Arguments:
-        #   None.
-        #
-        # Output:
-        #   Stores the following keys via td_state_set:
-        #     RELEASE
-        #     SOURCE_DIR
-        #     STAGING_ROOT
-        #     TAR_FILE
-        #     FLAG_CLEANUP
-        #     FLAG_USEEXISTING
+        # Side effects:
+        #   - Writes state entries via td_state_set when not in dry-run mode.
         #
         # Returns:
         #   0 on success
-        #   Non-zero if state storage fails.
+        #   Non-zero if state storage fails
+        #
+        # Usage:
+        #   __save_parameters
+        #
+        # Examples:
+        #   __save_parameters || return 1
         #
         # Notes:
-        #   Requires td_bootstrap --state so the state backend is available.
+        #   - Requires td_bootstrap --state so the state backend is available.
     __save_parameters(){
         if [[ "$FLAG_DRYRUN" -eq 1 ]]; then
             sayinfo "Would have saved state variables (manual)"
@@ -442,52 +431,50 @@ set -uo pipefail
     }
 
     # __get_parameters
+        # Purpose:
         #   Resolve and collect all parameters required to prepare a release archive.
         #
-        # Description:
-        #   Establishes defaults using application metadata and workspace paths, then
-        #   resolves user-adjustable parameters either interactively or via auto mode.
-        #
-        #   Behavior:
-        #     - Computes defaults:
-        #         RELEASE      : "$TD_PRODUCT-$TD_VERSION"
-        #         SOURCE_DIR   : "$TD_APPLICATION_ROOT"
-        #         STAGING_ROOT : "<parent_of_application_root>/releases"
-        #         TAR_FILE     : "$RELEASE.tar.gz"
-        #     - If FLAG_AUTO=1:
-        #         Uses previously stored or default values without prompting and returns.
-        #     - Otherwise:
-        #         Prompts the user to review and modify parameters and confirms via a
-        #         dialog with optional auto-continue.
-        #     - On confirmation, persists parameters using __save_parameters().
+        # Behavior:
+        #   - Computes default values from framework metadata and workspace paths.
+        #   - In auto mode, reuses existing or default values without prompting.
+        #   - In interactive mode, prompts for release settings and confirms them.
+        #   - Saves confirmed parameters through __save_parameters().
         #
         # Parameters handled:
-        #   RELEASE          Release identifier used for staging and filenames
-        #   SOURCE_DIR       Source directory to stage from (rsync root)
-        #   STAGING_ROOT     Root directory that will contain staged tree and outputs
-        #   TAR_FILE         Final tar.gz filename (stored under STAGING_ROOT)
-        #   FLAG_CLEANUP     Remove staging files after run (optional; not enacted here)
-        #   FLAG_USEEXISTING Reuse non-empty staging tree if present
+        #   RELEASE
+        #       Release identifier used for staging and filenames
+        #   SOURCE_DIR
+        #       Source directory to package
+        #   STAGING_ROOT
+        #       Root directory containing staging files and release outputs
+        #   TAR_FILE
+        #       Final tar.gz filename
+        #   FLAG_CLEANUP
+        #       Whether to remove staging files after completion
+        #   FLAG_USEEXISTING
+        #       Whether to reuse a non-empty staging tree
         #
-        # Arguments:
-        #   None.
-        #
-        # Output:
-        #   Sets (or updates) the following variables in caller scope:
-        #     RELEASE, SOURCE_DIR, STAGING_ROOT, TAR_FILE, FLAG_AUTO,
-        #     FLAG_CLEANUP, FLAG_USEEXISTING
+        # Outputs (globals):
+        #   RELEASE
+        #   SOURCE_DIR
+        #   STAGING_ROOT
+        #   TAR_FILE
+        #   FLAG_AUTO
+        #   FLAG_CLEANUP
+        #   FLAG_USEEXISTING
         #
         # Returns:
-        #   0 on successful resolution/confirmation
-        #   Exits the script with status 1 if the user cancels.
+        #   0 on successful resolution and confirmation
+        #   Exits the script with status 1 if the user cancels
+        #
+        # Usage:
+        #   __get_parameters
+        #
+        # Examples:
+        #   __get_parameters || return 1
         #
         # Notes:
-        #   - Directory validation uses validate_dir_exists.
-        #   - Confirmation uses td_dlg_autocontinue, distinguishing:
-        #       rc=0 explicit OK
-        #       rc=1 OK by timeout
-        #       rc=2 cancel
-        #       rc=3 redo
+        #   - Uses ask() and ask_ok_redo_quit() for interactive input.
         #   - Auto mode assumes state was loaded during bootstrap (--state).
     __get_parameters(){
         RELEASE="${RELEASE:-"$TD_PRODUCT-$TD_VERSION"}"
@@ -563,38 +550,39 @@ set -uo pipefail
     }
 
     # td_release_write_checksum
-        #   Add or update a SHA256SUMS entry for a release tarball.
+        # Purpose:
+        #   Add or update a SHA256SUMS entry for a release artifact.
         #
-        # Description:
-        #   Ensures that STAGING_ROOT/SHA256SUMS contains exactly one entry for the
-        #   specified tar filename. Any existing line matching the filename is removed,
-        #   then a new line is appended using the tarball's SHA256 hash.
-        #
-        #   The entry format matches the conventional output of sha256sum:
-        #     <hash><two spaces><filename>
-        #
-        #   The stored filename is the basename only (no absolute path).
+        # Behavior:
+        #   - Ensures SHA256SUMS contains exactly one entry for the specified filename.
+        #   - Removes any existing line for the same filename before appending a new one.
+        #   - Stores only the basename in the checksum file.
         #
         # Arguments:
-        #   $1  tar_path      Absolute or relative path to the tarball file to hash.
-        #   $2  tar_file      Tarball filename to write into SHA256SUMS (basename).
-        #   $3  staging_root  Directory containing SHA256SUMS.
+        #   $1  TAR_PATH
+        #       Path to the file to hash.
+        #   $2  TAR_FILE
+        #       Filename to write into SHA256SUMS.
+        #   $3  STAGING_ROOT
+        #       Directory containing SHA256SUMS.
         #
-        # Output:
-        #   Creates or updates:
-        #     <staging_root>/SHA256SUMS
+        # Side effects:
+        #   - Creates or updates:
+        #       <staging_root>/SHA256SUMS
         #
         # Returns:
         #   0 on success
-        #   1 if required arguments are missing or any operation fails
+        #   1 if required arguments are missing or file operations fail
+        #
+        # Usage:
+        #   td_release_write_checksum "$tar_path" "$TAR_FILE" "$STAGING_ROOT"
+        #
+        # Examples:
+        #   td_release_write_checksum "$tar_path_gz" "$TAR_FILE" "$STAGING_ROOT"
         #
         # Notes:
-        #   - Idempotent: removes any existing entry for the same filename before append.
-        #   - Uses sed -i to edit SHA256SUMS in-place.
+        #   - Idempotent for a given filename.
         #   - Requires sha256sum, sed, awk, and write permission to staging_root.
-        #
-        # Example:
-        #   td_release_write_checksum "$tar_path_gz" "$TAR_FILE" "$STAGING_ROOT"
     td_release_write_checksum() {
         local tar_path="${1:-}"
         local tar_file="${2:-}"
@@ -620,56 +608,51 @@ set -uo pipefail
         printf '%s  %s\n' "$hash" "$tar_file" >> "$sums_file" || return 1
     }
 
-    # __create_tar
+     # __create_tar
+        # Purpose:
         #   Stage a clean release tree and produce a versioned tar.gz archive.
         #
-        # Description:
-        #   Builds a reproducible release artifact by staging a filtered copy of the
-        #   source workspace into a release-specific staging directory, then packaging
-        #   it as a tar.gz archive.
+        # Behavior:
+        #   - Ensures the release-specific staging directory exists.
+        #   - Populates the staging directory from SOURCE_DIR via rsync.
+        #   - Reuses existing staging files when requested and non-empty.
+        #   - Creates an uncompressed tar archive from the staged files.
+        #   - Generates an uninstall manifest from the tar contents.
+        #   - Embeds the manifest into the tar archive.
+        #   - Compresses the archive to tar.gz.
+        #   - Updates SHA256SUMS and writes sidecar .sha256 files.
         #
-        #   High-level flow:
-        #     1) Ensure staging directory exists:  $STAGING_ROOT/$RELEASE
-        #     2) Populate staging directory from SOURCE_DIR via rsync (unless
-        #        FLAG_USEEXISTING=1 and staging dir is non-empty)
-        #     3) Create an uncompressed tar archive from the staged files
-        #     4) Generate an uninstall manifest by listing tar contents
-        #     5) Embed the manifest into the tar archive (append)
-        #     6) Compress to tar.gz
-        #     7) Update SHA256SUMS with hashes for:
-        #          - the tar.gz
-        #          - the manifest
-        #        and also write sidecar .sha256 files for both
+        # Inputs (globals):
+        #   RELEASE
+        #   SOURCE_DIR
+        #   STAGING_ROOT
+        #   TAR_FILE
+        #   FLAG_DRYRUN
+        #   FLAG_USEEXISTING
         #
-        # Staging behavior:
-        #   - Uses rsync --delete to keep staging clean and reproducible
-        #   - Excludes:
-        #       .*                 (dotfiles)
-        #       *.state            (state files)
-        #       *.code-workspace   (workspace files)
+        # Side effects:
+        #   - Creates and updates staged files and release artifacts under STAGING_ROOT.
         #
         # Output artifacts:
-        #   - $STAGING_ROOT/$TAR_FILE              Final tar.gz archive
-        #   - $STAGING_ROOT/$RELEASE.manifest      External uninstall manifest
-        #   - $STAGING_ROOT/SHA256SUMS             Rolling checksum index
-        #   - $STAGING_ROOT/$TAR_FILE.sha256       Sidecar checksum for tarball
-        #   - $STAGING_ROOT/$RELEASE.manifest.sha256 Sidecar checksum for manifest
-        #
-        # Arguments:
-        #   None.
-        #
-        # Output:
-        #   Creates and/or updates files under STAGING_ROOT as described above.
+        #   - $STAGING_ROOT/$TAR_FILE
+        #   - $STAGING_ROOT/$RELEASE.manifest
+        #   - $STAGING_ROOT/SHA256SUMS
+        #   - $STAGING_ROOT/$TAR_FILE.sha256
+        #   - $STAGING_ROOT/$RELEASE.manifest.sha256
         #
         # Returns:
         #   0 on success
         #   1 on failure to stage, package, hash, or write artifacts
         #
+        # Usage:
+        #   __create_tar
+        #
+        # Examples:
+        #   __create_tar || return 1
+        #
         # Notes:
-        #   - DRYRUN prints intended actions without modifying the filesystem.
-        #   - Manifest is generated BEFORE embedding, so it does not list itself.
-        #   - Tar append (-r/-f) is only performed on the uncompressed tar archive.
-        #   - Assumes gzip, tar, rsync, sha256sum, sed, awk are available.
+        #   - In dry-run mode, only reports the intended actions.
+        #   - Manifest is generated before embedding, so it does not list itself.
     __create_tar() {
         saystart "Creating release: $RELEASE"
 
@@ -769,20 +752,26 @@ set -uo pipefail
 # --- Main Sequence ----------------------------------------------------------------
     # main
         # Purpose:
-        #   Canonical script entry point.
+        #   Execute the release preparation workflow.
         #
         # Behavior:
-        #   - Resolves and loads the framework bootstrap library.
-        #   - Initializes framework runtime via td_bootstrap.
-        #   - Executes builtin framework arguments.
-        #   - Prints the standard title bar.
-        #   - Runs script-specific logic.
+        #   - Loads and initializes the framework bootstrap.
+        #   - Executes builtin framework argument handling.
+        #   - Prepares the standard UI state and title bar.
+        #   - Resolves release parameters.
+        #   - Creates the release archive and related metadata.
         #
         # Arguments:
-        #   $@  Framework and script-specific command-line arguments.
+        #   $@  Framework and script-specific command-line arguments
         #
         # Returns:
-        #   Exits with the status produced by bootstrap or script logic.
+        #   Exits with the resulting status from bootstrap or release operations
+        #
+        # Usage:
+        #   main "$@"
+        #
+        # Examples:
+        #   main "$@"
     main() {
         # -- Bootstrap
             local rc=0

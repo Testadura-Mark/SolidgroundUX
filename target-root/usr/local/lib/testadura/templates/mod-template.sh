@@ -1,45 +1,77 @@
-# =================================================================================
-# Testadura Consultancy — console-mod-sample.sh
-# ---------------------------------------------------------------------------------
-# Purpose    : Template for Testadura Bash libraries (header + guards + structure)
-# Author     : Mark Fieten
+# ==================================================================================
+# Testadura Consultancy — Console Module Template
+# ----------------------------------------------------------------------------------
+# Module     : console-mod-sample.sh
+# Purpose    : Canonical template for sgnd-console modules
 #
-# © 2025 Mark Fieten — Testadura Consultancy
-# Licensed under the Testadura Non-Commercial License (TD-NC) v1.0.
-# ---------------------------------------------------------------------------------
 # Description:
-#   Provides a standard skeleton for Testadura framework libraries, including:
-#   - Canonical header sections (purpose/description/contracts)
-#   - "library only" execution guard (must be sourced, never executed)
-#   - Load guard for idempotent sourcing
-#   - Suggested naming conventions for internal/public functions
+#   Provides the standard structure for modules that extend sgnd-console with:
+#     - one or more menu groups
+#     - one or more registered menu actions
+#     - optional internal helper functions
+#
+#   Console modules are source-only plugin libraries. Their only intended
+#   load-time side effect is self-registration with sgnd-console.
+#
+# Design principles:
+#   - Modules define functions first, then register themselves explicitly
+#   - Registration is data-driven through sgnd_console_register_group/item
+#   - Keep module logic local and menu-facing
+#   - Avoid framework-wide policy decisions inside modules
+#
+# Role in framework:
+#   - Extends sgnd-console with domain-specific actions and menu entries
+#   - Acts as a lightweight plugin layer on top of the console host
+#   - May depend on framework and sgnd-console primitives already being loaded
 #
 # Assumptions:
-#   - None by default. Each library should explicitly document:
-#       - Whether it is a CORE lib (no framework deps), or
-#       - A FRAMEWORK lib (may assume framework/theme primitives exist).
-#
-# Design rules:
-#   - Libraries define functions and constants only.
-#   - No auto-execution (must be sourced), upon sourcing the module registers
-#     itself with sgnd-console
-#   - Avoids changing shell options beyond strict-unset/pipefail (set -u -o pipefail).
-#     (No set -e; no shopt.)
-#   - No path detection or root resolution (bootstrap owns path resolution).
-#   - No framework policy decisions. May emit say* diagnostics and use td_print_* helpers for display.
-#   - Safe to source multiple times (idempotent load guard).
+#   - Loaded by sgnd-console after framework bootstrap is complete
+#   - sgnd_console_register_group and sgnd_console_register_item are available
+#   - Framework helpers such as say* and td_print_* may be used
 #
 # Non-goals:
-#   - Executable scripts (use /bin tools or applets for entry points)
-#   - User interaction unless explicitly part of a UI module
-#   - Policy decisions (libraries provide mechanisms; callers decide policy)
-# =================================================================================
+#   - Standalone execution
+#   - Bootstrap, path resolution, or framework initialization
+#   - Full-screen UI behavior outside the sgnd-console host
+#
+# Author     : Mark Fieten
+# © 2025 Mark Fieten — Testadura Consultancy
+# Licensed under the Testadura Non-Commercial License (TD-NC) v1.0.
+# ==================================================================================
 set -uo pipefail
 # --- Library guard ---------------------------------------------------------------
-    # Library-only: must be sourced, never executed.
-    # Uses a per-file guard variable derived from the filename, e.g.:
-    #   ui.sh      -> TD_UI_LOADED
-    #   foo-bar.sh -> TD_FOO_BAR_LOADED
+    # __td_lib_guard
+            # Purpose:
+            #   Ensure the file is sourced as a library and only initialized once.
+            #
+            # Behavior:
+            #   - Derives a unique guard variable name from the current filename.
+            #   - Aborts execution if the file is executed instead of sourced.
+            #   - Sets the guard variable on first load.
+            #   - Skips initialization if the library was already loaded.
+            #
+            # Inputs:
+            #   BASH_SOURCE[0]
+            #   $0
+            #
+            # Outputs (globals):
+            #   TD_<MODULE>_LOADED
+            #
+            # Returns:
+            #   0 if already loaded or successfully initialized.
+            #   Exits with code 2 if executed instead of sourced.
+            #
+            # Usage:
+            #   __td_lib_guard
+            #
+            # Examples:
+            #   # Typical usage at top of library file
+            #   __td_lib_guard
+            #   unset -f __td_lib_guard
+            #
+            # Notes:
+            #   - Guard variable is derived dynamically (e.g. ui-glyphs.sh → TD_UI_GLYPHS_LOADED).
+            #   - Safe under `set -u` due to indirect expansion with default.
     __td_lib_guard() {
         local lib_base
         local guard
@@ -66,27 +98,35 @@ set -uo pipefail
 
 # --- Internal helpers ------------------------------------------------------------
     # Naming:
-    #   - Prefix internal-only helpers with "__" (never "td_")
+    #   - Prefix internal-only helpers with "__"
+    #   - Keep internal helpers module-local and menu-focused
+    #
     # Example:
-    #   __<libname>_helper() { :; }
-# --- Public API ------------------------------------------------------------------
-#    sample_show_message() {
-#        sayinfo "Sample module action executed"
-#    }
+    #   __sample_format_status() { :; }
 
-# sys_status() {
-#     sayinfo "System status"
-# }
+# --- Public module actions -------------------------------------------------------
+    # Naming:
+    #   - Use clear action-style names for functions registered as menu handlers
+    #   - Registered handlers do not need a td_ prefix; they belong to the module surface
+    #
+    # Example:
+    #   sample_show_message() { :; }
+    #   sys_status() { :; }
 
 # --- Console registration --------------------------------------------------------
-# Allowed side-effect: module self-registers with sgnd-console
-
-# sgnd_console_register_group "system" "System tools" "General system operations"
-#
-
-
-# sgnd_console_register_item "sys-status" "system" "System status" "sys_status" "Show system status" 0 15
-# sgnd_console_register_item "other-sample-message" "system" "Another Sample message" "sample_show_message" "Show a simple demo message" 0 7
-# sgnd_console_register_item "sample-message" "" "Sample message" "sample_show_message" "Show a simple demo message" 0 7
+    # Allowed side effect:
+    #   - On source, the module may register groups and items with sgnd-console.
+    #
+    # Example:
+    #   sgnd_console_register_group "system" "System tools" "General system operations"
+    #
+    #   sgnd_console_register_item \
+    #       "sys-status" \
+    #       "system" \
+    #       "System status" \
+    #       "sys_status" \
+    #       "Show system status" \
+    #       0 \
+    #       15
 
 

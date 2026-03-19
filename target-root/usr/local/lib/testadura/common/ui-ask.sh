@@ -1,55 +1,76 @@
 # ==================================================================================
-# Testadura Consultancy — ui-ask.sh
+# Testadura Consultancy — Interactive Prompting Module
 # ----------------------------------------------------------------------------------
-# Purpose    : Interactive prompting and input helpers (TTY-driven)
-# Author     : Mark Fieten
+# Module     : ui-ask.sh
+# Purpose    : Interactive prompting and validated input helpers for TTY-driven scripts
 #
-# © 2025 Mark Fieten — Testadura Consultancy
-# Licensed under the Testadura Non-Commercial License (TD-NC) v1.0.
-# ----------------------------------------------------------------------------------
 # Description:
-#   Provides standardized helpers for obtaining interactive input from the user:
-#     - Prompts with labels and editable defaults (readline-style UX)
-#     - Optional validation hooks (type/FS/network validators)
-#     - Choice helpers (yes/no, ok/cancel, ok/redo/quit, continue, autocontinue)
-#
-#   Designed for "interactive control" flows in CLI scripts and framework tools.
+#   Provides a consistent framework layer for interactive user input in terminal
+#   scripts and tools. This module covers:
+#     - editable prompts with defaults
+#     - validation-aware input loops
+#     - normalized decision helpers (yes/no, ok/cancel, ok/redo/quit, continue)
+#     - constrained choice input, including immediate key-based selection
 #
 # Terminal I/O model:
-#   - Prompts should read from the controlling terminal (e.g., /dev/tty) rather than
-#     stdin, so these functions can be used in scripts that also consume stdin
-#     (pipes/redirects). If no TTY is available, functions should either:
-#       - return immediately with a sensible default, or
-#       - fail explicitly (caller decides policy).
+#   - Reads from the controlling terminal (/dev/tty), not stdin
+#   - Safe for use in scripts that also consume piped or redirected stdin
+#   - Falls back to sensible defaults or explicit failure when no TTY is available
 #
-# Assumptions:
-#   - This is a FRAMEWORK library (may depend on the framework as it exists).
-#   - A TTY is available for interactive use (-t checks and/or /dev/tty).
-#   - Theme variables and RESET exist (e.g., TUI_LABEL, TUI_INPUT, TUI_TEXT,
-#     TUI_DEFAULT, TUI_VALID, TUI_INVALID, RESET).
-#   - Optional integration with ui-say.sh may exist (saydebug/saywarning/sayfail),
-#     but this module does not define message policy.
+# Design principles:
+#   - Keep prompting behavior consistent across the framework
+#   - Separate prompt mechanics from message/logging policy
+#   - Support both typed input and timed dialog-based interaction
+#   - Normalize wrapper behavior so calling code stays simple
 #
-# Design rules:
-#   - Libraries define functions and constants only.
-#   - No auto-execution (must be sourced).
-#   - Avoids changing shell options beyond strict-unset/pipefail (set -u -o pipefail).
-#     (No set -e; no shopt.)
-#   - No path detection or root resolution (bootstrap owns path resolution).
-#   - No global behavior changes (UI routing, logging policy, shell options).
-#   - Safe to source multiple times (idempotent load guard).
+# Role in framework:
+#   - Provides the interactive input layer for CLI tools and framework utilities
+#   - Builds on lower-level UI rendering and optional dialog helpers
+#   - Complements ui.sh and ui-dlg.sh rather than replacing them
 #
 # Non-goals:
-#   - Non-interactive/batch input processing
-#   - Rich form UIs (menus, curses layouts, etc.)
-#   - Centralized logging/formatting policy beyond minimal prompting
+#   - Non-interactive batch input processing
+#   - Rich full-screen terminal forms or menu systems
+#   - Centralized logging or output policy
+#
+# Author     : Mark Fieten
+# Copyright  : © 2025 Mark Fieten — Testadura Consultancy
+# License    : Testadura Non-Commercial License (TD-NC) v1.0
 # ==================================================================================
 set -uo pipefail
 # --- Library guard ----------------------------------------------------------------
-    # Library-only: must be sourced, never executed.
-    # Uses a per-file guard variable derived from the filename, e.g.:
-    #   ui.sh      -> TD_UI_LOADED
-    #   foo-bar.sh -> TD_FOO_BAR_LOADED
+    # __td_lib_guard
+        # Purpose:
+        #   Ensure the file is sourced as a library and only initialized once.
+        #
+        # Behavior:
+        #   - Derives a unique guard variable name from the current filename.
+        #   - Aborts execution if the file is executed instead of sourced.
+        #   - Sets the guard variable on first load.
+        #   - Skips initialization if the library was already loaded.
+        #
+        # Inputs:
+        #   BASH_SOURCE[0]
+        #   $0
+        #
+        # Outputs (globals):
+        #   TD_<MODULE>_LOADED
+        #
+        # Returns:
+        #   0 if already loaded or successfully initialized.
+        #   Exits with code 2 if executed instead of sourced.
+        #
+        # Usage:
+        #   __td_lib_guard
+        #
+        # Examples:
+        #   # Typical usage at top of library file
+        #   __td_lib_guard
+        #   unset -f __td_lib_guard
+        #
+        # Notes:
+        #   - Guard variable is derived dynamically (e.g. ui-glyphs.sh → TD_UI_GLYPHS_LOADED).
+        #   - Safe under `set -u` due to indirect expansion with default.
     __td_lib_guard() {
         local lib_base
         local guard
@@ -184,34 +205,43 @@ set -uo pipefail
 
     # td_ask_action
         # Purpose:
-        #   Shared helper for ask_* wrappers:
-        #     - non-interactive default
-        #     - optional timed dialog via td_dlg_autocontinue
-        #     - normalize timed dialog outcome into a small generic action set
+        #   Shared helper for ask_* wrappers that normalizes timed and non-interactive
+        #   prompt behavior into a small generic action set.
         #
-        # Usage:
-        #   action="$( td_ask_action DEFAULT_ACTION ENTER_ACTION PROMPT SECONDS DLG_KEYS)"
+        # Behavior:
+        #   - Returns DEFAULT_ACTION immediately when no TTY is available.
+        #   - Optionally invokes td_dlg_autocontinue for a timed interaction phase.
+        #   - Maps dialog return codes to normalized action tokens.
+        #   - Falls back to TYPE when typed input should be collected by the caller.
         #
         # Arguments:
-        #   $1  DEFAULT_ACTION  Token used for non-interactive and timeout
-        #                       (e.g. YES, NO, OK).
-        #   $2  ENTER_ACTION    Token used when Enter is accepted by the timed dialog
-        #                       (usually the same as DEFAULT_ACTION).
-        #   $3  PROMPT          Prompt text including suffix
-        #                       (e.g. "Proceed? [Y/n]").
-        #   $4  SECONDS         Countdown seconds; 0 disables timed dialog.
-        #   $5  DLG_KEYS        td_dlg_autocontinue key map for the timed phase only.
+        #   $1  DEFAULT_ACTION
+        #       Action used for non-interactive mode and timeout.
+        #   $2  ENTER_ACTION
+        #       Action used when Enter is accepted by the timed dialog.
+        #   $3  PROMPT
+        #       Prompt text, including any suffix such as "[Y/n]".
+        #   $4  SECONDS
+        #       Countdown seconds; 0 disables timed dialog behavior.
+        #   $5  DLG_KEYS
+        #       Key map passed to td_dlg_autocontinue.
         #
         # Output:
-        #   Prints one token:
-        #       DEFAULT_ACTION / ENTER_ACTION / REDO / CANCEL / QUIT / TYPE
+        #   Prints one normalized action token to stdout:
+        #     DEFAULT_ACTION / ENTER_ACTION / REDO / CANCEL / QUIT / TYPE
+        #
+        # Returns:
+        #   0 always.
+        #
+        # Usage:
+        #   action="$(td_ask_action "YES" "YES" "Proceed? [Y/n]" 5 "ECPQT")"
+        #
+        # Examples:
+        #   action="$(td_ask_action "OK" "OK" "Continue?" 10 "EPT")"
         #
         # Notes:
-        #   - This helper implements only the reduced timed-dialog action model.
-        #   - Wrapper-specific typed semantics (such as Y/N, OK/Cancel, etc.)
-        #     are applied only after TYPE fallback.
-        #   - Expects td_dlg_autocontinue to return:
-        #       0=continue, 1=timeout, 2=cancel, 3=redo, 4=quit, 5=typed-fallback
+        #   - Intended as an internal helper for ask_* wrappers.
+        #   - Wrapper-specific meaning is applied only after TYPE fallback.
     td_ask_action() {
         local default_action="${1:?}"
         local enter_action="${2:?}"
@@ -250,45 +280,71 @@ set -uo pipefail
         #   Prompt for interactive input from the controlling terminal (/dev/tty),
         #   with optional defaulting, validation, and result delivery.
         #
-        # Usage:
-        #   ask [--label TEXT] [--default VALUE] [--colorize MODE]
-        #       [--validate FUNC] [--echo] [--var NAME] [--] [LABEL]
+        # Behavior:
+        #   - Reads from /dev/tty rather than stdin, so it remains safe in scripts
+        #     that consume piped or redirected stdin.
+        #   - Supports readline-style editing and optional prefilled defaults.
+        #   - Optionally validates the entered value through a callback function.
+        #   - Re-prompts recursively when validation fails.
+        #   - Can either assign the result to a variable or echo it to stdout.
         #
         # Arguments:
-        #   LABEL (positional) : used as label when --label is omitted.
+        #   LABEL
+        #       Positional fallback label when --label is omitted.
         #
         # Options:
-        #   --label TEXT       Prompt label text.
-        #   --default VALUE    Editable default (readline -i). Empty entry uses default.
-        #   --validate FUNC    Validation callback invoked as: FUNC "$value"
-        #                      - return 0   => accept
-        #                      - return !=0 => reject and re-prompt
-        #   --colorize MODE    none|label|input|both (default: both)
-        #   --var NAME         Store the accepted value into shell variable NAME.
-        #   --echo             Additionally echo the typed value with ✓/✗ feedback to /dev/tty.
-        #                      (Also prints the accepted value to stdout when --var is not used.)
+        #   --label TEXT
+        #       Prompt label text.
+        #   --default VALUE
+        #       Editable default value; empty entry resolves to this value.
+        #   --validate FUNC
+        #       Validation callback invoked as: FUNC "$value"
+        #       Return 0 to accept, non-zero to reject and re-prompt.
+        #   --colorize MODE
+        #       Prompt coloring mode: none | label | input | both
+        #       Default: both
+        #   --var NAME
+        #       Destination variable name for the accepted value.
+        #   --echo
+        #       Echo accepted input with ✓ / ✗ feedback to /dev/tty.
+        #       Also prints the accepted value to stdout when --var is not used.
         #
         # Inputs (globals):
-        #   Theme: TUI_LABEL, TUI_INPUT, TUI_VALID, TUI_INVALID, RESET
+        #   TUI_LABEL
+        #   TUI_INPUT
+        #   TUI_VALID
+        #   TUI_INVALID
+        #   RESET
         #
-        # Behavior:
-        #   - Reads from /dev/tty via `read -u`, not stdin (safe in piped/redirected scripts).
-        #   - Uses readline editing (-e) and optional prefill (-i).
-        #   - If validation fails, prints an error message and re-prompts.
+        # Outputs (globals):
+        #   Assigns the accepted value to --var NAME when provided.
         #
-        # Outputs:
-        #   - If --var is set: assigns result to that variable (no stdout output).
-        #   - Else if --echo is set: prints accepted value to stdout (one line).
-        #   - If --echo is set: prints ✓/✗ feedback to /dev/tty regardless of --var.
+        # Output:
+        #   - Prints validation feedback to /dev/tty when --echo is enabled.
+        #   - Prints the accepted value to stdout only when --var is not used and
+        #     --echo is enabled.
         #
         # Returns:
-        #   0  on success (accepted input)
-        #   2  if /dev/tty cannot be opened (no TTY available)
+        #   0  on accepted input
+        #   2  if /dev/tty cannot be opened
+        #
+        # Usage:
+        #   ask --label "Project name" --var project
+        #   ask --label "Environment" --default "dev" --var env
+        #   ask --label "Release date" --validate validate_date --var release_date
+        #
+        # Examples:
+        #   ask --label "Project name" --var project_name
+        #
+        #   ask --label "Environment" --default "dev" --var env
+        #
+        #   ask --label "Release date" --validate validate_date --var release_date
         #
         # Notes:
-        #   - Re-prompt uses recursion (ask calls itself). Consider a loop if you expect
-        #     unbounded invalid attempts.
-        #   - When neither --var nor --echo is provided, the accepted value is not emitted.
+        #   - Re-prompt currently uses recursion; convert to a loop later if you want
+        #     to avoid recursive retries entirely.
+        #   - When neither --var nor --echo is supplied, the accepted value is kept
+        #     local and not emitted.
     ask(){
         local label="" var_name="" colorize="both"
         local validate_fn="" def_value="" echo_input=0
@@ -392,14 +448,31 @@ set -uo pipefail
     # Convenience wrappers around ask() for common prompt patterns.
 
     # ask_yesno
-        # Prompt a Yes/No question (default: Yes), optionally with auto-continue.
+        # Purpose:
+        #   Prompt a Yes/No question with default Yes, optionally using timed auto-continue.
         #
-        # Usage:
-        #   ask_yesno "Question?" [AUTO_CONFIRM_SECONDS]
+        # Behavior:
+        #   - Uses td_ask_action for non-interactive and timed-dialog handling.
+        #   - Falls back to typed input via ask() when needed.
+        #   - Treats Enter and timeout as Yes.
+        #
+        # Arguments:
+        #   $1  PROMPT
+        #       Question text without suffix.
+        #   $2  SECONDS
+        #       Optional auto-confirm timeout in seconds.
         #
         # Returns:
-        #   0  Yes
-        #   1  No
+        #   0 if the final answer is Yes.
+        #   1 if the final answer is No, Cancel, or Quit.
+        #
+        # Usage:
+        #   ask_yesno "Proceed with installation?"
+        #
+        # Examples:
+        #   if ask_yesno "Overwrite existing file?" 5; then
+        #       overwrite_file
+        #   fi
     ask_yesno() {
         local prompt="${1:?}"
         local seconds="${2:-0}"
@@ -425,14 +498,31 @@ set -uo pipefail
     }
 
     # ask_noyes
-        # Prompt a Yes/No question (default: No), optionally with auto-continue.
+        # Purpose:
+        #   Prompt a Yes/No question with default No, optionally using timed auto-continue.
         #
-        # Usage:
-        #   ask_noyes "Question?" [AUTO_CONFIRM_SECONDS]
+        # Behavior:
+        #   - Uses td_ask_action for non-interactive and timed-dialog handling.
+        #   - Falls back to typed input via ask() when needed.
+        #   - Treats Enter and timeout as No.
+        #
+        # Arguments:
+        #   $1  PROMPT
+        #       Question text without suffix.
+        #   $2  SECONDS
+        #       Optional auto-confirm timeout in seconds.
         #
         # Returns:
-        #   0  Yes
-        #   1  No
+        #   0 if the final answer is Yes.
+        #   1 if the final answer is No, Cancel, or Quit.
+        #
+        # Usage:
+        #   ask_noyes "Delete all generated files?"
+        #
+        # Examples:
+        #   if ask_noyes "Reset the state file?" 10; then
+        #       td_state_reset
+        #   fi
     ask_noyes() {
         local prompt="${1:?}"
         local seconds="${2:-0}"
@@ -457,14 +547,31 @@ set -uo pipefail
     }
 
     # ask_okcancel
-        # Prompt an OK/Cancel confirmation (default: OK), optionally with auto-continue.
+        # Purpose:
+        #   Prompt an OK/Cancel confirmation with default OK, optionally using timed auto-continue.
         #
-        # Usage:
-        #   ask_okcancel "Apply changes?" [AUTO_CONFIRM_SECONDS]
+        # Behavior:
+        #   - Uses td_ask_action for non-interactive and timed-dialog handling.
+        #   - Falls back to typed input via ask() when needed.
+        #   - Treats Enter and timeout as OK.
+        #
+        # Arguments:
+        #   $1  PROMPT
+        #       Confirmation text without suffix.
+        #   $2  SECONDS
+        #       Optional auto-confirm timeout in seconds.
         #
         # Returns:
-        #   0  OK
-        #   1  Cancel
+        #   0 if the final answer is OK.
+        #   1 if the final answer is Cancel or Quit.
+        #
+        # Usage:
+        #   ask_okcancel "Apply changes?"
+        #
+        # Examples:
+        #   if ask_okcancel "Publish release now?" 5; then
+        #       publish_release
+        #   fi
     ask_okcancel() {
         local prompt="${1:?}"
         local seconds="${2:-0}"
@@ -489,21 +596,31 @@ set -uo pipefail
     }
 
     # ask_continue
-        # Pause execution until Enter is pressed, optionally auto-continuing.
+        # Purpose:
+        #   Pause execution until Enter is pressed, optionally auto-continuing after a delay.
+        #
+        # Behavior:
+        #   - Accepts either a prompt, a timeout, or both.
+        #   - Uses td_ask_action for the timed phase when seconds > 0.
+        #   - Reads directly from /dev/tty for the typed phase.
+        #
+        # Arguments:
+        #   $1  PROMPT or SECONDS
+        #       Prompt text, or timeout seconds when numeric.
+        #   $2  SECONDS
+        #       Optional timeout when the first argument is a prompt.
+        #
+        # Returns:
+        #   0 always.
         #
         # Usage:
         #   ask_continue
-        #   ask_continue AUTO_SECONDS
-        #   ask_continue "Prompt"
-        #   ask_continue "Prompt" AUTO_SECONDS
-        #   ask_continue "" AUTO_SECONDS
+        #   ask_continue 5
+        #   ask_continue "Press Enter to continue..."
+        #   ask_continue "Continuing shortly..." 10
         #
-        # Behavior:
-        #   - With one numeric argument, treat it as AUTO_SECONDS.
-        #   - With empty prompt, no prompt text is shown.
-        #
-        # Returns:
-        #   0 always
+        # Examples:
+        #   ask_continue "Review complete. Press Enter to proceed."
     ask_continue() {
         local prompt="Press Enter to continue..."
         local seconds=0
@@ -545,41 +662,42 @@ set -uo pipefail
 
     # td_choose
         # Purpose:
-        #   Prompt for a user choice, optionally constrained to a set/range of allowed values.
-        #
-        # Usage:
-        #   td_choose "Enter value" --var VALUE
-        #   td_choose --label "Environment" --choices "dev,acc,prod" --var env
-        #   td_choose --label "Drive" --choices "A-D, X" --var drive
-        #
-        # Options:
-        #   --label TEXT            Prompt label (fallback: first positional token).
-        #   --var NAME              Destination variable name (default: "choice").
-        #   --choices LIST          Allowed values (comma-separated tokens and/or ranges).
-        #   --displaychoices 0|1    Append "[choices]" to the label (default: 1).
-        #   --keepasking 0|1        Re-prompt on invalid input (default: 1).
-        #   --colorize MODE         Passed through to ask --colorize (default: both).
+        #   Prompt for a user choice, optionally constrained to a set or range of allowed values.
         #
         # Behavior:
-        #   - Always prompts via ask() and captures raw user input.
-        #   - If --choices is empty: accepts any input.
-        #   - If --choices is provided:
-        #       - Expands ranges via __expand_choices
-        #       - Validates case-insensitively
-        #       - On invalid input:
-        #           - warns (saywarning)
-        #           - re-prompts if keepasking=1
-        #   - Always assigns the final captured value to --var (even if invalid and keepasking=0).
+        #   - Prompts via ask() and stores the typed value.
+        #   - Accepts any input when no choices constraint is provided.
+        #   - Validates case-insensitively against expanded choices when provided.
+        #   - Re-prompts on invalid input when keepasking=1.
+        #   - Always assigns the final captured value to the requested variable.
         #
-        # Outputs:
-        #   None (communication is via variable assignment).
+        # Options:
+        #   --label TEXT
+        #       Prompt label.
+        #   --var NAME
+        #       Destination variable name. Default: choice
+        #   --choices LIST
+        #       Allowed values as comma-separated tokens and/or ranges.
+        #   --displaychoices 0|1
+        #       Append [choices] to the label. Default: 1
+        #   --keepasking 0|1
+        #       Re-prompt on invalid input. Default: 1
+        #   --colorize MODE
+        #       Passed through to ask(). Default: both
         #
         # Returns:
-        #   0 always (no validity contract yet).
+        #   0 always.
+        #
+        # Usage:
+        #   td_choose --label "Environment" --choices "dev,acc,prod" --var env
+        #
+        # Examples:
+        #   td_choose --label "Environment" --choices "dev,acc,prod" --var env
+        #
+        #   td_choose --label "Drive" --choices "A-D,X" --var drive
         #
         # Notes:
-        #   - If you want a validity signal later, a clean contract is:
-        #       0=valid, 1=invalid (when keepasking=0)
+        #   - Validity is enforced by re-prompting, not by the return code.
     td_choose() {
         local label=""
         local choices=""
@@ -641,46 +759,48 @@ set -uo pipefail
     
     # td_choose_immediate
         # Purpose:
-        #   Prompt for a user choice using immediate-capable TTY input, optionally
-        #   constrained to a set/range of allowed values.
+        #   Prompt for a user choice using immediate-capable TTY input, with optional
+        #   instant hotkeys and constrained allowed values.
+        #
+        # Behavior:
+        #   - Reads directly from /dev/tty.
+        #   - Accepts configured instant choices immediately without Enter.
+        #   - Buffers all other input until Enter is pressed.
+        #   - Supports backspace editing for buffered input.
+        #   - Validates against the allowed choice list when provided.
+        #   - Re-prompts on invalid input when keepasking=1.
+        #
+        # Options:
+        #   --label TEXT
+        #       Prompt label.
+        #   --var NAME
+        #       Destination variable name. Default: choice
+        #   --choices LIST
+        #       Allowed values as comma-separated tokens and/or ranges.
+        #   --instantchoices LIST
+        #       Choices accepted immediately without Enter.
+        #   --displaychoices 0|1
+        #       Append [choices] to the label. Default: 1
+        #   --keepasking 0|1
+        #       Re-prompt on invalid input. Default: 1
+        #
+        # Returns:
+        #   0 always.
         #
         # Usage:
         #   td_choose_immediate --label "Select option" --choices "1,2,3,Q" --var choice
-        #   td_choose_immediate --label "Select option" --choices "$valid" \
-        #       --instantchoices "B,D,L,V,C" --var choice
         #
-        # Options:
-        #   --label TEXT            Prompt label (fallback: first positional token).
-        #   --var NAME              Destination variable name (default: "choice").
-        #   --choices LIST          Allowed values (comma-separated tokens and/or ranges).
-        #   --instantchoices LIST   Choices that should be accepted immediately without
-        #                           Enter (comma-separated tokens and/or ranges).
-        #   --displaychoices 0|1    Append "[choices]" to the label (default: 1).
-        #   --keepasking 0|1        Re-prompt on invalid input (default: 1).
+        # Examples:
+        #   td_choose_immediate --label "Select option" --choices "1,2,3,Q" --var choice
         #
-        # Behavior:
-        #   - Reads input directly from /dev/tty (not stdin).
-        #   - Input matching --instantchoices is accepted immediately.
-        #   - All other input is buffered until Enter.
-        #   - Backspace edits buffered input.
-        #   - If --choices is empty: accepts any input.
-        #   - If --choices is provided:
-        #       - Expands ranges via __expand_choices
-        #       - Validates case-insensitively
-        #       - On invalid input:
-        #           - warns (saywarning)
-        #           - re-prompts if keepasking=1
-        #
-        # Outputs:
-        #   None (communication is via variable assignment).
-        #
-        # Returns:
-        #   0 always (no validity contract yet).
+        #   td_choose_immediate \
+        #       --label "Action" \
+        #       --choices "1-9,B,D,L,V,C,Q" \
+        #       --instantchoices "B,D,L,V,C,Q" \
+        #       --var action
         #
         # Notes:
-        #   - Intended for menu-style UIs where some hotkeys should react immediately
-        #     while normal choices still require Enter.
-        #   - Input is uppercased before immediate-choice comparison.
+        #   - Intended for menu-style UIs where some hotkeys should react immediately.
     td_choose_immediate() {
         local label=""
         local choices=""
@@ -781,74 +901,38 @@ set -uo pipefail
 
     # ask_ok_redo_quit
         # Purpose:
-        #   Convenience wrapper for a standard OK / Redo / Quit decision prompt.
-        #
-        #   Provides a simple API that optionally uses the timed soft-dialog engine
-        #   (td_dlg_autocontinue) for a countdown confirmation phase, while preserving
-        #   the traditional typed prompt fallback via ask().
-        #
-        #   This function normalizes the dialog result into a stable ORQ return
-        #   contract so calling code does not need to understand the dialog engine.
-        #
-        # Usage:
-        #   ask_ok_redo_quit "Proceed with operation?" [AUTO_CONFIRM_SECONDS]
-        #
-        # Arguments:
-        #   $1  Prompt text (without suffix).
-        #
-        #   $2  AUTO_CONFIRM_SECONDS
-        #       Optional countdown before automatically continuing.
-        #
-        #       0 (default)
-        #           Skip timed dialog and immediately show the typed prompt.
-        #
-        #       >0
-        #           Display a non-blocking timed dialog using td_dlg_autocontinue().
-        #           If no key is pressed before timeout, OK is assumed.
+        #   Prompt for a standard OK / Redo / Quit decision, optionally with timed auto-continue.
         #
         # Behavior:
-        #   Non-interactive environment:
-        #       If stdin/stdout are not attached to a TTY, the function returns OK
-        #       immediately to avoid blocking scripts or pipelines.
+        #   - Returns immediately with OK in non-interactive mode.
+        #   - Optionally uses td_dlg_autocontinue for a timed decision phase.
+        #   - Falls back to typed input via ask() when needed.
+        #   - Normalizes all interaction paths into a stable ORQ return contract.
         #
-        #   Timed dialog phase (if seconds > 0):
-        #       Delegates UI handling to td_dlg_autocontinue().
-        #
-        #       Supported actions:
-        #           Enter        => OK
-        #           R            => Redo
-        #           C / Esc      => Cancel (treated as Quit)
-        #           Q            => Quit
-        #           P / Space    => Pause/resume countdown
-        #           Other key    => Switch to typed prompt mode
-        #
-        #       Timeout:
-        #           Automatically continues with OK.
-        #
-        #   Typed prompt phase:
-        #       Uses ask() to read a token and interprets the response.
-        #
-        #       Accepted inputs (case-insensitive):
-        #           "" / OK / O                => OK
-        #           REDO / R                   => Redo
-        #           QUIT / Q / EXIT / CANCEL   => Quit
-        #
-        # Inputs (globals):
-        #   ask()                 Interactive input helper
-        #   td_dlg_autocontinue() Timed dialog engine
+        # Arguments:
+        #   $1  PROMPT
+        #       Prompt text without suffix.
+        #   $2  SECONDS
+        #       Optional auto-confirm timeout in seconds.
         #
         # Returns:
-        #   0  OK / Continue
+        #   0  OK / continue
         #   1  Redo
         #   2  Quit / Cancel
-        #   3  Invalid input (typed prompt only)
+        #   3  Invalid typed input
+        #
+        # Usage:
+        #   ask_ok_redo_quit "Proceed with operation?"
+        #
+        # Examples:
+        #   case $? in
+        #       0) proceed ;;
+        #       1) retry ;;
+        #       2) exit 1 ;;
+        #   esac
         #
         # Notes:
-        #   - This function defines the canonical ORQ interaction pattern used
-        #     throughout the Testadura script framework.
-        #   - The timed dialog UI and key handling are implemented by
-        #     td_dlg_autocontinue(); this function only maps the results into
-        #     the ORQ return contract.
+        #   - Defines the canonical ORQ interaction pattern for the framework.
     ask_ok_redo_quit() {
         local prompt="${1-}"
         local seconds="${2:-0}"
