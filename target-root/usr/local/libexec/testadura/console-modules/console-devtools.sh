@@ -103,7 +103,7 @@ set -uo pipefail
         #
         # Behavior:
         #   - Delegates execution to __sgnd_run_script.
-        #   - Invokes create-workspace.sh with --showenv.
+        #   - Invokes create-workspace.sh
         #
         # Returns:
         #   Exit code of the executed script.
@@ -115,7 +115,7 @@ set -uo pipefail
         #   __exe_createworkspace    
     __exe_createworkspace()
     {
-            __sgnd_run_script "create-workspace.sh" --showenv
+            __sgnd_run_script "create-workspace.sh"
     }
     
     # __exe_deployworkspace
@@ -124,8 +124,7 @@ set -uo pipefail
         #
         # Behavior:
         #   - Delegates execution to __sgnd_run_script.
-        #   - Invokes deploy-workspace.sh with --showenv.
-        #
+        #   - Invokes deploy-workspace.sh 
         # Returns:
         #   Exit code of the executed script.
         #
@@ -136,7 +135,7 @@ set -uo pipefail
         #   __exe_deployworkspace
     __exe_deployworkspace()
     {
-            __sgnd_run_script "deploy-workspace.sh" --showenv
+            __sgnd_run_script "deploy-workspace.sh" 
     }
 
     # __exe_preparerelease
@@ -145,7 +144,7 @@ set -uo pipefail
         #
         # Behavior:
         #   - Delegates execution to __sgnd_run_script.
-        #   - Invokes prepare-release.sh with --showenv.
+        #   - Invokes prepare-release.sh 
         #
         # Returns:
         #   Exit code of the executed script.
@@ -157,7 +156,7 @@ set -uo pipefail
         #   __exe_preparerelease
     __exe_preparerelease()
     {
-            __sgnd_run_script "prepare-release.sh" --showenv
+            __sgnd_run_script "prepare-release.sh" 
     }
 # --- Public API ------------------------------------------------------------------
 #    sample_show_message() {
@@ -177,8 +176,5 @@ set -uo pipefail
     sgnd_console_register_item "createws" "devtools" "Create workspace" "__exe_createworkspace" "Create a template workspace with target-root structure" 0 15 
     sgnd_console_register_item "deployws" "devtools" "Deploy workspace" "__exe_deployworkspace" "Deploy target-root structure from workspace to root" 0 15
     sgnd_console_register_item "preprel" "devtools" "Prepare release" "__exe_preparerelease" "Create a tar-file from workspace with checksums and manifests" 0 15
-
-# sgnd_console_register_item "other-sample-message" "system" "Another Sample message" "sample_show_message" "Show a simple demo message" 0 7
-# sgnd_console_register_item "sample-message" "" "Sample message" "sample_show_message" "Show a simple demo message" 0 7
 
 
